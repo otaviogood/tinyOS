@@ -1,0 +1,118 @@
+/* Write your global styles here, in PostCSS syntax */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+    .fit-full-space {
+        position: absolute;
+        top: 0;
+        left: 0px;
+        right: 0px;
+        bottom: 0px;
+    }
+
+    .flex-center-all {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .column-reader {
+        width: min(1024px, 100vw);
+        background-color: white;
+        position: relative;
+    }
+    
+    .column-reader-parent {
+        background-color: #f8f8f8;
+        width: 100vw;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+    }
+
+    .spinner {
+        display: inline-block;
+        border-top: 0.1em solid #2060ff;
+        border-right: 0.25em solid #2060ff;
+        @apply border-teal-400;
+        border-left: 0.2em solid transparent;
+        border-bottom: 0.2em solid transparent;
+        border-radius: 50%;
+        width: 1.255em;
+        height: 1.25em;
+        animation: spinanim 1s linear infinite;
+    }
+
+    @keyframes spinanim {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .circle32 {
+        border-radius: 100%;
+        width: 32px;
+        height: 32px;
+    }
+
+    .circle48 {
+        border-radius: 100%;
+        width: 48px;
+        height: 48px;
+    }
+
+    .circle64 {
+        border-radius: 100%;
+        width: 64px;
+        height: 64px;
+    }
+
+    .dropdown-content {
+        position: absolute;
+        right: 0px;
+        @apply bg-white;
+        min-width: 140px;
+        @apply shadow-md;
+        @apply m-1;
+        z-index: 1;
+    }
+
+    .dropdown-content .disabled {
+        color: #ccc;
+    }
+
+    .dropdown-content a {
+        float: none;
+        color: black;
+        padding: 12px 16px;
+        text-decoration: none;
+        display: block;
+        text-align: left;
+    }
+
+    .dropdown-content div {
+        float: none;
+        color: black;
+        padding: 12px 16px;
+        text-decoration: none;
+        display: block;
+        text-align: left;
+    }
+
+    .dropdown-content a:hover {
+        @apply bg-gray-200;
+    }
+
+    .dropdown-content div:hover {
+        @apply bg-gray-200;
+    }
+
+}

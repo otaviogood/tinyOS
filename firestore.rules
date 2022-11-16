@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId} {
+        allow list: if false;
+        allow get: if signedIn() && ((request.auth.uid == userId) || (request.auth.uid == 'rwHGmw7n1KaHNBwuIEL7yR1CGiA2') || (request.auth.uid == 'PKHThWP62vhFeFIJaHBN5ulfFKt2'));
+        allow update: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn() && request.auth.uid == userId;
+        allow delete: if false;
+    }
+
+    match /users/{userId}/{document=**} {
+        allow list: if signedIn() && ((request.auth.uid == userId) || (request.auth.uid == 'rwHGmw7n1KaHNBwuIEL7yR1CGiA2') || (request.auth.uid == 'PKHThWP62vhFeFIJaHBN5ulfFKt2'));
+        allow get: if signedIn() && ((request.auth.uid == userId) || (request.auth.uid == 'rwHGmw7n1KaHNBwuIEL7yR1CGiA2') || (request.auth.uid == 'PKHThWP62vhFeFIJaHBN5ulfFKt2'));
+        allow update: if signedIn() && request.auth.uid == userId;
+        allow create: if signedIn() && request.auth.uid == userId;
+        allow delete: if signedIn() && request.auth.uid == userId;
+ 
+ 
+ 
+        // function getRole(rsc) {
+        //   // Read from the "roles" map in the resource (rsc).
+        //   return rsc.data.roles[request.auth.uid];
+        // }
+
+        // function isOneOfRoles(rsc, array) {
+        //   // Determine if the user is one of an array of roles
+        //   return signedIn() && (getRole(rsc) in array);
+        // }
+
+        // function isValidNewStory() {
+        //   // Valid if story does not exist and the new story has the correct owner.
+        //   return resource == null && isOneOfRoles(request.resource, ['owner']);
+        // }
+
+        // Owners can read, write, and delete stories
+        // allow read: if exists(/databases/$(database)/documents/users/$(userId)/contacts/$());
+        // allow read: if signedIn() && request.resource.shareHack == request.auth.uid;
+ 
+ 
+    }
+
+  }
+}

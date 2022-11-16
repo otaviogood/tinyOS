@@ -1,0 +1,31 @@
+{
+    "name": "svelte-vite-app",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite --host",
+        "build": "vite build",
+        "preview": "vite preview",
+        "deploy": "vite build && firebase deploy"
+    },
+    "devDependencies": {
+        "@sveltejs/vite-plugin-svelte": "^1.0.0-next.30",
+        "@tailwindcss/forms": "^0.5.0",
+        "autoprefixer": "^10.4.4",
+        "postcss": "^8.4.12",
+        "postcss-load-config": "^3.1.4",
+        "prettier": "^2.2.1",
+        "prettier-plugin-svelte": "^2.3.1",
+        "svelte": "^3.44.0",
+        "svelte-preprocess": "^4.10.5",
+        "tailwindcss": "^3.0.23",
+        "vite": "^2.9.7"
+    },
+    "dependencies": {
+        "firebase": "^9.8.0",
+        "luxon": "^2.4.0",
+        "svelte-spa-router": "^3.2.0",
+        "sveltefire": "file:external_packages/sveltefire/package"
+    }
+}
