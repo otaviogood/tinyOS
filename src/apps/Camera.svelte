@@ -1,8 +1,7 @@
 <script>
     
     function handleImage(e) {
-    document.getElementById("upload-camera-file").click();
-
+        document.getElementById("upload-camera-file").click();
     }
 </script>
 This is the camera
