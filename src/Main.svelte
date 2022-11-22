@@ -19,7 +19,7 @@
         {name: "Audio", icon: "fa-volume-up", bgcolor: "bg-pink-500", link: "audio"},
         {name: "Calendar", icon: "fa-calendar", bgcolor: "bg-indigo-500", link: "calendar"},
         {name: "Maps", icon: "fa-map-marker", bgcolor: "bg-orange-500", link: "maps"},
-        {name: "Tiny Quest", icon: "fa-dice", bgcolor: "bg-blue-500", link: "tinyquest"},
+        {name: "Tiny Quest", icon: "fa-unicorn", bgcolor: "bg-blue-500", link: "tinyquest"},
         {name: "Photos", icon: "fa-images", bgcolor: "bg-green-500", link: "photos"},
         {name: "Paint", icon: "fa-paint-brush", bgcolor: "bg-orange-500", link: "paint"},
     ];
