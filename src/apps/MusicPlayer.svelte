@@ -1,0 +1,439 @@
+<script>
+    // import "./TailwindStyles.svelte";
+    import { onMount } from "svelte";
+    import { slide, fade } from "svelte/transition";
+    import { Howl, Howler } from "howler";
+    import { pop } from "svelte-spa-router";
+    // import { allTowns, currentTownIndex, earnedStar } from "./stores";
+    import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../screen";
+    import { sleep, getRandomInt, shuffleArray, preventZoom, GetVideoThumb } from "../utils";
+    import { tweened } from "svelte/motion";
+    import { cubicInOut } from "svelte/easing";
+    import { Animator, frameCount, animateCount } from "../animator";
+    import Keyboard from "../components/Keyboard.svelte";
+    import VideoCard from "../components/VideoCard.svelte";
+    import SVGArcDeg from "../components/SVGArcDeg.svelte";
+    // import IconsMisc from "./IconsMisc.svelte";
+
+    var snd_good = new Howl({ src: ["/sfx/sfx_coin_double1.wav"], volume: 0.25 });
+    var snd_fanfare = new Howl({ src: ["/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
+    var snd_error = new Howl({ src: ["/sfx/sfx_sounds_error10.wav"], volume: 0.25 });
+    var snd_button = new Howl({ src: ["/sfx/sfx_coin_double7.wav"], volume: 0.25 });
+    var snd_current = null;
+
+    let animator = new Animator(60, tick);
+
+    const maxStars = 6; // 6*4 = 24, 26 letters in alphabet, so don't overflow.
+    let starCount = 0;
+    let started = false;
+    let finalGraphic = false;
+    let town;
+    let gameType;
+    let stage = 0; // pumpkin pie or chocolate cake
+
+    let currentShapes = [];
+    let extras = [];
+    let maxShapes = 6;
+    let touches = {};
+
+    let allMedia = {
+        "komm mit": ["SmGUmVPRMCA", "Y2Mate.is - Franzl Lang - Komm mit in die Berge - 1976-SmGUmVPRMCA-96k-1657994281589.mp3"],
+        hat: ["8_UnANdDqJc", "Y2Mate.is - Franzl Lang Yodeling-8_UnANdDqJc-160k-1657994398559.mp3"],
+        "let it go": ["NH15p2dqvJk", "Y2Mate.is - 5. Let it Go - Frozen (OST)-NH15p2dqvJk-160k-1657994331936.mp3"],
+        auto: ["rfoKnb-Tj1M", "Y2Mate.is - Franzl Lang - Auto Jodler-rfoKnb-Tj1M-160k-1657996660769.mp3"],
+        "mama yoho": ["tgbNymZ7vqY", "Y2Mate.is - Bohemian Rhapsody  Muppet Music Video  The Muppets-tgbNymZ7vqY-160k-1658035224036.mp3"],
+        "dancer": ["65CNtap6bow", "Y2Mate.is - Tiny Dancer (Remastered)-65CNtap6bow-160k-1658043302961.mp3"],
+        "dollars": ["DT1NJwEi6nw", "Y2Mate.is - For A Few Dollars More  The Danish National Symphony Orchestra (Live)-DT1NJwEi6nw-160k-1658034815623.mp3"],
+        manatee: ["pd1WGa4JNfE", "Y2Mate.is - I'm A Manatee-pd1WGa4JNfE-160k-1658036569307.mp3"],
+        pig: ["4n7bUYBYZPE", "Y2Mate.is - Pig Calling Contest goes METAL!-4n7bUYBYZPE-160k-1657995491716.mp3"],
+        "good bad": ["enuOArEfqGo", "Y2Mate.is - The Good, the Bad and the Ugly - The Danish National Symphony Orchestra (Live)-enuOArEfqGo-160k-1658034844096.mp3"],
+        "muffin man": ["fXFg5QsTcLQ", "Y2Mate.is - The Muffin Man  Kids Songs  Super Simple Songs-fXFg5QsTcLQ-160k-1658042334177.mp3"],
+        "yodel metal": ["_xpb0_GXkV8", "Y2Mate.is - YODEL METAL-_xpb0_GXkV8-160k-1657995368274.mp3"],
+    };
+    let typed = "";
+    let playing = null;
+    let playbackElement = null;
+
+    let duration = 0;
+    let percentComplete = 0;
+    let startTime = null;
+
+    onMount(() => {
+        return () => {
+            animator.stop();
+        };
+    });
+
+    function tick() {
+        if (startTime) {
+            let now = Date.now();
+            let elapsed = (now - startTime) / 1000;
+            percentComplete = elapsed / duration;
+            // percentComplete = Math.max(percentComplete, 0.01);
+            // if (percentComplete > 1) {
+            //     percentComplete = 1;
+            //     playing = null;
+            //     playbackElement = null;
+            // }
+        }
+    }
+
+    function touchStart(e, i, s) {
+        touches[e.identifier] = { i, s };
+    }
+
+    function pointerDown(i, s) {
+        touches[i] = true;
+        console.log("touch", i);
+    }
+
+    function pointerUp(i, s) {
+        touches[i] = false;
+    }
+
+    function matchedMedia(typed) {
+        let media = Object.keys(allMedia).find((m) => m.toLowerCase() == typed.toLowerCase());
+        console.log("matched", media);
+        if (media) {
+            return allMedia[media];
+        }
+        return null;
+    }
+
+    function keyPressed(e) {
+        let key = e.detail.key;
+        if (key == "←") {
+            typed = typed.slice(0, -1);
+        } else if (key == "▶️") {
+            let media = matchedMedia(typed);
+            console.log("media", media, typed);
+            if (media) {
+                typed = "";
+                playing = media;
+                // getYoutubeAudio(media, playbackElement);
+
+                snd_current = new Howl({
+                    src: ["youtube/" + media[1]],
+                    html5: true
+                });
+                snd_current.once('load', function(){
+                    duration = snd_current.duration();
+                    snd_current.play();
+                    startTime = Date.now();
+                });
+                snd_current.on('end', function(){
+                    console.log('Finished!');
+                    playing = null;
+                    startTime = null;
+                });
+
+
+// console.log("HOT HERE");
+
+//       // 2. This code loads the IFrame Player API code asynchronously.
+//       var tag = document.createElement('script');
+
+//     //   tag.src = "https://www.youtube.com/iframe_api";
+//     //   var firstScriptTag = document.getElementsByTagName('script')[0];
+//     //   firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+//       // 3. This function creates an <iframe> (and YouTube player)
+//       //    after the API code downloads.
+//       function onYouTubeIframeAPIReady() {
+// console.log("onYouTubeIframeAPIReady");
+//         player = new YT.Player('player', {
+//           height: '390',
+//           width: '640',
+//           videoId: 'M7lc1UVf-VE',
+//           playerVars: {
+//             'playsinline': 1
+//           },
+//           events: {
+//             'onReady': onPlayerReady,
+//             'onStateChange': onPlayerStateChange
+//           }
+//         });
+//       }
+
+//       // 4. The API will call this function when the video player is ready.
+//       function onPlayerReady(event) {
+// console.log("onPlayerReady");
+//         event.target.playVideo();
+//       }
+
+//       // 5. The API calls this function when the player's state changes.
+//       //    The function indicates that when playing a video (state=1),
+//       //    the player should play for six seconds and then stop.
+//       var done = false;
+//       function onPlayerStateChange(event) {
+// console.log("onPlayerStateChange");
+//         if (event.data == YT.PlayerState.PLAYING && !done) {
+//           setTimeout(stopVideo, 6000);
+//           done = true;
+//         }
+//       }
+//       function stopVideo() {
+// console.log("stopVideo");
+//         player.stopVideo();
+//       }
+
+
+
+
+
+
+
+
+            }
+            return;
+        } else {
+            typed += key;
+        }
+        console.log("typed", typed);
+        if (typed.toLowerCase() == "komm mit") {
+            snd_good.play();
+            // pop("/video/" + allMedia[typed]);
+        }
+    }
+
+
+
+
+
+
+
+  // INI VAR
+//   var player;
+//   var isPlaying = false;
+
+//   // BUILD VIDEO
+//   function onYouTubeIframeAPIReady() {
+//     player = new YT.Player('YouTube', {
+//       height: '390',
+//       width: '640',
+//       videoId: '8_UnANdDqJc',
+//       events: {
+//         'onReady': current_duration,
+//       }
+//     });
+//   }
+
+//   // PLAY FUNCTION
+//   function start_player() {
+//     player.playVideo();
+//   }
+
+//   // DURATION TIME HELPER
+//   function current_duration(stop){
+//     if (stop == true) {
+//       var time = player.getDuration();
+//     } else {
+//       var time = player.getDuration() - player.getCurrentTime();
+//     }
+//     var minutes = Math.floor(time / 60);
+//     var seconds = Math.floor(time - minutes * 60);
+//     seconds = seconds.toString();
+//     seconds = seconds.padStart(2, '0');
+//     document.querySelector('.duration').innerHTML = minutes + ':' + seconds;
+//   }
+
+//   // TOGGLE PLAY BUTTON AND PLAY VIDEO AND SHOW TIME
+//   function toggle_player(){
+//     if (isPlaying) {
+//       isPlaying = false;
+//       player.stopVideo();
+//       document.querySelector('.player-button').classList.remove('playing');
+//       current_duration(true);
+//       clearInterval(intervalID);
+//     } else {
+//       isPlaying = true;
+//       player.playVideo();
+//       document.querySelector('.player-button').classList.add('playing');
+//       intervalID = setInterval(current_duration, 1000);
+//     }
+//   }
+
+
+
+
+
+
+
+
+    function cleanFilename(filename) {
+        let i = playing[1].lastIndexOf("-");
+        i = playing[1].lastIndexOf("-", i - 1);
+        i -= 12;
+        let s = playing[1].substring(0, i).replace("Y2Mate.is - ","")
+        return s;
+    }
+
+    async function startGame() {
+        snd_button.play();
+        finalGraphic = false;
+        started = true;
+        starCount = 0;
+        stage = 0;
+
+        typed = "";
+        playing = null;
+        playbackElement = null;
+        duration = 0;
+        percentComplete = 0;
+        startTime = null;
+
+        animator.start();
+    }
+
+    function resetToSplashScreen() {
+        started = false;
+        pop();
+    }
+
+    handleResize();
+    startGame();
+</script>
+
+<div class="fit-full-space select-none overflow-hidden" style="backgXXXround-color:black" on:touchstart={preventZoom}>
+    <div class="relative overflow-hidden select-none" style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px;tranXXXsform:scale(0.4)">
+        {#if !started}
+            <div class="flex-center-all h-full flex flex-col">
+                <!-- <img src="gamedata/busstop/intro.webp" class="absolute top-0" alt="skyscraper" style="height:64rem" />
+                <div in:fade={{ duration: 2000 }} class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1" style="margin-top:44rem;background-color:#40101080">{town?.name}</div>
+                <button in:fade={{ duration: 2000 }} class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10" on:pointerup|preventDefault|stopPropagation={startGame}>START</button> -->
+            </div>
+        {:else}
+            <div class="flex flex-row h-full w-full" style="{playing?"background-color:#ACEAFF":""}">
+                <!-- <div class="fit-full-space" style=""> -->
+                <!-- <img src="gamedata/airplanecrash/Airport.png" class="absolute top-0 left-0 w-full h-full" alt="bus stop background" style="opacity:0.66" /> -->
+                <!-- </div> -->
+
+                <!-- <div class="w-full"><audio bind:this={playbackElement} id="youtube" autoplay controls loop></audio></div> -->
+                <!-- <div id="player"></div> -->
+                <!-- <iframe bind:this={player} id="player" type="text/html" width="640" height="390" title="player" src="http://www.youtube.com/embed/M7lc1UVf-VE?enablejsapi=1&origin=http://example.com" frameborder="0"></iframe> -->
+                <!-- <div id="YouTube" style="width:0px;height:0px"></div>
+                <div class="player" on:click={toggle_player}>
+                <div class="player-button" on:click={start_player}>
+                    Listen to "Deep House Mix"
+                    <span class="duration">0:00</span></div>
+                </div> -->
+
+                {#if !playing}
+                    <div class="flex flex-col w-full">
+                        <div class="flex flex-row flex-wrap w-full overflow-hidden overflow-y-scroll scroll" style="height:30rem;touch-action:auto;scroll-behavior:auto;" on:touchmove={(e) => {window.letMeScroll = true; e.currentTarget.dataset.lastTouch = 0;
+                        }}>
+                            {#each Object.entries(allMedia) as media, i}
+                                <div class="w-1/3 bXXXorder border-white">
+                                    <VideoCard label={media[0]} id={media[1][0]} highlight={media[0].toLowerCase() === typed.toLowerCase()} {typed} />
+                                </div>
+                            {/each}
+                        </div>
+                        <pre class="border border-pink-500 bg-pink-900 text-white text-7xl p-2 my-2 rounded-2xl">{typed}&nbsp;</pre>
+                        <Keyboard on:pressed={keyPressed} enterEnabled={matchedMedia(typed)?.length > 0} />
+                    </div>
+                    <div class="cursor-pointer select-none absolute right-4" style="bottom:31rem; padding:0 0.75rem;border-radius:0.75rem;backXXXground-color:#486870" on:pointerup|preventDefault|stopPropagation={resetToSplashScreen} on:touchstart={preventZoom}>
+                        <!-- <IconsMisc icon="treasure-map" size="7.5rem" style="" /> -->
+                    </div>
+        <div class="absolute right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" style="bottom:32rem" on:pointerup={pop}><i class="fas fa-times-circle"></i></div>
+                {:else}
+                    <div class="flex-center-all flex-col w-full">
+                        <!-- clouds at end of rainbow -->
+                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffffd0;left:19.5rem; bottom:34rem;"></div>
+                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;left:17rem; bottom:33rem;"></div>
+                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;left:22rem; bottom:32rem;"></div>
+
+                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffffd0;right:19.5rem; bottom:34rem;"></div>
+                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;right:18rem; bottom:33.5rem;"></div>
+                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;right:22rem; bottom:33rem;"></div>
+                        <!-- rainbow -->
+                        <SVGArcDeg class="absolute" color="#ff0000" startAngle={-90} endAngle={-90 + percentComplete*180} />
+                        <SVGArcDeg class="absolute" color="#ff8000" startAngle={-90} endAngle={-90 + percentComplete*180} radius={77} />
+                        <SVGArcDeg class="absolute" color="#ffff00" startAngle={-90} endAngle={-90 + percentComplete*180} radius={74} />
+                        <SVGArcDeg class="absolute" color="#00ff00" startAngle={-90} endAngle={-90 + percentComplete*180} radius={71} />
+                        <SVGArcDeg class="absolute" color="#00ffff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={68} />
+                        <SVGArcDeg class="absolute" color="#0000ff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={65} />
+                        <SVGArcDeg class="absolute" color="#8000ff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={62} />
+                        <img src={GetVideoThumb(playing[0])} alt="" class="flex-center-all max-h-96 w-96 h-96 mt-32 text-center rounded-xl bg-transparent"/>
+                        <div class="text-6xl m-2 p-2 w-full flex-center-all text-white" style="filter: drop-shadow(0 0 0.75rem #105080);">{cleanFilename(playing[1])}</div>
+                        <button class="bg-red-500 text-white text-9xl rounded-3xl px-8 mt-4 z-10 h-32" on:pointerup|preventDefault|stopPropagation={() => {snd_current.stop(); startGame()}}>STOP</button>
+                    </div>
+                {/if}
+
+                <!-- <div class="absolute right-0 top-0 bottom-0 flex flex-row">
+                    <StarBar {maxStars} starCount={starCount} bg="#00000080" on:pointerup={resetToSplashScreen} />
+                </div> -->
+                <!-- <WinScreen {maxStars} active={finalGraphic} bg="#00000010" on:startGame={startGame} on:resetToSplashScreen={resetToSplashScreen} style="position:absolute;top:10rem;z-index:100;" /> -->
+            </div>
+        {/if}
+    </div>
+</div>
+
+<style>
+      .player {
+    display: inline-block;
+    text-align: center;
+    font-family: sans-serif;
+    box-sizing: border-box;
+    background: royalblue;
+    color: white;
+    cursor: pointer;
+    position: relative;
+    border-radius: 25px; 
+    height: 50px;
+    line-height: 1;
+    padding: 18px 20px;
+  }
+  .player-button::before,
+  .player-button.playing::before{
+    content: '';
+    display: inline-block;
+    border: 0;
+    background: transparent;
+    box-sizing: border-box;
+    width: 0;
+    height: 12px;
+    margin-right: 10px;
+    border-color: transparent transparent transparent #FFF;
+    transition: 100ms all ease;
+    cursor: pointer;
+    border-style: solid;
+    border-width: 6px 0 6px 8px;
+  }
+  .player-button.playing::before {
+    border-style: double;
+    border-width: 0px 0 0px 8px;
+  }
+
+    /* Nice scrollbars */
+    /* width */
+    .scroll::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    /* bottom-right corner rectangle */
+    .scroll::-webkit-scrollbar-corner {
+        @apply bg-gray-300;
+        /* @apply dark:bg-gray-900; */
+    }
+
+    /* Track */
+    .scroll::-webkit-scrollbar-track {
+        @apply bg-pink-900;
+        /* background-color: #f000f0; */
+        /* @apply dark:bg-gray-800; */
+    }
+
+    /* Handle */
+    .scroll::-webkit-scrollbar-thumb {
+        @apply bg-pink-500;
+        /* @apply dark:bg-gray-500; */
+        @apply rounded;
+    }
+
+    /* Handle on hover */
+    .scroll::-webkit-scrollbar-thumb:hover {
+        @apply bg-pink-400;
+    }
+
+</style>

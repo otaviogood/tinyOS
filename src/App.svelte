@@ -1,5 +1,7 @@
 <script>
     import { onMount } from "svelte";
+    import { Howl, Howler } from "howler";
+    import { handleResize } from "./screen";
     import Router from "svelte-spa-router";
     import { routes } from "./router.js";
     import { firebaseConfig } from "./secrets";
@@ -30,13 +32,51 @@
             window.alert("The current browser does not support all of the features required to enable persistence.")
         }
     });
+
+    // For iOS screen rotation
+    window.addEventListener("orientationchange", function (event) {
+        window.dispatchEvent(new Event("resize"));
+    });
+    window.addEventListener("resize", handleResize);
+
+    // This is for ios to not scroll on drag vertical. https://stackoverflow.com/questions/7768269/ipad-safari-disable-scrolling-and-bounce-effect
+    function preventDefault(e) {
+        if (window.letMeScroll) {
+            window.letMeScroll = undefined;
+            return;
+        }
+        e.preventDefault();
+    }
+    function disableScroll() {
+        document.body.addEventListener("touchmove", preventDefault, { passive: false });
+    }
+    function enableScroll() {
+        document.body.removeEventListener("touchmove", preventDefault);
+    }
+    disableScroll();
+
+    // By default, audio on mobile browsers and Chrome/Safari is locked until a sound is played within a user interaction
+    // https://github.com/goldfire/howler.js#documentation
+    var sound = new Howl({
+        src: ['silence.wav'],
+        onplayerror: function() {
+            sound.once('unlock', function() {
+            sound.play();
+            });
+        }
+    });
+    sound.play();
 </script>
+
+<div class="fit-full-space overflow-hidden" on:contextmenu|preventDefault|stopPropagation={() => void(0)} >
+    <Router {routes} />
+</div>
 
 <!-- <FirebaseApp config={firebaseConfig}> -->
     <!-- <Header /> -->
     <!-- Leave space for the fixed header at the top. Maybe not the best way to do this??? -->
     <!-- <div style={$phoneScreen ? "" : "height:" + $headerHeight + "px;flex-basis:" + $headerHeight + "px"} /> -->
-    <Router {routes} />
+    <!-- <Router {routes} /> -->
     <!-- <User persist={sessionStorage} let:user let:auth>
         <div slot="signed-out">Signed out!</div>
     </User> -->
@@ -49,40 +89,38 @@
             "Helvetica Neue", sans-serif;
     }
 
-    /* main {
-        text-align: center;
-        padding: 1em;
-        margin: 0 auto;
+    /* Nice scrollbars */
+    /* width */
+    .scroll::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
     }
 
-    img {
-        height: 16rem;
-        width: 16rem;
+    /* bottom-right corner rectangle */
+    .scroll::-webkit-scrollbar-corner {
+        @apply bg-gray-300;
+        /* @apply dark:bg-gray-900; */
     }
 
-    h1 {
-        color: #ff3e00;
-        text-transform: uppercase;
-        font-size: 4rem;
-        font-weight: 100;
-        line-height: 1.1;
-        margin: 2rem auto;
-        max-width: 14rem;
+    /* Track */
+    .scroll::-webkit-scrollbar-track {
+        background-color: #f0f0f0;
+        /* @apply dark:bg-gray-800; */
     }
 
-    p {
-        max-width: 14rem;
-        margin: 1rem auto;
-        line-height: 1.35;
+    /* Handle */
+    .scroll::-webkit-scrollbar-thumb {
+        background-color: #bbb;
+        /* @apply dark:bg-gray-500; */
+        @apply rounded;
     }
 
-    @media (min-width: 480px) {
-        h1 {
-            max-width: none;
-        }
-
-        p {
-            max-width: none;
-        }
-    } */
+    /* Handle on hover */
+    .scroll::-webkit-scrollbar-thumb:hover {
+        background-color: #666;
+    }
+    pre {
+        font-family:'Roboto Slab', serif;
+        letter-spacing: .125rem;
+    }
 </style>

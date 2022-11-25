@@ -35,7 +35,7 @@ export function isPhone() {
         platform = window.navigator.platform,
         macosPlatforms = ["Macintosh", "MacIntel", "MacPPC", "Mac68K"],
         windowsPlatforms = ["Win32", "Win64", "Windows", "WinCE"],
-        iosPlatforms = ["iPhone"],//, "iPad", "iPod"],
+        iosPlatforms = ["iPhone"], //, "iPad", "iPod"],
         os = null;
 
     if (macosPlatforms.indexOf(platform) !== -1) {
@@ -84,4 +84,119 @@ export function parseQuery(queryString) {
         query[decodeURIComponent(pair[0])] = decodeURIComponent(pair[1] || "");
     }
     return query;
+}
+
+export async function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function getRandomInt(max) {
+    return Math.floor(Math.random() * Math.floor(max));
+}
+
+// https://stackoverflow.com/questions/2450954/how-to-randomize-shuffle-a-javascript-array
+export function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+}
+
+export function preventZoom(e) {
+    var t2 = e.timeStamp;
+    var t1 = e.currentTarget.dataset.lastTouch || t2;
+    var dt = t2 - t1;
+    var fingers = e.touches.length;
+    e.currentTarget.dataset.lastTouch = t2;
+
+    if (!dt || dt > 500 || fingers > 1) return; // not double-tap
+
+    e.preventDefault();
+    e.target.click();
+}
+
+export function HSVToRGB(hi, si, vi) {
+    var fr = 0,
+        fg = 0,
+        fb = 0;
+    var h = hi * 360;
+    var s = si;
+    var v = vi;
+    var i = 0;
+    var f = 0,
+        p = 0,
+        q = 0,
+        t = 0;
+
+    if (s == 0) {
+        // gray
+        fr = fg = fb = v;
+    } else {
+        h /= 60;
+        i = Math.floor(h);
+
+        // fractional part
+        f = h - i;
+        p = v * (1 - s);
+        q = v * (1 - s * f);
+        t = v * (1 - s * (1 - f));
+
+        if (i == 1) {
+            fr = q;
+            fg = v;
+            fb = p;
+        } else if (i == 2) {
+            fr = p;
+            fg = v;
+            fb = t;
+        } else if (i == 3) {
+            fr = p;
+            fg = q;
+            fb = v;
+        } else if (i == 4) {
+            fr = t;
+            fg = p;
+            fb = v;
+        } else if (i == 5) {
+            fr = v;
+            fg = p;
+            fb = q;
+        } else {
+            // i == 0
+            fr = v;
+            fg = t;
+            fb = p;
+        }
+    }
+    return [(fr * 255) | 0, (fg * 255) | 0, (fb * 255) | 0];
+    //    return ColorABGR.new2((fr * 255) | 0, (fg * 255) | 0, (fb * 255) | 0, 255);
+}
+
+// Youtube utils
+
+const youtube = (function () {
+    let video, results;
+
+    const getThumbnail = function (url, size) {
+        if (url == null) {
+            return "";
+        }
+
+        size = size == null ? "big" : size;
+        results = url.match("[\\?&]v=([^&#]*)");
+        video = results == null ? url : results[1];
+
+        if (size == "small") {
+            return `http://img.youtube.com/vi/${video}/2.jpg`;
+        }
+
+        return `http://img.youtube.com/vi/${video}/0.jpg`;
+    };
+
+    return {
+        thumbnail: getThumbnail,
+    };
+})();
+export function GetVideoThumb(id) {
+    return youtube.thumbnail("http://www.youtube.com/watch?v=" + id, "big");
 }

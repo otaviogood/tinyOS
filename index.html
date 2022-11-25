@@ -1,19 +1,22 @@
 <!DOCTYPE html>
-<html lang="en" style="height: 100vh; width: 100%; overflow-x: hidden">
+<!-- Tricky stuff to set rem units to be relative to our screen's scale -->
+<html lang="en" style="background-color:black;color:white;font-size: calc(var(--big-scale) * 0.01);">
     <head>
         <meta charset="UTF-8" />
         <link rel="icon" href="/favicon.ico" />
-        <!-- <meta name="viewport" content="width=device-width, initial-scale=1.0" /> -->
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto+Slab">
         <link rel="manifest" href="/manifest.json">
 
+        <!-- android -->
+        <meta name="mobile-web-app-capable" content="yes">
         <!-- Apple tags  -->
         <!-- https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariHTMLRef/Articles/MetaTags.html#//apple_ref/doc/uid/TP40008193-SW3 -->
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="format-detection" content="telephone=no">
 
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no" />
-        <meta name="description" content="Keep up with friends" />
+        <meta name="viewport" content="width=device-width,height=device-height, initial-scale=1.0, shrink-to-fit=no, user-scalable=no, maximum-scale=1.0, viewport-fit=cover" />
+        <meta name="description" content="OS for kids" />
 
         <title>Tiny OS!</title>
 
@@ -21,7 +24,11 @@
         <!-- <link href="/fonts/fontawesome/css/all.css" rel="stylesheet" /> -->
         <link rel="stylesheet" href="//use.fontawesome.com/releases/v5.15.4/css/all.css">
     </head>
-    <body style="display: flex; flex-direction: column;background-color:black;color:white">
+    <!-- <body style="display: flex; flex-direction: column;background-color:black;color:white"> -->
+    <!-- overflow:hidden on body to disable pull-refresh on ios. https://stackoverflow.com/questions/69261011/disable-pull-to-refresh-in-ios-15-safari -->
+    <body style="touch-action:none; font-family:'Roboto Slab';display:flex;flex-direction:column;overflow:hidden;">
+        <!-- Fonticons -->
+        <script src="https://kit.fontawesome.com/62aa961418.js" crossorigin="anonymous"></script>
         <div id="app"></div>
         <script type="module" src="/src/main.js"></script>
     </body>

@@ -24,6 +24,8 @@
     },
     "dependencies": {
         "firebase": "^9.8.0",
+        "howler": "^2.2.1",
+        "logrocket": "^1.0.14",
         "luxon": "^2.4.0",
         "svelte-spa-router": "^3.2.0",
         "sveltefire": "file:external_packages/sveltefire/package"
