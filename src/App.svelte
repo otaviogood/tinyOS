@@ -6,7 +6,7 @@
     import { routes } from "./router.js";
     import { firebaseConfig } from "./secrets";
     import { initializeApp } from "firebase/app";
-    import { FirebaseApp, Doc, Collection, User, UploadTask, StorageRef } from "sveltefire";
+    // import { FirebaseApp, Doc, Collection, User, UploadTask, StorageRef } from "sveltefire";
     import {
         getFirestore,
         doc,

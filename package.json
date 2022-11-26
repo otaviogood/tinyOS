@@ -23,6 +23,7 @@
         "vite": "^2.9.7"
     },
     "dependencies": {
+        "color": "^4.2.3",
         "firebase": "^9.8.0",
         "howler": "^2.2.1",
         "logrocket": "^1.0.14",

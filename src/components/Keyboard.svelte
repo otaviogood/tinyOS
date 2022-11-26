@@ -64,17 +64,19 @@
 
     function pressed(key) {
         let i = key.detail.key.toLowerCase();
-        if (i === "🔊" || i === "🔇" || i === "🔉" || i === "🔈") {
+        if (i === "audioon" || i === "audiooff") {
             audioOn = !audioOn;
             return;
         }
         let side = key.detail.side;
-        let phoneme = phoneme_defaults[i];
-        if (phoneme) {
-            if (Array.isArray(phoneme)) {
-                phoneme = phoneme[side];
+        if (audioOn) {
+            let phoneme = phoneme_defaults[i];
+            if (phoneme) {
+                if (Array.isArray(phoneme)) {
+                    phoneme = phoneme[side];
+                }
+                snd_phonemes.play(phoneme);
             }
-            snd_phonemes.play(phoneme);
         }
         dispatch('pressed', {
 			key: key.detail.key,
@@ -91,13 +93,19 @@
                 <KeyboardKey {keyLetter} split={Array.isArray(phoneme_defaults?.[keyLetter.toLowerCase()])} on:pressed={pressed} />
             {/each}
             {#if i == 0}
-                <KeyboardKey keyLetter="&larr;" width="14.8rem" on:pressed={pressed} />
+                <KeyboardKey keyLetter="backspace" width="14.8rem" on:pressed={pressed}><i class="fas fa-arrow-left"></i></KeyboardKey>
             {/if}
             {#if i == 1}
-                <KeyboardKey keyLetter={audioOn ? "🔊" : "🔈"} width="10.5rem" on:pressed={pressed} />
+                <KeyboardKey keyLetter={audioOn ? "audioOn" : "audioOff"} width="10.5rem" on:pressed={pressed} >
+                    {#if audioOn}
+                        <i class="fas fa-volume-up"></i>
+                    {:else}
+                        <i class="fas fa-volume-mute"></i>
+                    {/if}
+                </KeyboardKey>
             {/if}
             {#if i == 2}
-                <KeyboardKey keyLetter="▶️" width="13.5rem" active={enterEnabled} on:pressed={pressed} />
+                <KeyboardKey keyLetter="music" width="13.5rem" active={enterEnabled} on:pressed={pressed} ><i class="fas fa-music text-green-500"></i></KeyboardKey>
             {/if}
         </div>
     {/each}

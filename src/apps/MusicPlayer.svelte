@@ -37,10 +37,10 @@
     let touches = {};
 
     let allMedia = {
-        "komm mit": ["SmGUmVPRMCA", "Y2Mate.is - Franzl Lang - Komm mit in die Berge - 1976-SmGUmVPRMCA-96k-1657994281589.mp3"],
+        "thomas": ["GnrwM7vFn_U", "Y2Mate.is - Thomas The Tank Engine Theme Song-GnrwM7vFn_U-128k-1659599526795.mp3"],
+        "Elmo": ["vSYadh2xmcI", "Y2Mate.is - Sesame Street Elmo's Song-vSYadh2xmcI-128k-1659600205610.mp3"],
         hat: ["8_UnANdDqJc", "Y2Mate.is - Franzl Lang Yodeling-8_UnANdDqJc-160k-1657994398559.mp3"],
         "let it go": ["NH15p2dqvJk", "Y2Mate.is - 5. Let it Go - Frozen (OST)-NH15p2dqvJk-160k-1657994331936.mp3"],
-        auto: ["rfoKnb-Tj1M", "Y2Mate.is - Franzl Lang - Auto Jodler-rfoKnb-Tj1M-160k-1657996660769.mp3"],
         "mama yoho": ["tgbNymZ7vqY", "Y2Mate.is - Bohemian Rhapsody  Muppet Music Video  The Muppets-tgbNymZ7vqY-160k-1658035224036.mp3"],
         "dancer": ["65CNtap6bow", "Y2Mate.is - Tiny Dancer (Remastered)-65CNtap6bow-160k-1658043302961.mp3"],
         "dollars": ["DT1NJwEi6nw", "Y2Mate.is - For A Few Dollars More  The Danish National Symphony Orchestra (Live)-DT1NJwEi6nw-160k-1658034815623.mp3"],
@@ -49,6 +49,14 @@
         "good bad": ["enuOArEfqGo", "Y2Mate.is - The Good, the Bad and the Ugly - The Danish National Symphony Orchestra (Live)-enuOArEfqGo-160k-1658034844096.mp3"],
         "muffin man": ["fXFg5QsTcLQ", "Y2Mate.is - The Muffin Man  Kids Songs  Super Simple Songs-fXFg5QsTcLQ-160k-1658042334177.mp3"],
         "yodel metal": ["_xpb0_GXkV8", "Y2Mate.is - YODEL METAL-_xpb0_GXkV8-160k-1657995368274.mp3"],
+        "stand up": ["t9WAGkQUUL0", "Y2Mate.is - Stand Up, Sit Down Children's song by Miss Patty  Popular Nursery rhymes for Kids and Toddlers-t9WAGkQUUL0-128k-1655458342386.mp3"],
+        "fish": ["uCF3vBuxXS8", "Y2Mate.is - The Laurie Berkner Band - The Goldfish (Official Video)-uCF3vBuxXS8-128k-1659599530489.mp3"],
+        auto: ["rfoKnb-Tj1M", "Y2Mate.is - Franzl Lang - Auto Jodler-rfoKnb-Tj1M-160k-1657996660769.mp3"],
+        "despacito": ["kJQP7kiw5Fk", "Y2Mate.is - Luis Fonsi - Despacito ft. Daddy Yankee-kJQP7kiw5Fk-128k-1655369706896.mp3"],
+        "apples": ["r5WLXZspD1M", "Y2Mate.is - Apples & Bananas  Super Simple Songs-r5WLXZspD1M-128k-1655458984556.mp3"],
+        "roses": ["m2AuVIjy5po", "Y2Mate.is - Roses Are Red (Original Version)-m2AuVIjy5po-128k-1655458782075.mp3"],
+        "candyman": ["k-ykJHUIyEw", "Y2Mate.is - Lollipop (Candyman)-k-ykJHUIyEw-128k-1659598978850.mp3"],
+        "komm mit": ["SmGUmVPRMCA", "Y2Mate.is - Franzl Lang - Komm mit in die Berge - 1976-SmGUmVPRMCA-96k-1657994281589.mp3"],
     };
     let typed = "";
     let playing = null;
@@ -102,9 +110,9 @@
 
     function keyPressed(e) {
         let key = e.detail.key;
-        if (key == "←") {
+        if (key == "backspace") {
             typed = typed.slice(0, -1);
-        } else if (key == "▶️") {
+        } else if (key == "music") {
             let media = matchedMedia(typed);
             console.log("media", media, typed);
             if (media) {
@@ -126,64 +134,6 @@
                     playing = null;
                     startTime = null;
                 });
-
-
-// console.log("HOT HERE");
-
-//       // 2. This code loads the IFrame Player API code asynchronously.
-//       var tag = document.createElement('script');
-
-//     //   tag.src = "https://www.youtube.com/iframe_api";
-//     //   var firstScriptTag = document.getElementsByTagName('script')[0];
-//     //   firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-//       // 3. This function creates an <iframe> (and YouTube player)
-//       //    after the API code downloads.
-//       function onYouTubeIframeAPIReady() {
-// console.log("onYouTubeIframeAPIReady");
-//         player = new YT.Player('player', {
-//           height: '390',
-//           width: '640',
-//           videoId: 'M7lc1UVf-VE',
-//           playerVars: {
-//             'playsinline': 1
-//           },
-//           events: {
-//             'onReady': onPlayerReady,
-//             'onStateChange': onPlayerStateChange
-//           }
-//         });
-//       }
-
-//       // 4. The API will call this function when the video player is ready.
-//       function onPlayerReady(event) {
-// console.log("onPlayerReady");
-//         event.target.playVideo();
-//       }
-
-//       // 5. The API calls this function when the player's state changes.
-//       //    The function indicates that when playing a video (state=1),
-//       //    the player should play for six seconds and then stop.
-//       var done = false;
-//       function onPlayerStateChange(event) {
-// console.log("onPlayerStateChange");
-//         if (event.data == YT.PlayerState.PLAYING && !done) {
-//           setTimeout(stopVideo, 6000);
-//           done = true;
-//         }
-//       }
-//       function stopVideo() {
-// console.log("stopVideo");
-//         player.stopVideo();
-//       }
-
-
-
-
-
-
-
-
             }
             return;
         } else {
@@ -195,70 +145,6 @@
             // pop("/video/" + allMedia[typed]);
         }
     }
-
-
-
-
-
-
-
-  // INI VAR
-//   var player;
-//   var isPlaying = false;
-
-//   // BUILD VIDEO
-//   function onYouTubeIframeAPIReady() {
-//     player = new YT.Player('YouTube', {
-//       height: '390',
-//       width: '640',
-//       videoId: '8_UnANdDqJc',
-//       events: {
-//         'onReady': current_duration,
-//       }
-//     });
-//   }
-
-//   // PLAY FUNCTION
-//   function start_player() {
-//     player.playVideo();
-//   }
-
-//   // DURATION TIME HELPER
-//   function current_duration(stop){
-//     if (stop == true) {
-//       var time = player.getDuration();
-//     } else {
-//       var time = player.getDuration() - player.getCurrentTime();
-//     }
-//     var minutes = Math.floor(time / 60);
-//     var seconds = Math.floor(time - minutes * 60);
-//     seconds = seconds.toString();
-//     seconds = seconds.padStart(2, '0');
-//     document.querySelector('.duration').innerHTML = minutes + ':' + seconds;
-//   }
-
-//   // TOGGLE PLAY BUTTON AND PLAY VIDEO AND SHOW TIME
-//   function toggle_player(){
-//     if (isPlaying) {
-//       isPlaying = false;
-//       player.stopVideo();
-//       document.querySelector('.player-button').classList.remove('playing');
-//       current_duration(true);
-//       clearInterval(intervalID);
-//     } else {
-//       isPlaying = true;
-//       player.playVideo();
-//       document.querySelector('.player-button').classList.add('playing');
-//       intervalID = setInterval(current_duration, 1000);
-//     }
-//   }
-
-
-
-
-
-
-
 
     function cleanFilename(filename) {
         let i = playing[1].lastIndexOf("-");

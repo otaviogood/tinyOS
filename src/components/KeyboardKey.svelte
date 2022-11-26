@@ -50,5 +50,5 @@
         <div class="w-1 h-6 top-0 bg-pink-500 absolute"></div>
         <div class="w-1 h-6 bottom-0 bg-pink-500 absolute"></div>
     {/if}
-    {keyLetter}
+    <slot>{keyLetter}</slot>
 </div>

@@ -6,6 +6,8 @@ import Camera from "./apps/Camera.svelte";
 import Photos from "./apps/Photos.svelte";
 import Weather from "./apps/Weather.svelte";
 import MusicPlayer from "./apps/MusicPlayer.svelte";
+import Microphone from "./apps/Microphone.svelte";
+import Paint from "./apps/Paint/Paint.svelte";
 
 // import TinyQuest from "./apps/TinyQuest.svelte";
 // TinyQuest
@@ -49,6 +51,16 @@ export const routes = {
     "/musicplayer/": MusicPlayer,
     "/#/musicplayer": MusicPlayer,
     "/#/musicplayer/": MusicPlayer,
+
+    "/microphone": Microphone,
+    "/microphone/": Microphone,
+    "/#/microphone": Microphone,
+    "/#/microphone/": Microphone,
+
+    "/paint": Paint,
+    "/paint/": Paint,
+    "/#/paint": Paint,
+    "/#/paint/": Paint,
 
     // TinyQuest
     "/tinyquest/mapscreen": MapScreen,

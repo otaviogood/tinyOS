@@ -313,6 +313,7 @@
                     cleanData[dayOfWeekName].tempHigh = Math.max(temp, cleanData[dayOfWeekName].tempHigh);
                     cleanData[dayOfWeekName]["icon" + dn] = icon;
                     cleanData[dayOfWeekName].desc = desc;
+                    cleanData[dayOfWeekName].debug++;
                 } else {
                     if (isDaytime)
                         cleanData[dayOfWeekName] = {
@@ -322,6 +323,7 @@
                             tempLow: temp,
                             "iconDay": icon,
                             desc: desc,
+                            debug: 1,
                         };
                     else
                         cleanData[dayOfWeekName] = {
@@ -331,6 +333,7 @@
                             tempLow: temp,
                             "iconNight": icon,
                             desc: desc,
+                            debug: 1,
                         };
                 }
             }
@@ -339,9 +342,9 @@
     function colorize(temp) {
         let color = "";
         if (temp < 40) {
-            color = "blue";
+            color = "#4060ff";
         } else if (temp < 60) {
-            color = "green";
+            color = "#20c020";
         } else if (temp < 80) {
             color = "yellow";
         } else if (temp < 100) {
@@ -360,7 +363,7 @@
         style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px;tranXXXsform:scale(0.4)"
     >
         <div class="flex-center-all h-full w-full">
-            <div class="flex flex-row w-11/12 h-4/6">
+            <div class="flex flex-row w-full h-4/6">
                 {#if weatherData}
                     {#each Object.values(cleanData) as weather, i}
                         <div
@@ -374,6 +377,7 @@
                             <img src={weather["iconNight"]} alt="icon" width="160rem" class="my-1" />
                             <div class="pt-2 text-6xl my-2" style="color:{colorize(weather.tempLow)}">{weather.tempLow}</div>
                             <div class="mt-2 text-4xl">{weather.dayLong}</div>
+                            <!-- <div class="mt-2">{weather.debug}</div> -->
                         </div>
                     {/each}
                 {/if}
