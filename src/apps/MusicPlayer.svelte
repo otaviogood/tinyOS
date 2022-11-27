@@ -15,10 +15,10 @@
     import SVGArcDeg from "../components/SVGArcDeg.svelte";
     // import IconsMisc from "./IconsMisc.svelte";
 
-    var snd_good = new Howl({ src: ["/sfx/sfx_coin_double1.wav"], volume: 0.25 });
-    var snd_fanfare = new Howl({ src: ["/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
-    var snd_error = new Howl({ src: ["/sfx/sfx_sounds_error10.wav"], volume: 0.25 });
-    var snd_button = new Howl({ src: ["/sfx/sfx_coin_double7.wav"], volume: 0.25 });
+    var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
+    var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
+    var snd_error = new Howl({ src: ["/TinyQuest/sfx/sfx_sounds_error10.wav"], volume: 0.25 });
+    var snd_button = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double7.wav"], volume: 0.25 });
     var snd_current = null;
 
     let animator = new Animator(60, tick);
@@ -65,6 +65,7 @@
     let duration = 0;
     let percentComplete = 0;
     let startTime = null;
+    let sinTime = 0.0;
 
     onMount(() => {
         return () => {
@@ -73,6 +74,7 @@
     });
 
     function tick() {
+        sinTime = Math.sin(Date.now() / 1000.0 * 3.14159 * 2) * 0.5 + 0.5;
         if (startTime) {
             let now = Date.now();
             let elapsed = (now - startTime) / 1000;
@@ -101,7 +103,7 @@
 
     function matchedMedia(typed) {
         let media = Object.keys(allMedia).find((m) => m.toLowerCase() == typed.toLowerCase());
-        console.log("matched", media);
+        // console.log("matched", media);
         if (media) {
             return allMedia[media];
         }
@@ -139,10 +141,11 @@
         } else {
             typed += key;
         }
-        console.log("typed", typed);
-        if (typed.toLowerCase() == "komm mit") {
+        let media = matchedMedia(typed);
+        // console.log("typed", typed);
+        if (media) {
+            console.log("matched", media);
             snd_good.play();
-            // pop("/video/" + allMedia[typed]);
         }
     }
 
@@ -214,7 +217,7 @@
                                 </div>
                             {/each}
                         </div>
-                        <pre class="border border-pink-500 bg-pink-900 text-white text-7xl p-2 my-2 rounded-2xl">{typed}&nbsp;</pre>
+                        <pre class="border border-pink-500 bg-pink-900 text-white text-7xl p-2 my-2 rounded-2xl">{typed}{sinTime > 0.5 ? '_' : ''}&nbsp;</pre>
                         <Keyboard on:pressed={keyPressed} enterEnabled={matchedMedia(typed)?.length > 0} />
                     </div>
                     <div class="cursor-pointer select-none absolute right-4" style="bottom:31rem; padding:0 0.75rem;border-radius:0.75rem;backXXXground-color:#486870" on:pointerup|preventDefault|stopPropagation={resetToSplashScreen} on:touchstart={preventZoom}>

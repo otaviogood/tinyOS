@@ -43,12 +43,12 @@
 
 <div bind:this={myElement}
     class="m-1 bg-pink-200 text-pink-700 flex-center-all text-6xl font-bold rounded-xl relative active:scale-110 transform transition-all duration-75"
-    style="width:{width};height:{height};margin-left:{marginLeft};opacity:{active?1:0.5}"
+    style="width:{width};height:{height};margin-left:{marginLeft};opacity:{active?1:0.4}"
     on:pointerdown|preventDefault|stopPropagation={onPointerUp}
 >
     {#if split}
-        <div class="w-1 h-6 top-0 bg-pink-500 absolute"></div>
-        <div class="w-1 h-6 bottom-0 bg-pink-500 absolute"></div>
+        <div class="w-1 h-4 top-0 bg-pink-400 absolute"></div>
+        <div class="w-1 h-4 bottom-0 bg-pink-400 absolute"></div>
     {/if}
     <slot>{keyLetter}</slot>
 </div>
