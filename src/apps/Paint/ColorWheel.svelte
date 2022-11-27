@@ -37,6 +37,15 @@
         draw();
     });
 
+    $: if (size) {
+        if (canvas) {
+            console.log("size changed");
+            let ctx = canvas.getContext("2d");
+            bmp = new BitmapABGR(canvas.width, canvas.height, ctx);
+            draw();
+        }
+    }
+
     $: if (colorStr) {
         if (thumb && bmp) {
             hslTemp = ColorABGR.RGBToHSV(ColorABGR.fromRGBInt(Color(colorStr).rgbNumber()));
@@ -55,6 +64,7 @@
         const magic = bmp.width * 0.25;
         const margin = 1 / 64.0;
         for (let y = 0, count1 = bmp.height; y < count1; y = (y + 1) | 0) {
+            let pixIndex = (Math.imul(y, bmp.width)) | 0;
             for (let x = 0, count = bmp.width; x < count; x = (x + 1) | 0) {
                 let pix = 0;
                 let alphaX = x / bmp.width;
@@ -96,9 +106,12 @@
                     pix = ColorABGR.HSVToRGB(selectedHue, sat, lum);
                 }
 
-                bmp.SetPixelAlpha(x, y, pix);
+                // bmp.SetPixelAlpha(x, y, pix);
+                // this.dirty = true;
+                bmp.data2[pixIndex++] = pix;
             }
         }
+        bmp.dirty = true;
 
         // Selection circle
         let xp = selectedSat * boxExt * 2 - boxExt;

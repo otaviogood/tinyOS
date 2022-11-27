@@ -209,15 +209,16 @@
 <!-- on:pointerdown|preventDefault|stopPropagation={() => console.log("colorWheelVisible = false")} -->
 <div id="whiteboardrootdiv" class="fit-full-space" style="background-color:#404040;margin:0px;overflow-y:auto;overflow-x:hidden" >
     {#if colorWheelVisible}
-        <div style="position:absolute;left:{pickerX - 128 - 56 + 24}px;top:{Math.max(pickerY - 128 + 24, 0)}px; display:inline-block;z-index:2;"
-            on:mouseleave|preventDefault|stopPropagation={() => colorWheelVisible = false}>
+        <!-- <div style="position:absolute;left:{pickerX - 128 - 56 + 24}px;top:{Math.max(pickerY - 128 + 24, 0)}px; display:inline-block;z-index:2;" -->
+        <div style="position:absolute;left:25rem;top:17rem; display:inline-block;z-index:2;"
+            on:mouseleave|preventDefault|stopPropagation={() => colorWheelVisible = true}>
             <BrushPicker bind:colorStr={selectedColor} bind:brushSize on:close={() => colorWheelVisible = false} on:eyeDropper={() => {pointerMode = 1; colorWheelVisible = false;}}></BrushPicker>
         </div>
     {/if}
 
     <div style="text-align:center">
         <div
-            style="display:inline-block;text-align:left;position: relative;background-color:#606060;padding:.5rem {border}px 8px {border}px;border-radius:{border}px {border}px
+            style="display:inline-block;text-align:left;position: relative;padding:.5rem {border}px 8px {border}px;border-radius:{border}px {border}px
         0 0;width:max-content">
             <span class="colorcircle" on:click={() => selectColor('#000000')} style="background-color:#000000;" />
             <span class="colorcircle" on:click={() => selectColor('#ff4040')} style="background-color:#ff4040;" />
@@ -250,7 +251,7 @@
 
 
         </div>
-        <div class="absolute top-0 right-0 cursor-pointer select-none rounded-full text-gray-500 text-8xl" on:pointerup={pop}>
+        <div class="absolute top-1 right-1 cursor-pointer select-none rounded-full text-gray-500" style="font-size:5rem;line-height:1" on:pointerup={pop}>
             <i class="fas fa-times-circle" />
         </div>
     </div>
@@ -276,7 +277,7 @@
         width: 4.2rem;
         height: 4.2rem;
         border-radius: 3rem;
-        border: .2rem solid white;
+        /* border: .2rem solid white; */
         margin: 0rem 1rem 0rem 1rem;
         padding: 0;
         vertical-align: middle;
