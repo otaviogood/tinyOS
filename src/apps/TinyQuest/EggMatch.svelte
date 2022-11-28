@@ -19,6 +19,9 @@
     var snd_error = new Howl({ src: ["/TinyQuest/sfx/sfx_sounds_error10.wav"], volume: 0.25 });
     var snd_shake = new Howl({ src: ["/TinyQuest/sfx/sfx_sounds_pause6_out.wav"], volume: 0.3 });
     var snd_break = new Howl({ src: ["/TinyQuest/sfx/sfx_exp_various3.wav"], volume: 0.25 });
+    /*!speech
+        ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
+    */
 
     const maxStars = 6; // 6*4 = 24, 26 letters in alphabet, so don't overflow.
     let letters;

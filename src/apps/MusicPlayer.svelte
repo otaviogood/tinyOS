@@ -58,6 +58,30 @@
         "candyman": ["k-ykJHUIyEw", "Y2Mate.is - Lollipop (Candyman)-k-ykJHUIyEw-128k-1659598978850.mp3"],
         "komm mit": ["SmGUmVPRMCA", "Y2Mate.is - Franzl Lang - Komm mit in die Berge - 1976-SmGUmVPRMCA-96k-1657994281589.mp3"],
     };
+    /*!speech
+[
+        "thomas",
+        "Elmo",
+        "hat",
+        "let it go",
+        "mama yoho",
+        "dancer",
+        "dollars",
+        "manatee",
+        "pig",
+        "good bad",
+        "muffin man",
+        "yodel metal",
+        "stand up",
+        "fish",
+        "auto",
+        "despacito",
+        "apples",
+        "roses",
+        "candyman",
+        "komm mit",
+]
+    */
     let typed = "";
     let playing = null;
     let playbackElement = null;
