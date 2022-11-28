@@ -124,15 +124,6 @@
         for (let i = 0; i < maxNumbers; i++) makeNewNumber();
     }
 
-    var utter;
-    var synth = window.speechSynthesis;
-    function speak(text, verbose = true) {
-        synth.cancel();
-        utter = new SpeechSynthesisUtterance(text.toLowerCase());
-        synth.speak(utter);
-        if (verbose) console.log("🔊 " + text);
-    }
-
     // let imageCache=[];
     onMount(() => {
         town = $allTowns[$currentTownIndex];
@@ -174,7 +165,6 @@
                 currentSound = null;
             }
             currentSound = snd_countdown.play("cd" + l.number.toString());
-            // speak(l.number.toString());
             clearedNumbers[clickSequence - 1] = true;
             currentNumbers[clickSequence - 1].doneAnim = currentNumbers[clickSequence - 1].animInc;
             snd_good.play();

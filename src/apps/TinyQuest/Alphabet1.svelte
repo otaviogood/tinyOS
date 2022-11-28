@@ -12,6 +12,7 @@
     import { spin } from "./Transitions";
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";
     import { sleep, getRandomInt, preventZoom } from "./util";
+    import { speechPlay } from "../../utils";
 
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
@@ -33,7 +34,36 @@
     let gameType;
 
     /*!speech
-        ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
+        ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+    "That is letter ", "is for ",
+        "Airplane",
+        "Bus",
+        "Car",
+        "Dump Truck",
+        "Earth",
+        "Fire Truck",
+        "Grapes",
+        "Helicopter",
+        "Ice Cream",
+        "Juice",
+        "Kite",
+        "Leaf",
+        "Monster Truck",
+        "Nuts",
+        "Orange",
+        "Police Car",
+        "Queen",
+        "Rocket",
+        "Snake",
+        "Turtle",
+        "Umbrella",
+        "Volcano",
+        "Watermelon",
+        "Xylophone",
+        "Yogurt",
+        "Zebra",
+
+]
     */
 
 
@@ -70,21 +100,6 @@
         return iconMap.find((a) => a[0] === l);
     }
 
-    // Debugging function that speaks text through audio out. Also logs it.
-    let speaking = false;
-    function speak(text, verbose = true) {
-        speaking = true;
-        speechSynthesis.cancel();
-        let utter = new SpeechSynthesisUtterance(text.toLowerCase());
-        //utter.rate = 2.0;
-        speechSynthesis.speak(utter);
-        if (verbose) console.log("🔊 " + text);
-        utter.onend = function (event) {
-            speaking = false;
-            // console.log("Utterance has finished being spoken after " + event.elapsedTime + " milliseconds.");
-        };
-    }
-
     function removeLetter(l) {
         letters = letters.replace(l, "");
     }
@@ -101,7 +116,7 @@
         correct = getRandomInt(4);
         console.log(letters);
         onLetters = [true, true, true, true];
-        speak(currentLetters[correct]);
+        speechPlay(currentLetters[correct]);
         gonnaTalk = true;
     }
 
@@ -109,7 +124,6 @@
         town = $allTowns[$currentTownIndex];
         gameType = town?.options?.game;
         return () => {
-            speechSynthesis.cancel();
         };
     });
 
@@ -117,7 +131,6 @@
         if (!onLetters[index]) return;
         if (!canIClick) return;
         canIClick = false;
-        speechSynthesis.cancel();
         gonnaTalk = false;
         if (index === correct) {
             onLetters = [false, false, false, false];
@@ -127,7 +140,7 @@
             }, 1700);
             snd_good.play();
             starCount++;
-            speak(l + ". is for " + getIcon(l)[2]);
+            speechPlay(l, "is for ", getIcon(l)[2]);
             if (starCount >= maxStars) {
                 // Finished game. Yay!
                 await sleep(2000);
@@ -146,7 +159,7 @@
             if (!speaking) {
                 speaking = true;
                 await sleep(180);
-                speak("That is letter " + currentLetters[index]);
+                speechPlay("That is letter ", currentLetters[index]);
             }
         }
     }
@@ -166,7 +179,6 @@
 
     function resetToSplashScreen() {
         started = false;
-        speechSynthesis.cancel();
         gonnaTalk = false;
         canIClick = true;
         pop();
@@ -225,7 +237,7 @@
                     <div
                         in:fade
                         out:fade={{ duration: 450 }}
-                        on:pointerup|preventDefault|stopPropagation={() => speak(currentLetters[correct])}
+                        on:pointerup|preventDefault|stopPropagation={() => speechPlay(currentLetters[correct])}
                         class="absolute flex-center-all active:scale-125 transform transition-all duration-75 rounded-full cursor-pointer select-none"
                         style="left:38.5rem;top:31.5rem;width:12rem;height:12rem;background-color:#dd4444;"
                     >

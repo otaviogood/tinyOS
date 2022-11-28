@@ -13,6 +13,7 @@
     import { spin } from "./Transitions";
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";
     import { sleep, getRandomInt, preventZoom } from "./util";
+    import { speechPlay } from "../../utils";
 
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
@@ -33,13 +34,6 @@
     let finalGraphic = false;
     let town;
     let gameType;
-
-    function speak(text, verbose = true) {
-        speechSynthesis.cancel();
-        let utter = new SpeechSynthesisUtterance(text.toLowerCase());
-        speechSynthesis.speak(utter);
-        if (verbose) console.log("🔊 " + text);
-    }
 
     function removeLetter(l) {
         letters = letters.replace(l, "");
@@ -171,7 +165,7 @@
         mouseDownY = xy[1];
         mouseX = xy[0];
         mouseY = xy[1];
-        speak(currentLetters[i].letter);
+        speechPlay(currentLetters[i].letter);
     }
 
     let inside = -1;

@@ -12,6 +12,7 @@
     import { spin } from "./Transitions";
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";
     import { sleep, getRandomInt, preventZoom } from "./util";
+    import { speechPlay } from "../../utils";
 
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
@@ -136,21 +137,6 @@
         return iconMap.find((a) => a[0] === l);
     }
 
-    // Debugging function that speaks text through audio out. Also logs it.
-    let speaking = false;
-    function speak(text, verbose = true) {
-        speaking = true;
-        speechSynthesis.cancel();
-        let utter = new SpeechSynthesisUtterance(text.toLowerCase());
-        //utter.rate = 2.0;
-        speechSynthesis.speak(utter);
-        if (verbose) console.log("🔊 " + text);
-        utter.onend = function (event) {
-            speaking = false;
-            // console.log("Utterance has finished being spoken after " + event.elapsedTime + " milliseconds.");
-        };
-    }
-
     function getNonDupLetter() {
         let result = letters[getRandomInt(letters.length)];
         if (!currentLetters) return result;
@@ -204,7 +190,6 @@
         town = $allTowns[$currentTownIndex];
         gameType = town?.options?.game;
         return () => {
-            speechSynthesis.cancel();
         };
     });
 
@@ -212,7 +197,6 @@
         if (!onLetters[index]) return;
         if (!canIClick) return;
         canIClick = false;
-        speechSynthesis.cancel();
         gonnaTalk = false;
         if (index === correct) {
             onLetters = [false, false, false, false];
@@ -222,7 +206,7 @@
             }, 1700);
             snd_good.play();
             starCount++;
-            speak(l + ". is for " + getIcon(l)[2]);
+            speechPlay(l, "is for ", getIcon(l)[2]);
             if (starCount >= maxStars) {
                 // Finished game. Yay!
                 await sleep(2000);
@@ -238,11 +222,7 @@
         } else {
             canIClick = true;
             snd_error.play();
-            if (!speaking) {
-                speaking = true;
-                await sleep(180);
-                speak("That is letter " + currentLetters[index]);
-            }
+            speechPlay("That is letter ", currentLetters[index]);
         }
     }
 
@@ -276,7 +256,6 @@
 
     function resetToSplashScreen() {
         started = false;
-        speechSynthesis.cancel();
         gonnaTalk = false;
         canIClick = true;
         pop();

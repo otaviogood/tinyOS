@@ -407,20 +407,10 @@
         if (ph && ph !== "silent") snd_phonemes.play(ph);
     }
 
-    var utter;
-    var synth = window.speechSynthesis;
-    function speak(text, verbose = true) {
-        synth.cancel();
-        utter = new SpeechSynthesisUtterance(text.toLowerCase());
-        synth.speak(utter);
-        if (verbose) console.log("🔊 " + text);
-    }
-
     onMount(() => {
         town = $allTowns[$currentTownIndex];
         gameType = town?.options?.game;
         return () => {
-            speechSynthesis.cancel();
             animator.stop();
         };
     });
@@ -437,7 +427,6 @@
 
     function resetToSplashScreen() {
         started = false;
-        speechSynthesis.cancel();
         pop();
     }
 

@@ -14,6 +14,7 @@
     import VideoCard from "../components/VideoCard.svelte";
     import SVGArcDeg from "../components/SVGArcDeg.svelte";
     // import IconsMisc from "./IconsMisc.svelte";
+    import { speechPlay } from "../utils";
 
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
@@ -142,6 +143,7 @@
             let media = matchedMedia(typed);
             console.log("media", media, typed);
             if (media) {
+                speechPlay(Object.keys(allMedia).find((m) => m.toLowerCase() == typed.toLowerCase()))
                 typed = "";
                 playing = media;
                 // getYoutubeAudio(media, playbackElement);
@@ -236,7 +238,7 @@
                         <div class="flex flex-row flex-wrap w-full overflow-hidden overflow-y-scroll scroll" style="height:30rem;touch-action:auto;scroll-behavior:auto;" on:touchmove={(e) => {window.letMeScroll = true; e.currentTarget.dataset.lastTouch = 0;
                         }}>
                             {#each Object.entries(allMedia) as media, i}
-                                <div class="w-1/3 bXXXorder border-white">
+                                <div class="w-1/3 border-white active:scale-110 transform transition-all duration-75" on:pointerup={() => {speechPlay(media[0])}}>
                                     <VideoCard label={media[0]} id={media[1][0]} highlight={media[0].toLowerCase() === typed.toLowerCase()} {typed} />
                                 </div>
                             {/each}

@@ -13,6 +13,7 @@
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";
     import { sleep, getRandomInt, preventZoom } from "./util";
     import { pulseShadow, scaleDown, scalePulse } from "./Transitions";
+    import { speechPlay } from "../../utils";
 
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
@@ -79,15 +80,6 @@
         }
     }
 
-    var utter;
-    var synth = window.speechSynthesis;
-    function speak(text, verbose = true) {
-        synth.cancel();
-        utter = new SpeechSynthesisUtterance(text.toLowerCase());
-        synth.speak(utter);
-        if (verbose) console.log("🔊 " + text);
-    }
-
     onMount(() => {
         town = $allTowns[$currentTownIndex];
         gameType = town?.options?.game;
@@ -116,7 +108,7 @@
 
     async function clickedNumber(index, l) {
         if (clickSequence === l.number - 1) {
-            speak(l.number.toString());
+            speechPlay(l.number.toString());
             clearedNumbers[clickSequence] = true;
             currentNumbers[clickSequence].doneAnim = 0.01;
             clickSequence++;

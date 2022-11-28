@@ -1,3 +1,5 @@
+import { Howl, Howler } from "howler";
+
 // Special case for ipad pro acting like MacOS: https://stackoverflow.com/questions/57776001/how-to-detect-ipad-pro-as-ipad-using-javascript
 function isIpadOS() {
     return navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /MacIntel/.test(navigator.platform);
@@ -199,4 +201,29 @@ const youtube = (function () {
 })();
 export function GetVideoThumb(id) {
     return youtube.thumbnail("http://www.youtube.com/watch?v=" + id, "big");
+}
+
+    // Debugging function that speaks text through audio out. Also logs it.
+    let speaking = false;
+    export function speakDebug(text, verbose = true) {
+        speaking = true;
+        speechSynthesis.cancel();
+        let utter = new SpeechSynthesisUtterance(text.toLowerCase());
+        //utter.rate = 2.0;
+        speechSynthesis.speak(utter);
+        if (verbose) console.log("🔊 " + text);
+        utter.onend = function (event) {
+            speaking = false;
+            // console.log("Utterance has finished being spoken after " + event.elapsedTime + " milliseconds.");
+        };
+    }
+
+
+
+export function speechPlay(words) {
+    var sound = new Howl({
+        src: ["speech/" + words.replace(/[^a-zA-Z0-9]/g, "_") + '.mp3']
+    });
+    if (!sound) console.error("Sound not found: " + words);
+    sound.play();
 }
