@@ -219,11 +219,16 @@ export function GetVideoThumb(id) {
     }
 
 
-
-export function speechPlay(words) {
-    var sound = new Howl({
-        src: ["speech/" + words.replace(/[^a-zA-Z0-9]/g, "_") + '.mp3']
-    });
-    if (!sound) console.error("Sound not found: " + words);
-    sound.play();
+// play speech from pre-rendered mp3s.
+// Pass in a list of string args.
+export function speechPlay() {
+    for (var i = 0; i < arguments.length; i++) {
+        // console.log(arguments[i]);
+        let words = arguments[i];
+        var sound = new Howl({
+            src: ["speech/" + words.replace(/[^a-zA-Z0-9]/g, "_") + '.mp3']
+        });
+        if (!sound) console.error("Sound not found: " + words);
+        sound.play();
+    }
 }

@@ -156,11 +156,8 @@
         } else {
             canIClick = true;
             snd_error.play();
-            if (!speaking) {
-                speaking = true;
-                await sleep(180);
-                speechPlay("That is letter ", currentLetters[index]);
-            }
+            await sleep(180);
+            speechPlay("That is letter ", currentLetters[index]);
         }
     }
 
