@@ -36,7 +36,7 @@
         $allTowns.push(new Town(0.16, 0.52, "HARBOR", "/TinyQuest/harbor"));
         $allTowns.push(new Town(0.29, 0.75, "MORSE CODE", "/TinyQuest/morsecode"));
         $allTowns.push(new Town(0.66, 0.84, "ROCKET LAUNCH", "/TinyQuest/rocketlaunch"));
-        // $allTowns.push(new Town(0.95, 0.89, "TONES", "/TinyQuest/listensounds"));
+        $allTowns.push(new Town(0.7, 0.6, "TONES", "/TinyQuest/listensounds"));
         $allTowns.push(new Town(0.85, 0.72, "READING", "/TinyQuest/reading1"));
         $allTowns.push(new Town(0.94, 0.88, "BUS STOP", "/TinyQuest/busstop"));
         $allTowns.push(new Town(0.14, 0.80, "MERMADD", "/TinyQuest/mathgrid", { game: "addition" }));
