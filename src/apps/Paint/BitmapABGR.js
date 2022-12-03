@@ -1,4 +1,15 @@
 import { ColorABGR } from "./ColorABGR";
+import { BoxI2 } from "./BoxI2";
+
+function saturate(a) { return Math.max(0.0, Math.min(1.0, a)) }
+function saturate255(a) { return Math.max(0, Math.min(255, a)) }
+// alpha is [0..255]
+function lerpI(a, b, alpha) { return a + (((b - a) * alpha) >> 8) }
+function lerp(a, b, alpha) { return a + ((b - a) * alpha) }
+function mixP(f0, f1, a) { return lerp(f0, f1, a*a*(3.0-2.0*a)) }
+function lerp2(a, b, alpha) {
+    return a + (b - a) * alpha;
+  };
 
 export class BitmapABGR {
     assert(truth) {
@@ -85,6 +96,7 @@ export class BitmapABGR {
     }
 
     DrawSmear(xp0, yp0, xp1, yp1, radius, col, lastCol, brushHardness) {
+        // console.log("smear", xp0, yp0, xp1, yp1);
         var resultBox = new BoxI2();
         var xd = xp1 - xp0;
         var yd = yp1 - yp0;
@@ -95,11 +107,11 @@ export class BitmapABGR {
 
         for (var i = 0, count = Math.round(len) | 0; i < count; i = (i + 1) | 0) {
             var alpha = i / len;
-            var x = MathG.lerp2(xp0, xp1, alpha);
-            var y = MathG.lerp2(yp0, yp1, alpha);
+            var x = lerp2(xp0, xp1, alpha);
+            var y = lerp2(yp0, yp1, alpha);
 
             // fade pen pressure along the stroke
-            var c = ColorABGR.withAlpha(col, MathG.lerp(lastCol >>> 24, col >>> 24, Math.min(255, (alpha * 255) | 0)));
+            var c = ColorABGR.withAlpha(col, lerpI(lastCol >>> 24, col >>> 24, Math.min(255, (alpha * 255) | 0)));
             var box = this.DrawBlobAlpha(x, y, radius, c, brushHardness, skip);
             resultBox.Union(box);
         }
@@ -146,7 +158,7 @@ export class BitmapABGR {
             }
         }
 
-        return new BoxI2.new2(xmin, ymin, (xmax - xmin) | 0, (ymax - ymin) | 0);
+        return BoxI2.new2(xmin, ymin, (xmax - xmin) | 0, (ymax - ymin) | 0);
     }
 
     DrawCircle(xp, yp, radius, col) {
@@ -172,11 +184,11 @@ export class BitmapABGR {
     }
 
     OverlayBox(source, dirtyBox) {
-        assert(source.width == this.width);
-        assert(source.height == this.height);
+        this.assert(source.width == this.width);
+        this.assert(source.height == this.height);
         this.dirty = true;
-        var clip = new BoxI2.new2(0, 0, (source.width - 1) | 0, (source.height - 1) | 0);
-        clip.Intersection(dirtyBox);
+        var clip = BoxI2.new2(0, 0, (source.width - 1) | 0, (source.height - 1) | 0);
+        if (dirtyBox) clip.Intersection(dirtyBox);
 
         for (var y = clip.min.y, count1 = (clip.max.y + 1) | 0; y < count1; y = (y + 1) | 0) {
             var index = this.GetPixelIndex(clip.min.x, y);
@@ -200,13 +212,13 @@ export class BitmapABGR {
     }
 
     CopyAndOverlay2(source0, source1, dirtyBox) {
-        assert(source0.width == this.width);
-        assert(source0.height == this.height);
-        assert(source1.width == this.width);
-        assert(source1.height == this.height);
+        this.assert(source0.width == this.width);
+        this.assert(source0.height == this.height);
+        this.assert(source1.width == this.width);
+        this.assert(source1.height == this.height);
         this.dirty = true;
-        var clip = new BoxI2.new2(0, 0, (this.width - 1) | 0, (this.height - 1) | 0);
-        clip.Intersection(dirtyBox);
+        var clip = BoxI2.new2(0, 0, (this.width - 1) | 0, (this.height - 1) | 0);
+        if (dirtyBox) clip.Intersection(dirtyBox);
 
         for (var y = clip.min.y, count1 = (clip.max.y + 1) | 0; y < count1; y = (y + 1) | 0) {
             for (var x = clip.min.x, count = (clip.max.x + 1) | 0; x < count; x = (x + 1) | 0) {
@@ -232,8 +244,8 @@ export class BitmapABGR {
     }
 
     CopyBitsFrom(source) {
-        assert(source.width == this.width);
-        assert(source.height == this.height);
+        this.assert(source.width == this.width);
+        this.assert(source.height == this.height);
         this.dirty = true;
         this.data2.set(source.data2);
     }

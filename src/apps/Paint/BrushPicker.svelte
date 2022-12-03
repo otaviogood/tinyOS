@@ -39,7 +39,7 @@
         let xy = getPointerPos(e);
         let y = 1-xy[1];
         brushSize = y*100;
-        console.log(y);
+        brushSize = Math.max(brushSize, 1);
         dispatch("brushSize", brushSize);
     }
 </script>
@@ -52,7 +52,7 @@
         <div class="size-icons pointer-events-none" style="top:{9.3*scale}rem;left:{0.6*scale}rem; width:{1.9*scale}rem;height:{1.9*scale}rem;"></div>
         <div class="size-icons pointer-events-none" style="top:{11.8*scale}rem;left:{0.9*scale}rem; width:{1.2*scale}rem;height:{1.2*scale}rem;"></div>
         <!-- <div style="pointer-events:none;position:absolute;top:{16.9*scale}rem;left:0; width:{3*scale}rem;height:{.2*scale}rem;background-color:#707070;display:inline-block;"></div> -->
-        <div style="pointer-events:none;position:absolute;bottom:calc({brushSize*.2*scale}rem + {-.1*scale}rem);left:0; width:{3*scale}rem;height:{.2*scale}rem;background-color:#ffffff;display:inline-block;border-radius:30%"></div>
+        <div style="pointer-events:none;position:absolute;bottom:calc({brushSize*.2*scale}rem + {-.1*scale}rem);left:0; width:{3*scale}rem;height:{.2*scale}rem;background-color:#ffffff;display:inline-block;border-radius:10%"></div>
         <!-- <input type="range" min="1" max="32" bind:value={brushSize} class="vol-slider" style="width:{18*scale}rem;margin:0"/> -->
     </div>
     <!-- Brush size visualizer -->

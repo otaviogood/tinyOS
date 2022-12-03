@@ -59,6 +59,29 @@ ColorABGR.fromRGBInt = function (rgb) {
     return ((rgb & 0xff) << 16) | (rgb & 0xff00) | ((rgb & 0xff0000) >> 16);
 };
 
+ColorABGR.fromHashTagColor = function(c) {
+    let num = 0;
+    if (c.startsWith("rgb(")) {
+
+        let split = c.replace("rgb(","").replace(")","").split(",")
+        let r = parseInt(split[0]) | 0;
+        let g = parseInt(split[1]) | 0;
+        let b = parseInt(split[2]) | 0;
+        num = (r<<0)|(g<<8)|(b<<16);
+    } else {
+        const lookup = {"0":0, "1":1,"2":2,"3":3,"4":4,"5":5,"6":6,"7":7,"8":8,"9":9,
+        "a":10,"b":11,"c":12,"d":13,"e":14,"f":15,
+        "A":10,"B":11,"C":12,"D":13,"E":14,"F":15}
+        num += lookup[c.substring(1,2)] << 4;
+        num += lookup[c.substring(2,3)] << 0;
+        num += lookup[c.substring(3,4)] << 12;
+        num += lookup[c.substring(4,5)] << 8;
+        num += lookup[c.substring(5,6)] << 20;
+        num += lookup[c.substring(6,7)] << 16;
+    }
+    return num;
+}
+
 ColorABGR.clamp = function (r, g, b) {
     r = Math.min(255, Math.max(0, r));
     g = Math.min(255, Math.max(0, g));

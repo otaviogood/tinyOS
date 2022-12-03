@@ -36,7 +36,7 @@
     handleResize();
 </script>
 
-<div class="fit-full-space select-none overflow-hidden" style="backgXXXround-color:black" on:touchstart={preventZoom}>
+<div class="fit-full-space select-none overflow-hidden" on:touchstart={preventZoom}>
     <div class="wrapper">
         {#each icons as icon, i}
             <div class="flex-center-all flex-col text-white select-none bXXorder border-red-500">

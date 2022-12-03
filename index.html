@@ -20,15 +20,13 @@
 
         <title>Tiny OS!</title>
 
-        <!-- https://fontawesome.com/v5.15/how-to-use/on-the-web/setup/hosting-font-awesome-yourself -->
-        <!-- <link href="/fonts/fontawesome/css/all.css" rel="stylesheet" /> -->
-        <link rel="stylesheet" href="//use.fontawesome.com/releases/v5.15.4/css/all.css">
+        <!-- Store fontawesome locally -->
+        <link href="/fontawesome/css/fontawesome.min.css" rel="stylesheet">
+        <link href="/fontawesome/css/solid.min.css" rel="stylesheet">
     </head>
     <!-- <body style="display: flex; flex-direction: column;background-color:black;color:white"> -->
     <!-- overflow:hidden on body to disable pull-refresh on ios. https://stackoverflow.com/questions/69261011/disable-pull-to-refresh-in-ios-15-safari -->
     <body style="touch-action:none; font-family:'Roboto Slab';display:flex;flex-direction:column;overflow:hidden;">
-        <!-- Fonticons -->
-        <script src="https://kit.fontawesome.com/62aa961418.js" crossorigin="anonymous"></script>
         <div id="app"></div>
         <script type="module" src="/src/main.js"></script>
     </body>
