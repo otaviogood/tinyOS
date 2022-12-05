@@ -79,7 +79,7 @@
             if (currentPlayIndex !== divTime) {
                 let note = currentSong[divTime];
                 // console.log("note", note);
-                beep(1000, freq((freq_c4 + 7 * note) | 0), 0.75);
+                beep(1000, freq((freq_c5 + 7 * note) | 0), 0.75);
                 if (note === 0) played0++;
                 else played1++;
             }
@@ -95,7 +95,7 @@
 
     // https://pages.mtu.edu/~suits/NoteFreqCalcs.html
     let twelthRoot2 = 1.059463094359;
-    let freq_c4 = -9;
+    let freq_c5 = -9 + 12;
     function freq(halfStepsFromA4) {
         return 440 * Math.pow(twelthRoot2, halfStepsFromA4);
     }
@@ -173,7 +173,8 @@
 
     function buttonA() {
         if (playState !== 1) return;
-        beep(1000, freq(freq_c4), 0.5);
+        played0++;
+        beep(1000, freq(freq_c5), 0.5);
         let note = 0;
         if (currentSong[currentPlayIndex] === note) gotNote();
         else failed();
@@ -181,7 +182,8 @@
 
     function buttonB() {
         if (playState !== 1) return;
-        beep(1000, freq(freq_c4 + 7), 0.5);
+        played1++;
+        beep(1000, freq(freq_c5 + 7), 0.5);
         let note = 1;
         if (currentSong[currentPlayIndex] === note) gotNote();
         else failed();
@@ -250,11 +252,20 @@
                             class="absolute rounded-full {currentSong[currentPlayIndex] === 0 && playState === 0
                                 ? 'orbshow'
                                 : 'orb'} flex-center-all font-bold"
-                            style="width:20rem;height:20rem;left:16rem;top:30rem;"
+                            style="width:16rem;height:16rem;left:16rem;top:30rem;"
                             on:pointerdown|preventDefault|stopPropagation={buttonA}
                         >
-                            <div style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">1</div>
+                            <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">
+                                <i class="fas fa-music text-9xl text-pink-400" />
+                            </div>
                         </div>
+
+                        <!-- <div
+                            class="absolute rounXXded-full border border-pink-500 hex2"
+                            style="width:16rem;height:16rem;left:15rem;top:30rem;"
+                        >
+                            <i class="absolute top-24 left-32 fas fa-music text-9xl text-pink-400" />
+                        </div> -->
                     {/key}
                     {#key played1}
                         <button
@@ -262,17 +273,19 @@
                             class="absolute rounded-full {currentSong[currentPlayIndex] === 1 && playState === 0
                                 ? 'orbshow'
                                 : 'orb'} flex-center-all font-bold"
-                            style="width:20rem;height:20rem;left:56rem;top:30rem;"
+                            style="width:16rem;height:16rem;left:56rem;top:30rem;"
                             on:pointerdown|preventDefault|stopPropagation={buttonB}
                         >
-                            <div style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">5</div>
+                            <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">
+                                <i class="fas fa-music text-9xl text-pink-400" />
+                            </div>
                         </button>
                     {/key}
                 </div>
-                {#each Array(songLength) as __dirname, i}
+                {#each Array(songLength) as _, i}
                     <div
                         class="absolute top-8 text-4xl text-white bg-pink-500 w-12 h-12 rounded-full flex-center-all"
-                        style="left:{i * 4+2}rem"
+                        style="left:{i * 4 + 2}rem"
                     >
                         {i + 1}
                     </div>
@@ -289,13 +302,13 @@
                 {/if}
 
                 <div
-                class="absolute right-0 top-0 cursor-pointer select-none m-4"
-                style="padding:0 0.75rem;border-radius:0.75rem;"
-                on:pointerup|preventDefault|stopPropagation={resetToSplashScreen}
-                on:touchstart={preventZoom}
-            >
-                <IconsMisc icon="treasure-map" size="7.5rem" style="" />
-            </div>
+                    class="absolute right-0 top-0 cursor-pointer select-none m-4"
+                    style="padding:0 0.75rem;border-radius:0.75rem;"
+                    on:pointerup|preventDefault|stopPropagation={resetToSplashScreen}
+                    on:touchstart={preventZoom}
+                >
+                    <IconsMisc icon="treasure-map" size="7.5rem" style="" />
+                </div>
 
                 <!-- <div class="absolute right-0 top-0 bottom-0 flex flex-row">
                     <StarBar {maxStars} {starCount} bg="#00000080" on:pointerup={resetToSplashScreen} />
@@ -320,7 +333,7 @@
 
 <style>
     .orb {
-        font-size: 140px;
+        /* font-size: 140px; */
         background-color: #282828;
         box-shadow: inset 0 0 50px #111111, inset 0px 0 26px #50307f, inset 4px 4px 16px #af8777, inset -4px -4px 16px #3010b5,
             0px 0 60px #a060ff, 0px 0 3px #ffffff;
@@ -328,13 +341,75 @@
     .orb:active {
         box-shadow: inset 0 0 50px #111111, inset 0px 0 26px #50307f,
             /* inset -4px -4px 12px #555555,
-            inset 4px 4px 12px #000000, */ 0px 0 80px #a060ff, 0px 0 5px #ffffff;
+            inset 4px 4px 12px #000000, */ 0px 0 60px #a060ff, 0px 0 5px #ffffff;
         font-size: 136px;
     }
     .orbshow {
         box-shadow: inset 0 0 50px #111111, inset 0px 0 26px #c0307f,
             /* inset -4px -4px 12px #555555,
-            inset 4px 4px 12px #000000, */ 0px 0 80px #f060cf, 0px 0 5px #ffffff;
-        font-size: 136px;
+            inset 4px 4px 12px #000000, */ 0px 0 60px #f060cf, 0px 0 5px #ffffff;
+        /* font-size: 136px; */
+    }
+
+    .hexagon {
+        height: 20rem;
+        width: 10rem;
+        background: #282828;
+        position: relative;
+        left: 5rem;
+        margin-left: 4rem;
+        box-sizing: border-box;
+    }
+    .hexagon::before,
+    .hexagon::after {
+        content: "";
+        position: absolute;
+        height: 0;
+        width: 0;
+        top: 0;
+        /* half height */
+        border-top: 10rem solid transparent;
+        border-bottom: 10rem solid transparent;
+    }
+    .hexagon::before {
+        left: -6.3rem;
+        border-right: 6.3rem solid #282828;
+    }
+    .hexagon::after {
+        right: -6.3rem;
+        border-left: 6.3rem solid #282828;
+    }
+    .hex1::before {
+        content: "\2B22";
+        color: orange;
+        font-size: 30rem;
+    }
+
+    .hex2::before {
+        content: "\2B22";
+        display: block;
+        color: #282828;
+        font-size: 30rem;
+        line-height: 18.5rem;
+        margin-left: -2.5rem;
+
+        -webkit-transform: rotate(-29deg);
+        -moz-transform: rotate(-29deg);
+        -o-transform: rotate(-29deg);
+        transform: rotate(-29deg);
+        text-shadow: 0px 0 4rem #a060ff, 0px 0 0.5rem #ffffff;
+    }
+
+    .hex3 {
+        background: #282828;
+        -webkit-clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%);
+        clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%);
+        box-shadow: inset 0 0 50px #111111, inset 0px 0 26px #50307f, inset 4px 4px 16px #af8777, inset -4px -4px 16px #3010b5,
+            0px 0 60px #a060ff, 0px 0 3px #ffffff;
+    }
+    .hex4 {
+        background: blue;
+        -webkit-clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+        clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
     }
 </style>

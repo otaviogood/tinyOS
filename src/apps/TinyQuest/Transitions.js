@@ -52,6 +52,7 @@ export function scalePulse(node, { delay, duration }) {
 
             return `
 					transform: scale(${1.0 + Math.sin(eased * Math.PI) * 0.2});
+                    will-change: transform;
 					`;
         },
     };

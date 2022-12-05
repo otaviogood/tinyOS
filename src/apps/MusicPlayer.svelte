@@ -58,6 +58,8 @@
         "roses": ["m2AuVIjy5po", "Y2Mate.is - Roses Are Red (Original Version)-m2AuVIjy5po-128k-1655458782075.mp3"],
         "candyman": ["k-ykJHUIyEw", "Y2Mate.is - Lollipop (Candyman)-k-ykJHUIyEw-128k-1659598978850.mp3"],
         "komm mit": ["SmGUmVPRMCA", "Y2Mate.is - Franzl Lang - Komm mit in die Berge - 1976-SmGUmVPRMCA-96k-1657994281589.mp3"],
+        "particle": ["vOLivyykLqk", "Y2Mate.is - Particle Man-vOLivyykLqk-128k-1660212809922.mp3"],
+        "hakuna": ["BAoCYwefq1A", "Y2Mate.is - The Lion King - Hakuna Matata  1080p  HD  English-BAoCYwefq1A-128k-1659857295283.mp3"],
     };
     /*!speech
 [
@@ -81,6 +83,8 @@
         "roses",
         "candyman",
         "komm mit",
+        "hakuna",
+        "particle",
 ]
     */
     let typed = "";
