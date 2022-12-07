@@ -14,6 +14,20 @@ export function scaleDown(node, { duration }) {
     };
 }
 
+export function slideLeft(node, { delay, duration }) {
+    return {
+        delay,
+        duration,
+        css: (t) => {
+            const eased = elasticOut(t);
+
+            return `
+					transform: translate(${-t * 35}rem, 0);
+					`;
+        },
+    };
+}
+
 export function pulseShadow(node, { duration }) {
     return {
         duration,

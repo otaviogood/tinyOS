@@ -207,7 +207,7 @@
     <!-- <div style="color:white">                        {clickSequence === 1}</div> -->
     <div class="relative overflow-hidden select-none" style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px">
         {#if !started}
-            <div class="flex-center-all h-full flex flex-col">
+            <div class="flex-center-all h-full w-full flex flex-col bg-black">
                 <img src="TinyQuest/gamedata/skyscraper/skyscraper_splash.webp" class="absolute" alt="skyscraper" style="height:72rem" />
                 <div in:fade={{ duration: 2000 }} class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1" style="margin-top:44rem;background-color:#40101080">{town?.name}</div>
                 <button in:fade={{ duration: 2000 }} class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10" on:pointerup|preventDefault|stopPropagation={startGame}>START</button>

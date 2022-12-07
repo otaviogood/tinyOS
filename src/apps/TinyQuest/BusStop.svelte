@@ -187,7 +187,7 @@
 <div class="fit-full-space select-none overflow-hidden" style="backgXXXround-color:black" on:touchstart={preventZoom}>
     <div class="relative overflow-hidden select-none" style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px;tranXXXsform:scale(0.4)">
         {#if !started}
-            <div class="flex-center-all h-full flex flex-col">
+            <div class="flex-center-all h-full w-full flex flex-col bg-black">
                 <img src="TinyQuest/gamedata/busstop/intro.webp" class="absolute top-0" alt="skyscraper" style="height:64rem" />
                 <div in:fade={{ duration: 2000 }} class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1" style="margin-top:44rem;background-color:#40101080">{town?.name}</div>
                 <button in:fade={{ duration: 2000 }} class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10" on:pointerup|preventDefault|stopPropagation={startGame}>START</button>
