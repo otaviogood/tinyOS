@@ -221,7 +221,7 @@ export function GetVideoThumb(id) {
 
 // play speech from pre-rendered mp3s.
 // Pass in a list of string args.
-export function speechPlay() {
+export async function speechPlay() {
     for (var i = 0; i < arguments.length; i++) {
         // console.log(arguments[i]);
         let words = arguments[i];
@@ -230,5 +230,12 @@ export function speechPlay() {
         });
         if (!sound) console.error("Sound not found: " + words);
         sound.play();
+        let dur = sound.duration();
+        // sloppy wait for sound to load
+        while (dur === 0) {
+            await sleep(30);
+            dur = sound.duration();
+        }
+        await sleep(dur * 1000 * 0.7); // hacky 0.7 - speech synth pads with too much silence
     }
 }

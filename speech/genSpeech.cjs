@@ -64,7 +64,7 @@ let allTexts = [];
         const request = {
             input: { text: text },
             // Select the language and SSML voice gender (optional)
-            voice: { languageCode: "en-US", ssmlGender: "FEMALE" },
+            voice: { languageCode: "en-US", ssmlGender: "FEMALE", name: "en-US-Wavenet-F" },
             // select the type of audio encoding
             audioConfig: { audioEncoding: "MP3" },
         };

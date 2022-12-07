@@ -132,16 +132,16 @@
         {/key}
         <div
             class="absolute pointer-events-none select-none rounded-full"
-            style="background: radial-gradient(closest-side, #00145070, #9198e500);left:{$currentX * 100}%;top:{$currentY * 100}%;width:{3 + midway * 4}rem;height:{3 +
-                midway * 4}rem;transform-origin: 0% 0%;transform: translate(-50%, -50%);"
+            style="background: radial-gradient(closest-side, #00145070, #9198e500);left:{$currentX * 100}%;top:{$currentY * 100}%;width:{3 + midway * 6}rem;height:{3 +
+                midway * 6}rem;transform-origin: 0% 0%;transform: translate(-50%, -50%);"
         />
         <div
             class="absolute pointer-events-none select-none"
-            style="transform-origin: 0% 0%;transform: translate(-50%, -95%);left:{$currentX * 100}%;top:{$currentY * 100 - midway * 10 + 3}%;width:{16 + midway * 4}rem;height:{16 + midway * 4}rem"
+            style="transform-origin: 0% 0%;transform: translate(-50%, -95%);left:{$currentX * 100}%;top:{$currentY * 100 - midway * 10 + 3}%;width:{16 + midway * 6}rem;height:{16 + midway * 6}rem"
             on:pointerup|preventDefault|stopPropagation={() => null}
         >
-            <!-- <IconsMisc icon="hot-air-balloon" size="{10 + midway * 4}rem" canvasSize={(10 + midway * 4) * 0.01 * $bigScale} /> -->
-            <img src="TinyQuest/otavio_steampunk_hot_air_ballon_vector_art_macrovector_isometri_e6f5dac4-e1d6-469c-b85c-dd4fbf525d55.webp" class="" style="width:{16 + midway * 4}rem;height:{16 + midway * 4}rem" alt="world map" />
+            <!-- <IconsMisc icon="hot-air-balloon" size="{10 + midway * 6}rem" canvasSize={(10 + midway * 6) * 0.01 * $bigScale} /> -->
+            <img src="TinyQuest/otavio_steampunk_hot_air_ballon_vector_art_macrovector_isometri_e6f5dac4-e1d6-469c-b85c-dd4fbf525d55.webp" class="" style="width:{16 + midway * 6}rem;height:{16 + midway * 6}rem" alt="world map" />
         </div>
         <!-- <button
             class="absolute bottom-16 text-white font-semibold text-8xl rounded-2big"

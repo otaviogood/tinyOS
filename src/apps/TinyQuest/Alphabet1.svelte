@@ -140,7 +140,7 @@
             }, 1700);
             snd_good.play();
             starCount++;
-            speechPlay(l, "is for ", getIcon(l)[2]);
+            await speechPlay(l, "is for ", getIcon(l)[2]);
             if (starCount >= maxStars) {
                 // Finished game. Yay!
                 await sleep(2000);
@@ -157,7 +157,7 @@
             canIClick = true;
             snd_error.play();
             await sleep(180);
-            speechPlay("That is letter ", currentLetters[index]);
+            await speechPlay("That is letter ", currentLetters[index]);
         }
     }
 
