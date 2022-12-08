@@ -12,6 +12,8 @@
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";
     // import WebGL from "./WebGL.svelte";
     // import Three from "./Three.svelte";
+    import Fast2d from "../../components/Fast2d/Fast2d.svelte";
+    import FastLine from "../../components/Fast2d/FastLine.svelte";
 
     import Router from "svelte-spa-router";
     import { push, location, replace } from "svelte-spa-router";
@@ -20,6 +22,8 @@
 
     let showHelpScreen = false;
     let allRoads = [];
+
+    let fast2d;
 
     function resetGame() {
         frameCount = 0;
@@ -92,7 +96,7 @@
     $: midway = Math.sqrt(0.5 * 0.5 - Math.pow($animInterp - Math.floor($animInterp) - 0.5, 2.0)) * 6.0;
 </script>
 
-<div class="fit-full-space select-none relative overflow-hidden" style="background-color:#486870">
+<div class="fit-full-space select-none relative overflow-hidden" style="background-color:#104058">
     <div class="relative text-white font-bold" style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px">
         <img src="TinyQuest/otavio_a_video_game_map_of_islands_with_10_points_to_stop_and_p_286c6dc2-3915-43c4-a04e-68d7e6f90c29.webp" class="absolute top-0 left-0 w-full h-full" alt="world map" style="" />
         <!-- <div class="absolute bottom-4 left-4 text-white w-full text-4xl">{$earnedStar}<br/>{$currentTownIndex}<br/>{$allTowns[$currentTownIndex]}</div> -->
@@ -161,6 +165,13 @@
             <i class="fas fa-cog"></i>
         </div>
     {/if}
+            <!-- {#if glIsSupported} -->
+                <!-- <Fast2d bind:this={fast2d} id="graphRT">
+                    <FastLine x0={1} y0={1} x1={30} y1={110} diameter={4.0} color={[1,0,0]} />
+                </Fast2d> -->
+            <!-- {:else}
+            WebGL not supported.
+            {/if} -->
 </div>
 
 <style>

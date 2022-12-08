@@ -1,5 +1,5 @@
 <script>
-    import { onMount } from "svelte";
+    import { onMount, getContext, setContext } from "svelte";
     import { Howl, Howler } from "howler";
     import { handleResize } from "./screen";
     import Router from "svelte-spa-router";
@@ -19,6 +19,7 @@
         enableIndexedDbPersistence,
     } from "firebase/firestore";
     import { uid, username, userData, phoneScreen, headerHeight, firebaseApp } from "./stores";
+    import GlobalRenderContext from "./components/Fast2d/GlobalRenderContext.svelte";
 
     const app = initializeApp(firebaseConfig);
     $firebaseApp = app;
@@ -66,10 +67,13 @@
         }
     });
     sound.play();
+
 </script>
 
 <div class="fit-full-space overflow-hidden" on:contextmenu|preventDefault|stopPropagation={() => void(0)} >
-    <Router {routes} />
+    <GlobalRenderContext fps={60} disable>
+        <Router {routes} />
+    </GlobalRenderContext>
 </div>
 
 <!-- <FirebaseApp config={firebaseConfig}> -->

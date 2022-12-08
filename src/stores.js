@@ -10,3 +10,6 @@ export const phoneScreen = writable(isPhone());
 export const headerHeight = writable(isPhone() ? 70 : 52);
 
 export const firebaseApp = writable(null);
+
+// For Fast2d
+export const timer = writable(new Map());
