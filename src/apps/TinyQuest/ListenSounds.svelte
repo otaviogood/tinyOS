@@ -61,36 +61,73 @@
     });
 
     function genSong(numNotes) {
-        currentSong = [];
-        for (let i = 0; i < numNotes; i++) {
-            currentSong.push(Math.random() > 0.5 ? 1 : 0);
+        if (numNotes === currentSong.length + 1) currentSong.push(Math.random() > 0.5 ? 1 : 0);
+        else {
+            for (let i = 0; i < numNotes; i++) {
+                currentSong.push(Math.random() > 0.5 ? 1 : 0);
+            }
+        }
+        currentSong = currentSong;
+    }
+
+    function resetGame(resetLength = false, keepOriginal = false) {
+        playState = 0;
+        if (!keepOriginal) currentSong = [];
+        playStartTime = 0;
+        currentPlayIndex = -1;
+        if (resetLength) songLength = 1;
+        genSong(songLength);
+    }
+
+    // This is a crazy generator function that lets us do the game loop without ever really returning.
+    async function* gameplay() {
+        while (true) {
+            // console.log("psA", playState);
+            playStartTime = Date.now();
+            let divTime = 0;
+            do {
+                let playTime = (Date.now() - playStartTime) / 1000;
+                divTime = (playTime * 2) | 0;
+                // console.log(playTime, divTime);
+                if (currentPlayIndex !== divTime) {
+                    let note = currentSong[divTime];
+                    // console.log("note", note);
+                    beep(1000, freq((freq_c5 + 7 * note) | 0), 0.75);
+                    if (note === 0) played0++;
+                    else played1++;
+                }
+                currentPlayIndex = divTime;
+
+                if (playState !== 0) break;
+                yield 1;
+            } while (divTime < currentSong.length - 1);
+            if (divTime >= currentSong.length - 1) {
+                playState = 1;
+                currentPlayIndex = 0;
+            }
+            while (playState === 1) {
+                // console.log("psB", playState);
+                if (currentPlayIndex >= currentSong.length) {
+                    // console.log("win");
+                    await sleep(150);
+                    // @ts-ignore
+                    snd_good.play();
+                    await sleep(1000);
+                    songLength++;
+                    resetGame(false, true);
+                }
+                yield 1;
+            }
+            while (playState === 2) {
+                // console.log("psC", playState);
+                await sleep(100);
+                yield 1;
+            }
         }
     }
 
     function tick() {
-        if (playState === 0) {
-            if (playStartTime === 0) {
-                playStartTime = Date.now();
-                console.log("song", currentSong);
-            }
-            let playTime = (Date.now() - playStartTime) / 1000;
-            let divTime = (playTime * 2) | 0;
-            // console.log("divtime", divTime);
-            if (currentPlayIndex !== divTime) {
-                let note = currentSong[divTime];
-                // console.log("note", note);
-                beep(1000, freq((freq_c5 + 7 * note) | 0), 0.75);
-                if (note === 0) played0++;
-                else played1++;
-            }
-            currentPlayIndex = divTime;
-            if (divTime >= currentSong.length - 1) {
-                // await sleep(1000);
-                playState = 1;
-                currentPlayIndex = 0;
-            }
-        } else if (playStartTime === 1) {
-        }
+        gameplayGenerator.next();
     }
 
     // https://pages.mtu.edu/~suits/NoteFreqCalcs.html
@@ -147,28 +184,11 @@
 
     async function gotNote() {
         currentPlayIndex++;
-        if (currentPlayIndex >= currentSong.length) {
-            console.log("win");
-            await sleep(150);
-            snd_good.play();
-            await sleep(1000);
-            songLength++;
-            playState = 0;
-            currentSong = [];
-            playStartTime = 0;
-            currentPlayIndex = -1;
-            genSong(songLength);
-        }
     }
 
     function failed() {
         snd_error.play();
-        // songLength = 1;
         playState = 2;
-        // currentSong = [];
-        // playStartTime = 0;
-        // currentPlayIndex = -1;
-        // genSong(songLength);
     }
 
     function buttonA() {
@@ -195,12 +215,7 @@
         started = true;
         await sleep(500);
         starCount = 0;
-        playState = 0; // 0 is hear, 1 is play
-        currentSong = [];
-        playStartTime = 0;
-        currentPlayIndex = -1;
-        songLength = 1;
-        genSong(songLength);
+        resetGame(true);
         animator.start();
     }
 
@@ -209,29 +224,35 @@
         pop();
     }
 
+    const gameplayGenerator = gameplay();
     handleResize();
-    startGame();
+    // startGame();
 </script>
 
 <div class="fit-full-space select-none overflow-hidden" style="backgXXXround-color:black" on:touchstart={preventZoom}>
-    <!-- <div style="color:white">                        {clickSequence === 1}</div> -->
     <div
         class="relative overflow-hidden select-none"
         style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px"
     >
         {#if !started}
-            <div class="flex-center-all h-full flex flex-col">
-                <div class="text-white text-7xl">WORK IN PROGRESS MUSIC GAME</div>
+            <div class="flex-center-all h-full w-full flex flex-col bg-black">
+                <img
+                    src="TinyQuest/gamedata/listensounds/otavio_beats_and_dj_and_speakers_and_lights_vector_art_25a81f5b-ef79-412c-ae84-6a30e5c42481.webp"
+                    class="absolute"
+                    alt="skyscraper"
+                    style="height:74rem"
+                />
                 <div
                     in:fade={{ duration: 2000 }}
                     class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1"
-                    style="margin-top:44rem;background-color:#40101080"
+                    style="margin-top:26rem;background-color:#40101080"
                 >
                     {town?.name}
                 </div>
                 <button
                     in:fade={{ duration: 2000 }}
                     class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10"
+                    style="margin-top:24rem"
                     on:pointerup|preventDefault|stopPropagation={startGame}>START</button
                 >
             </div>
@@ -282,14 +303,23 @@
                         </button>
                     {/key}
                 </div>
-                {#each Array(songLength) as _, i}
+                <div class="absolute top-8 left-8 h-8 flex flex-row flex-wrap text-white" style="width:80rem">
+                    {#each Array(songLength) as _, i}
+                        <div
+                            class="text-4xl text-white bg-pink-500 w-12 h-12 rounded-full flex-center-all m-2"
+                        >
+                            {i + 1}
+                        </div>
+                    {/each}
+                </div>
+                <!-- {#each currentSong as a, i}
                     <div
-                        class="absolute top-8 text-4xl text-white bg-pink-500 w-12 h-12 rounded-full flex-center-all"
+                        class="absolute top-32 text-4xl text-white bg-green-500 w-12 h-12 rounded-full flex-center-all"
                         style="left:{i * 4 + 2}rem"
                     >
-                        {i + 1}
+                        {a}
                     </div>
-                {/each}
+                {/each} -->
                 <!-- <div class="absolute top-0 left-0 text-4xl text-white">{playState}</div> -->
                 {#if playState === 2}
                     <div
