@@ -24,18 +24,8 @@
 
     let animator = new Animator(60, tick);
 
-    const maxStars = 6; // 6*4 = 24, 26 letters in alphabet, so don't overflow.
-    let starCount = 0;
     let started = false;
     let finalGraphic = false;
-    let town;
-    let gameType;
-    let stage = 0; // pumpkin pie or chocolate cake
-
-    let currentShapes = [];
-    let extras = [];
-    let maxShapes = 6;
-    let touches = {};
 
     let allMedia = {
         "thomas": ["GnrwM7vFn_U", "Y2Mate.is - Thomas The Tank Engine Theme Song-GnrwM7vFn_U-128k-1659599526795.mp3"],
@@ -60,6 +50,9 @@
         "komm mit": ["SmGUmVPRMCA", "Y2Mate.is - Franzl Lang - Komm mit in die Berge - 1976-SmGUmVPRMCA-96k-1657994281589.mp3"],
         "particle": ["vOLivyykLqk", "Y2Mate.is - Particle Man-vOLivyykLqk-128k-1660212809922.mp3"],
         "hakuna": ["BAoCYwefq1A", "Y2Mate.is - The Lion King - Hakuna Matata  1080p  HD  English-BAoCYwefq1A-128k-1659857295283.mp3"],
+        "sun": ["hlzvrEfyL2Y", "Y2Mate.is - Mr. Sun, Sun, Mr. Golden Sun  Kids Songs  Super Simple Songs-hlzvrEfyL2Y-128k-1654599067217.mp3"],
+        "chicken": ["DQU70FFFw6Y", "Y2Mate.is - The Laurie Berkner Band - I Know A Chicken (Official Video)-DQU70FFFw6Y-128k-1656876900448.mp3"],
+        "sillies": ["03zqJQJRLN0", "Y2Mate.is - Shake your sillies out!!!-03zqJQJRLN0-128k-1654598849061.mp3"],
     };
     /*!speech
 [
@@ -83,8 +76,11 @@
         "roses",
         "candyman",
         "komm mit",
-        "hakuna",
         "particle",
+        "hakuna",
+        "sun",
+        "chicken",
+        "sillies",
 ]
     */
     let typed = "";
@@ -107,7 +103,7 @@
         if (startTime) {
             let now = Date.now();
             let elapsed = (now - startTime) / 1000;
-            percentComplete = elapsed / duration;
+            percentComplete = snd_current.seek() / duration;
             // percentComplete = Math.max(percentComplete, 0.01);
             // if (percentComplete > 1) {
             //     percentComplete = 1;
@@ -115,19 +111,6 @@
             //     playbackElement = null;
             // }
         }
-    }
-
-    function touchStart(e, i, s) {
-        touches[e.identifier] = { i, s };
-    }
-
-    function pointerDown(i, s) {
-        touches[i] = true;
-        console.log("touch", i);
-    }
-
-    function pointerUp(i, s) {
-        touches[i] = false;
     }
 
     function matchedMedia(typed) {
@@ -191,8 +174,6 @@
         snd_button.play();
         finalGraphic = false;
         started = true;
-        starCount = 0;
-        stage = 0;
 
         typed = "";
         playing = null;
@@ -207,6 +188,49 @@
     function resetToSplashScreen() {
         started = false;
         pop();
+    }
+
+    function getPointerPos(ev) {
+        let x = ev.clientX / $bigScale;
+        let y = ev.clientY / $bigScale;
+        // hack to return angle and whether or not you are in the rainbow.
+        x -= 0.5;
+        y -= 0.4;
+        let angle = Math.atan2(y, x);
+        let len = Math.sqrt(x * x + y * y);
+        x = angle;
+        y = (len < 0.35) && (len > 0.2) ? 1 : 0;
+        return [x, y];
+    }
+
+    let startX = -1;
+    function handleUp() {
+        startX = -1;
+    }
+
+    function handleDown(e) {
+        let xy = getPointerPos(e);
+        let alpha = xy[0];
+        startX = alpha;
+    }
+
+    function handleMove(e) {
+        if (startX == -1) return;
+        if (snd_current == null) return;
+        if (duration == 0) return;
+        if (startTime == null) return;
+        let xy = getPointerPos(e);
+        if (xy[1] == 0) {
+            startX = xy[0];
+            return;
+        }
+        let alpha = (xy[0] - startX);
+        startX = xy[0];
+        let newPos = snd_current.seek() + alpha * duration;
+        if (newPos < 0) newPos = 0;
+        if (newPos > duration) newPos = duration;
+        percentComplete = snd_current.seek(newPos) / duration;
+        // console.log("seek", alpha, percentComplete);
     }
 
     handleResize();
@@ -255,7 +279,7 @@
                     </div>
         <div class="absolute right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" style="bottom:32rem" on:pointerup={pop}><i class="fas fa-times-circle"></i></div>
                 {:else}
-                    <div class="flex-center-all flex-col w-full">
+                    <div class="flex-center-all flex-col w-full" on:pointermove={(e) => handleMove(e)} on:pointerdown={(e) => handleDown(e)} on:pointerup={() => handleUp()}>
                         <!-- clouds at end of rainbow -->
                         <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffffd0;left:19.5rem; bottom:34rem;"></div>
                         <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;left:17rem; bottom:33rem;"></div>
@@ -278,10 +302,6 @@
                     </div>
                 {/if}
 
-                <!-- <div class="absolute right-0 top-0 bottom-0 flex flex-row">
-                    <StarBar {maxStars} starCount={starCount} bg="#00000080" on:pointerup={resetToSplashScreen} />
-                </div> -->
-                <!-- <WinScreen {maxStars} active={finalGraphic} bg="#00000010" on:startGame={startGame} on:resetToSplashScreen={resetToSplashScreen} style="position:absolute;top:10rem;z-index:100;" /> -->
             </div>
         {/if}
     </div>
