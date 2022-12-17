@@ -53,6 +53,8 @@
         "sun": ["hlzvrEfyL2Y", "Y2Mate.is - Mr. Sun, Sun, Mr. Golden Sun  Kids Songs  Super Simple Songs-hlzvrEfyL2Y-128k-1654599067217.mp3"],
         "chicken": ["DQU70FFFw6Y", "Y2Mate.is - The Laurie Berkner Band - I Know A Chicken (Official Video)-DQU70FFFw6Y-128k-1656876900448.mp3"],
         "sillies": ["03zqJQJRLN0", "Y2Mate.is - Shake your sillies out!!!-03zqJQJRLN0-128k-1654598849061.mp3"],
+        "witch doctor": ["cmjrTcYMqBM", "Y2Mate.is - WITCH DOCTOR (David Seville)  1958 original version-cmjrTcYMqBM-128k-1655757018233.mp3"],
+        "trick or treat": ["veZlIX6d63Y", "Y2Mate.is - Who Took The Candy  Halloween Song  Super Simple Songs-veZlIX6d63Y-128k-1657225626911.mp3"],
     };
     /*!speech
 [
@@ -81,6 +83,8 @@
         "sun",
         "chicken",
         "sillies",
+        "witch doctor",
+        "trick or treat",
 ]
     */
     let typed = "";
@@ -152,7 +156,7 @@
             }
             return;
         } else {
-            typed += key;
+            if (typed.length < 28) typed += key;
         }
         let media = matchedMedia(typed);
         // console.log("typed", typed);
@@ -172,6 +176,7 @@
 
     async function startGame() {
         snd_button.play();
+        if (snd_current) snd_current.stop();
         finalGraphic = false;
         started = true;
 
@@ -186,6 +191,7 @@
     }
 
     function resetToSplashScreen() {
+        if (snd_current) snd_current.stop();
         started = false;
         pop();
     }
@@ -211,6 +217,7 @@
     function handleDown(e) {
         let xy = getPointerPos(e);
         let alpha = xy[0];
+        if (xy[1] === 0) return;
         startX = alpha;
     }
 
@@ -290,12 +297,14 @@
                         <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;right:22rem; bottom:33rem;"></div>
                         <!-- rainbow -->
                         <SVGArcDeg class="absolute" color="#ff0000" startAngle={-90} endAngle={-90 + percentComplete*180} />
+                        {#if startX === -1}
                         <SVGArcDeg class="absolute" color="#ff8000" startAngle={-90} endAngle={-90 + percentComplete*180} radius={77} />
                         <SVGArcDeg class="absolute" color="#ffff00" startAngle={-90} endAngle={-90 + percentComplete*180} radius={74} />
                         <SVGArcDeg class="absolute" color="#00ff00" startAngle={-90} endAngle={-90 + percentComplete*180} radius={71} />
                         <SVGArcDeg class="absolute" color="#00ffff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={68} />
                         <SVGArcDeg class="absolute" color="#0000ff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={65} />
                         <SVGArcDeg class="absolute" color="#8000ff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={62} />
+                        {/if}
                         <img src={GetVideoThumb(playing[0])} alt="" class="flex-center-all max-h-96 w-96 h-96 mt-32 text-center rounded-xl bg-transparent"/>
                         <div class="text-6xl m-2 p-2 w-full flex-center-all text-white" style="filter: drop-shadow(0 0 0.75rem #105080);">{cleanFilename(playing[1])}</div>
                         <button class="bg-red-500 text-white text-9xl rounded-3xl px-8 mt-4 z-10 h-32" on:pointerup|preventDefault|stopPropagation={() => {snd_current.stop(); startGame()}}>STOP</button>

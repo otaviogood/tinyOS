@@ -3,12 +3,20 @@
     import { preventZoom } from "../utils";
     import { snd_phonemes } from "../apps/TinyQuest/voiceSynth";
     import { createEventDispatcher } from "svelte";
+    import { speechPlay } from "../utils";
 
     const dispatch = createEventDispatcher();
 
     export let enterEnabled = false;
 
     let audioOn = true;
+
+    /*!speech
+[
+        "space",
+        "back",
+]
+    */
 
     let keyLetters = [
         ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
@@ -76,6 +84,12 @@
                     phoneme = phoneme[side];
                 }
                 snd_phonemes.play(phoneme);
+            } else if (i >= '0' && i <= '9') {
+                speechPlay(i);
+            } else if (i === "backspace") {
+                speechPlay("back");
+            } else if (i === " ") {
+                speechPlay("space");
             }
         }
         dispatch('pressed', {
