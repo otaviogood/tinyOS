@@ -42,6 +42,7 @@
     let pointerMode = 0; // 0 = normal drawing, 1 = eye dropper
     let pointerDown = false;
     let pointerLastPos = [0, 0];
+    let colorSampler;
 
     onMount(() => {
         topCtx = canvasTop.getContext("2d");
@@ -49,7 +50,7 @@
         bmpTop = new BitmapABGR(canvasTop.width, canvasTop.height, topCtx);
         // bmpTop.DrawCircle(200, 100, 50, 0xffa0ffff);
         bmpBottom = new BitmapABGR(canvasBottom.width, canvasBottom.height, bottomCtx);
-        bmpBottom.Clear(0xff808080);
+        bmpBottom.Clear(0xff707070);
         // bmpBottom.DrawCircle(200, 200, 50, 0xffa0a0ff);
         bmpBottom.DrawImage(0, 0);
         bmpTop.DrawImage(0, 0);
@@ -119,6 +120,7 @@
     function handlePointermove(ev) {
         let xy = getPointerPos(ev);
 
+        colorSampler = null;
         if (pointerMode === 0 && pointerDown) {
             bmpTop.DrawSmear(
                 pointerLastPos[0],
@@ -141,9 +143,16 @@
                 // showNewLayer();
                 last = now();
             }
+        } else if (pointerMode === 1) {
+            colorSampler = sampleColor();
         }
         pointerLastPos = xy;
         bmpTop.DrawImage(0, 0);
+    }
+
+    function sampleColor() {
+        let colArray = bottomCtx.getImageData(pointerXY[0], pointerXY[1], 1, 1).data;
+        return "rgb(" + colArray[0] + "," + colArray[1] + "," + colArray[2] + ")";
     }
 
     function handlePointerup(ev) {
@@ -157,8 +166,7 @@
             // clear(topCtx);
         } else {
             pointerMode = 0;
-            let colArray = bottomCtx.getImageData(pointerXY[0], pointerXY[1], 1, 1).data;
-            selectedColor = "rgb(" + colArray[0] + "," + colArray[1] + "," + colArray[2] + ")";
+            selectedColor = sampleColor();
         }
         bmpBottom.OverlayBox(bmpTop);
         bmpTop.Clear(0);
@@ -226,8 +234,8 @@
                                 on:change={(e) => (colorWheelVisible = true)}
                             />
                         </span>
-                        <span class="text-6xl align-middle pl-48" style="color:{selectedColor}"
-                            ><i class="fas fa-paint-brush" /></span
+                        <span class="text-6xl align-middle pl-48" style="color:{selectedColor}" on:pointerup={() => { pointerMode = 1; colorWheelVisible = false;}}
+                            ><i class="fas fa-eye-dropper rounded-full" style="background-color:{colorSampler || (pointerMode === 1 ? '#b0b0b0' : '')}" /></span
                         >
                         <!-- <ConfirmButton style="vertical-align: middle;margin-left:32px" on:confirmed={clearAll}>Clear</ConfirmButton> -->
                     </div>

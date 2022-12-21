@@ -27,7 +27,13 @@
     let started = false;
     let finalGraphic = false;
 
-    let allMedia = {
+    let minimal = {
+        hat: ["8_UnANdDqJc", "Y2Mate.is - Franzl Lang Yodeling-8_UnANdDqJc-160k-1657994398559.mp3"],
+        auto: ["rfoKnb-Tj1M", "Y2Mate.is - Franzl Lang - Auto Jodler-rfoKnb-Tj1M-160k-1657996660769.mp3"],
+        "komm mit": ["SmGUmVPRMCA", "Y2Mate.is - Franzl Lang - Komm mit in die Berge - 1976-SmGUmVPRMCA-96k-1657994281589.mp3"],
+    }
+
+    let allMediaAll = {
         "thomas": ["GnrwM7vFn_U", "Y2Mate.is - Thomas The Tank Engine Theme Song-GnrwM7vFn_U-128k-1659599526795.mp3"],
         "Elmo": ["vSYadh2xmcI", "Y2Mate.is - Sesame Street Elmo's Song-vSYadh2xmcI-128k-1659600205610.mp3"],
         hat: ["8_UnANdDqJc", "Y2Mate.is - Franzl Lang Yodeling-8_UnANdDqJc-160k-1657994398559.mp3"],
@@ -87,6 +93,9 @@
         "trick or treat",
 ]
     */
+    let allMedia;
+    if (!localStorage.getItem("unlockmusic")) allMedia = minimal;
+    else allMedia = allMediaAll;
     let typed = "";
     let playing = null;
     let playbackElement = null;
@@ -153,6 +162,11 @@
                     playing = null;
                     startTime = null;
                 });
+            } else {
+                if (typed.toLowerCase() === 'unlock') {
+                    localStorage.setItem("unlockmusic", "hurray");
+                    allMedia = allMediaAll;
+                }
             }
             return;
         } else {

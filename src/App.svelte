@@ -4,35 +4,35 @@
     import { handleResize } from "./screen";
     import Router from "svelte-spa-router";
     import { routes } from "./router.js";
-    import { firebaseConfig } from "./secrets";
-    import { initializeApp } from "firebase/app";
+    // import { firebaseConfig } from "./secrets";
+    // import { initializeApp } from "firebase/app";
     // import { FirebaseApp, Doc, Collection, User, UploadTask, StorageRef } from "sveltefire";
-    import {
-        getFirestore,
-        doc,
-        getDoc,
-        setDoc,
-        collection,
-        addDoc,
-        serverTimestamp,
-        Timestamp,
-        enableIndexedDbPersistence,
-    } from "firebase/firestore";
+    // import {
+    //     getFirestore,
+    //     doc,
+    //     getDoc,
+    //     setDoc,
+    //     collection,
+    //     addDoc,
+    //     serverTimestamp,
+    //     Timestamp,
+    //     enableIndexedDbPersistence,
+    // } from "firebase/firestore";
     import { uid, username, userData, phoneScreen, headerHeight, firebaseApp } from "./stores";
     import GlobalRenderContext from "./components/Fast2d/GlobalRenderContext.svelte";
 
-    const app = initializeApp(firebaseConfig);
-    $firebaseApp = app;
+    // const app = initializeApp(firebaseConfig);
+    // $firebaseApp = app;
 
-    // Enable cached offline db use: https://firebase.google.com/docs/firestore/manage-data/enable-offline
-    const db = getFirestore($firebaseApp);
-    enableIndexedDbPersistence(db).catch((err) => {
-        if (err.code == "failed-precondition") {
-            console.error("Multiple tabs open, Firebase persistence can only be enabled in one tab at a a time.")
-        } else if (err.code == "unimplemented") {
-            window.alert("The current browser does not support all of the features required to enable persistence.")
-        }
-    });
+    // // Enable cached offline db use: https://firebase.google.com/docs/firestore/manage-data/enable-offline
+    // const db = getFirestore($firebaseApp);
+    // enableIndexedDbPersistence(db).catch((err) => {
+    //     if (err.code == "failed-precondition") {
+    //         console.error("Multiple tabs open, Firebase persistence can only be enabled in one tab at a a time.")
+    //     } else if (err.code == "unimplemented") {
+    //         window.alert("The current browser does not support all of the features required to enable persistence.")
+    //     }
+    // });
 
     // For iOS screen rotation
     window.addEventListener("orientationchange", function (event) {

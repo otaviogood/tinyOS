@@ -362,7 +362,8 @@
         class="relative overflow-hidden select-none"
         style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px;tranXXXsform:scale(0.4)"
     >
-        <div class="flex-center-all h-full w-full">
+        <div class="flex-center-all h-full w-full flex-col">
+            <div class="w-full text-center text-6xl mb-12 text-gray-200">PALO ALTO, CA</div>
             <div class="flex flex-row w-full h-4/6">
                 {#if weatherData}
                     {#each Object.values(cleanData) as weather, i}
