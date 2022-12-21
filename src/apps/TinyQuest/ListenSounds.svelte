@@ -23,7 +23,6 @@
     import { tweened } from "svelte/motion";
     import { cubicInOut } from "svelte/easing";
     import { Animator, frameCount, animateCount } from "../../animator";
-    import { log } from "logrocket";
     import { pulseShadow, scaleDown, scalePulse } from "./Transitions";
     import IconsMisc from "./IconsMisc.svelte";
 
