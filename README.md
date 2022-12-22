@@ -1,4 +1,4 @@
-# Tiny Quest
+# Tiny Quest / Tiny OS
 A bunch of video games and apps for small kids
 
 ### License?
