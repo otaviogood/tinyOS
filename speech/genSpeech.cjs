@@ -58,6 +58,8 @@ let allTexts = [];
     const client = new textToSpeech.TextToSpeechClient();
     // Call Google speech API for each string in allTexts array
     for (let i = 0; i < allTexts.length; i++) {
+        let outFile = "../public/speech/" + allTextsClean[i] + ".mp3";
+        if (fs.existsSync(outFile)) continue;
         const text = allTexts[i];
         console.log(text);
         // Construct the request
@@ -72,7 +74,7 @@ let allTexts = [];
         const [response] = await client.synthesizeSpeech(request);
         // Write the binary audio content to a local file
         const writeFile = util.promisify(fs.writeFile);
-        await writeFile("../public/speech/" + allTextsClean[i] + ".mp3", response.audioContent, "binary");
+        await writeFile(outFile, response.audioContent, "binary");
         // console.log("Audio content written to file: output.mp3");
     }
 })();

@@ -21,6 +21,8 @@
     // import ConfirmButton from "../ConfirmButton.svelte";
     import ColorWheel from "./ColorWheel.svelte";
     import BrushPicker from "./BrushPicker.svelte";
+    import ImageBrowser from "./ImageBrowser.svelte";
+    import { openDB, deleteDB, wrap, unwrap } from "idb";
 
     handleResize();
 
@@ -32,7 +34,7 @@
     let bottomCtx;
     let width = 800;
     let height = 600;
-    let border = 8;
+    let border = 2; // rem units
     let selectedColor = "#000000";
     let colorWheelVisible = false;
     let pickerX = 0;
@@ -83,8 +85,10 @@
 
     function getPointerPos(ev) {
         var rect = document.getElementById("canvasholder").getBoundingClientRect();
-        let x = ((ev.clientX - border - rect.left) / (rect.right - rect.left - border * 2)) * width;
-        let y = ((ev.clientY - border - rect.top) / (rect.bottom - rect.top - border * 2)) * height;
+        // convert rem to px units
+        let border2 = $bigScale * 0.01 * border;
+        let x = ((ev.clientX - border2 - rect.left) / (rect.right - rect.left - border2 * 2)) * width;
+        let y = ((ev.clientY - border2 - rect.top) / (rect.bottom - rect.top - border2 * 2)) * height;
         pointerXY = [Math.floor(x), Math.floor(y)];
         return pointerXY;
     }
@@ -181,13 +185,107 @@
     function selectColor(color) {
         selectedColor = color;
     }
+
+    const dbPromise = openDB("keyval-store-tinyos", 1, {
+        upgrade(db) {
+            db.createObjectStore("keyval_paint");
+        },
+    });
+
+    export async function get(key) {
+        return (await dbPromise).get("keyval_paint", key);
+    }
+    export async function set(key, val) {
+        return (await dbPromise).put("keyval_paint", val, key);
+    }
+    export async function del(key) {
+        return (await dbPromise).delete("keyval_paint", key);
+    }
+    export async function clear() {
+        return (await dbPromise).clear("keyval_paint");
+    }
+    export async function keys() {
+        return (await dbPromise).getAllKeys("keyval_paint");
+    }
+
+    console.log("keys", keys());
+    function dataURItoBlob(dataURI) {
+        // convert base64/URLEncoded data component to raw binary data held in a string
+        var byteString;
+        if (dataURI.split(",")[0].indexOf("base64") >= 0) byteString = atob(dataURI.split(",")[1]);
+        else byteString = unescape(dataURI.split(",")[1]);
+
+        // separate out the mime component
+        var mimeString = dataURI.split(",")[0].split(":")[1].split(";")[0];
+
+        // write the bytes of the string to a typed array
+        var ia = new Uint8Array(byteString.length);
+        for (var i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+        }
+
+        return new Blob([ia], { type: mimeString });
+    }
+
+    async function save() {
+        // Save to indexedDB using idb
+        let data = canvasBottom.toDataURL("image/png");
+        let blob = dataURItoBlob(data);
+        let id = Date.now(); // Use current time as id since kids won't be able to type a name.
+        let name = "paint_" + id + ".png";
+        let file = new File([blob], name, { type: "image/png" });
+        // let store = db.transaction("files", "readwrite").objectStore("files");
+        // store.put(file, id);
+        await set(id, file);
+        console.log("Saved to indexedDB");
+    }
+
+    async function load() {
+        // Load from indexedDB using idb
+        let allKeys = await keys();
+        let id = allKeys[0];
+        let file = await get(id);
+        let url = URL.createObjectURL(file);
+        let img = new Image();
+        img.src = url;
+        img.onload = function () {
+            // copy img into Int32Array in bmpBottom.data2
+            let w = img.width;
+            let h = img.height;
+            let data = bmpBottom.data2; //new Int32Array(w * h);
+            let ctx = document.createElement("canvas").getContext("2d");
+            ctx.canvas.width = w;
+            ctx.canvas.height = h;
+            ctx.drawImage(img, 0, 0);
+            let imgData = ctx.getImageData(0, 0, w, h);
+            for (let i = 0; i < w * h; i++) {
+                data[i] =
+                    (imgData.data[i * 4 + 3] << 24) |
+                    (imgData.data[i * 4 + 2] << 16) |
+                    (imgData.data[i * 4 + 1] << 8) |
+                    imgData.data[i * 4];
+            }
+            bmpBottom.data2 = data;
+            bmpBottom.DrawImage(0, 0);
+
+            bmpTop.Clear(0);
+        };
+        console.log("Loaded from indexedDB");
+    }
+
+    let allKeys = null;
+    async function browse() {
+        allKeys = keys();
+    }
+    browse();
 </script>
 
-<div class="fit-full-space select-none overflow-hidden" on:touchstart={preventZoom}>
+<div class="fit-full-space select-none overflow-hidden" style="background-color:#404040;" on:touchstart={preventZoom}>
     <div
         class="relative overflow-hidden select-none"
         style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px;"
     >
+        <!-- <ImageBrowser keyPromise={allKeys}></ImageBrowser> -->
         <div class="flex-center-all flex-col h-full w-full">
             <!-- on:pointerdown|preventDefault|stopPropagation={() => console.log("colorWheelVisible = false")} -->
             <div
@@ -215,9 +313,15 @@
 
                 <div style="text-align:center">
                     <div
-                        style="display:inline-block;text-align:left;position: relative;padding:.5rem {border}px 8px {border}px;border-radius:{border}px {border}px
-        0 0;width:max-content"
+                        style="display:inline-block;text-align:left;position: relative;padding:.5rem {border}rem .5rem {border}rem;width:max-content;"
                     >
+                        <!-- <span class="w-24 h-24 p-6 align-middle" on:click={() => browse()} style="background-color:#000000;" >browse</span> -->
+                        <span class="w-24 h-24 p-6 align-middle" on:click={() => load()} style="background-color:#000000;"
+                            >load</span
+                        >
+                        <span class="w-24 h-24 mr-48 p-6 align-middle" on:click={() => save()} style="background-color:#000000;"
+                            >save</span
+                        >
                         <span class="colorcircle" on:click={() => selectColor("#000000")} style="background-color:#000000;" />
                         <span class="colorcircle" on:click={() => selectColor("#ff4040")} style="background-color:#ff4040;" />
                         <span class="colorcircle" on:click={() => selectColor("#40ff40")} style="background-color:#40ff40;" />
@@ -234,16 +338,25 @@
                                 on:change={(e) => (colorWheelVisible = true)}
                             />
                         </span>
-                        <span class="text-6xl align-middle pl-48" style="color:{selectedColor}" on:pointerup={() => { pointerMode = 1; colorWheelVisible = false;}}
-                            ><i class="fas fa-eye-dropper rounded-full" style="background-color:{colorSampler || (pointerMode === 1 ? '#b0b0b0' : '')}" /></span
+                        <span
+                            class="text-6xl align-middle pl-48"
+                            style="color:{selectedColor}"
+                            on:pointerup={() => {
+                                pointerMode = 1;
+                                colorWheelVisible = false;
+                            }}
+                            ><i
+                                class="fas fa-eye-dropper rounded-full"
+                                style="background-color:{colorSampler || (pointerMode === 1 ? '#b0b0b0' : '')}"
+                            /></span
                         >
                         <!-- <ConfirmButton style="vertical-align: middle;margin-left:32px" on:confirmed={clearAll}>Clear</ConfirmButton> -->
                     </div>
                     <div />
                     <div
                         id="canvasholder"
-                        style="display:inline-block;text-align:left;touch-action:none;position:relative;height:68rem;width:96rem;wiXXdth:min(100%, {width}px);--aspect-ratio:{width /
-                            height};border:{border}px solid #606060;border-radius: {border}px;cursor:{pointerMode === 0
+                        style="display:inline-block;text-align:left;touch-action:none;position:relative;height:69rem;width:99rem;--aspect-ratio:{width /
+                            height};border:{border}rem solid #202020;border-radius: {border}rem;cursor:{pointerMode === 0
                             ? 'auto'
                             : 'crosshair'};"
                         on:pointerdown|preventDefault|stopPropagation={handlePointerdown}
@@ -275,7 +388,7 @@
         </div>
         <div
             class="absolute top-1 right-1 cursor-pointer select-none rounded-full text-gray-500"
-            style="font-size:5rem;line-height:1"
+            style="font-size:4.5rem;line-height:1"
             on:pointerup={pop}
         >
             <i class="fas fa-times-circle" />

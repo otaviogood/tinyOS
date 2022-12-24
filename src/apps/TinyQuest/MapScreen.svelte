@@ -167,6 +167,7 @@
             {$allTowns[$currentTownIndex]?.name}
         </div>
         {#key $currentTownIndex}
+            <div in:slide|local out:slide|local class="absolute left-1 bottom-[29.5rem] text-3xl text-teal-600 h-12">PUSH TO PLAY <i class="fa-solid fa-turn-down"></i></div>
             <img
                 in:fade|local={{ delay: 0, duration: 1200 }}
                 out:fade|local={{ delay: 600, duration: 1200 }}

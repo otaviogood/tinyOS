@@ -8,6 +8,7 @@ import Weather from "./apps/Weather.svelte";
 import MusicPlayer from "./apps/MusicPlayer.svelte";
 import Microphone from "./apps/Microphone.svelte";
 import Paint from "./apps/Paint/Paint.svelte";
+import Settings from "./apps/Settings.svelte";
 
 // import TinyQuest from "./apps/TinyQuest.svelte";
 // TinyQuest
@@ -61,6 +62,11 @@ export const routes = {
     "/paint/": Paint,
     "/#/paint": Paint,
     "/#/paint/": Paint,
+
+    "/settings": Settings,
+    "/settings/": Settings,
+    "/#/settings": Settings,
+    "/#/settings/": Settings,
 
     // TinyQuest
     "/tinyquest/mapscreen": MapScreen,

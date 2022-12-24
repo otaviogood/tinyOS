@@ -61,6 +61,9 @@
         "sillies": ["03zqJQJRLN0", "Y2Mate.is - Shake your sillies out!!!-03zqJQJRLN0-128k-1654598849061.mp3"],
         "witch doctor": ["cmjrTcYMqBM", "Y2Mate.is - WITCH DOCTOR (David Seville)  1958 original version-cmjrTcYMqBM-128k-1655757018233.mp3"],
         "trick or treat": ["veZlIX6d63Y", "Y2Mate.is - Who Took The Candy  Halloween Song  Super Simple Songs-veZlIX6d63Y-128k-1657225626911.mp3"],
+        "count": ["ZIniljT5lJI", "Y2Mate.is - Sesame Street Song of the Count-ZIniljT5lJI-128k-1657741419872.mp3"],
+        "count bones": ["LP2rVGbZXrw", "Y2Mate.is - Sesame Street The Count's Bones Song-LP2rVGbZXrw-128k-1656273325777.mp3"],
+        "batty bat": ["N7yAe2MBIpE", "Y2Mate.is - Sesame Street Batty Bat-N7yAe2MBIpE-128k-1656273051319.mp3"],
     };
     /*!speech
 [
@@ -91,6 +94,9 @@
         "sillies",
         "witch doctor",
         "trick or treat",
+        "count",
+        "count bones",
+        "batty bat",
 ]
     */
     let allMedia;
