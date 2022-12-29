@@ -57,6 +57,7 @@
         $allTowns.push(new Town(0.94, 0.62, "AIRPLANE CRASH", "/TinyQuest/airplanecrash"));
         $allTowns.push(new Town(0.94, 0.72, "READING", "/TinyQuest/reading1"));
         $allTowns.push(new Town(0.94, 0.82, "TONES", "/TinyQuest/listensounds"));
+        // $allTowns.push(new Town(0.94, 0.92, "BLOCKER", "/TinyQuest/blockdrop"));
         $allTowns = $allTowns;
         allRoads = [];
         // allRoads.push(new Road("ALPHABET TOWN", "LOWER CASE CAVE", $allTowns));
@@ -157,6 +158,7 @@
                 </div>
             {/if}
         {/each}
+        <div class="absolute right-[-1rem] bottom-[15rem] text-3xl text-teal-600 h-12" style="transform:translate({0}rem, {0}rem) rotate({-90}deg)">HERE THERE BE DRAGONS</div>
         <div
             in:fade|local={{ delay: 0, duration: 1200 }}
             out:fade|local={{ delay: 600, duration: 1200 }}

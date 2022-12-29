@@ -1,16 +1,99 @@
 <script>
+    import ImagePreview from "./ImagePreview.svelte";
+    import { createEventDispatcher } from "svelte";
+    const dispatch = createEventDispatcher();
+
     export let keyPromise;
+    export let dbPromise;
+
+    let deleteMode = 0;
+    let chosen = -1;
+
+    function reset() {
+        deleteMode = 0;
+        chosen = -1;
+    }
+
+    export async function del(key) {
+        return (await dbPromise).delete("keyval_paint", key);
+    }
+    export async function keys() {
+        return (await dbPromise).getAllKeys("keyval_paint");
+    }
+
+    function selectImage(key) {
+        if (deleteMode === 1) {
+            chosen = key;
+            deleteMode = 2;
+        } else {
+            keyPromise = null;
+            dispatch("loadimg", key);
+        }
+    }
+
+    function deletePainting() {
+        del(chosen);
+        // console.log("deleted", chosen);
+        reset();
+        keyPromise = keys();
+    }
 </script>
 
-<div class="fit-full-space bg-gray-900 z-10 text-4xl">
-    {#await keyPromise}
-        <p>...waiting</p>
-    {:then keys}
-        {#each keys as key, i}
-            <div>asd {key}</div>
-        {/each}
-        <p>The keys is {keys}</p>
-    {:catch error}
-        <p style="color: red">{error.message}</p>
-    {/await}
-</div>
+{#if keyPromise}
+    <div class="fit-full-space {deleteMode ? 'bg-red-900' : 'bg-gray-900'} z-10 text-4xl">
+        {#await keyPromise}
+            <p>...loading</p>
+        {:then keys}
+            <div
+                class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-7xl"
+                on:pointerup={() => {
+                    keyPromise = null;
+                    reset();
+                }}
+            >
+                <i class="fas fa-times-circle" />
+            </div>
+            <button
+                class="absolute top-2 left-2 bg-red-600 text-white text-5xl rounded-full h-20 w-20"
+                on:pointerup|preventDefault|stopPropagation={() => (deleteMode = 1)}
+            >
+                <i class="fas fa-trash-can" />
+            </button>
+            {#if deleteMode === 2}
+                <div class="fit-full-space z-20 bg-red-900 flex-center-all">
+                    <button
+                        class="bg-red-600 text-white text-9xl rounded-full p-8 m-8 z-20"
+                        on:pointerup|preventDefault|stopPropagation={() => deletePainting()}
+                    >
+                        <i class="fas fa-trash-can" />
+                    </button>
+                    <button
+                        class="bg-green-600 text-white text-9xl rounded-full p-8 m-8 z-20"
+                        on:pointerup|preventDefault|stopPropagation={() => {
+                            reset();
+                        }}
+                    >
+                        NO
+                    </button>
+                </div>
+            {/if}
+
+            <div class="absolute top-24 left-0 right-0 bottom-0">
+                <div class="flex flex-row flex-wrap overflow-y-auto h-full w-full pb-4">
+                    {#each keys as key, i}
+                        <div
+                            class="border-[.2rem] border-gray-900 p-6 bg-black rounded-3xl h-min"
+                            on:pointerup={() => selectImage(key)}
+                        >
+                            <ImagePreview {key} {dbPromise} />
+                        </div>
+                    {:else}
+                        <div class="flex-center-all w-full h-full text-7xl">NO PAINTINGS SAVED YET</div>
+                    {/each}
+                </div>
+            </div>
+        {:catch error}
+            <p style="color: red">{error.message}</p>
+        {/await}
+    </div>
+{/if}

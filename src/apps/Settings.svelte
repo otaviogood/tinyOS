@@ -13,8 +13,36 @@
         handleResize,
     } from "../screen";
     import { sleep, getRandomInt, shuffleArray, preventZoom, GetVideoThumb } from "../utils";
+    import { openDB, deleteDB, wrap, unwrap } from "idb";
 
     let hold = false;
+
+    function openFullscreen() {
+        let elem = document.documentElement;
+        if (elem.requestFullscreen) {
+            elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+            /* Safari */
+            elem.webkitRequestFullscreen();
+        } else if (elem.msRequestFullscreen) {
+            /* IE11 */
+            elem.msRequestFullscreen();
+        }
+    }
+
+    /* Close fullscreen */
+    function closeFullscreen() {
+        let elem = document.documentElement;
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            /* Safari */
+            document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+            /* IE11 */
+            document.msExitFullscreen();
+        }
+    }
 </script>
 
 <div class="fit-full-space select-none overflow-hidden" style="backgXXXround-color:black" on:touchstart={preventZoom}>
@@ -24,7 +52,7 @@
     >
         <div class="text-4xl m-4">
             <button
-                class="bg-gray-600 text-white text-3xl rounded p-4"
+                class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
                 on:pointerdown={() => {
                     hold = true;
                     setTimeout(() => {
@@ -34,6 +62,48 @@
                 on:pointerup={() => {
                     hold = false;
                 }}>reload (hold for 2 seconds)</button
+            ><br />
+            <button
+                class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
+                on:pointerdown={() => {
+                    hold = true;
+                    setTimeout(async () => {
+                        if (hold) {
+                            await deleteDB("keyval-store-tinyos", {
+                                blocked() {
+                                    // …
+                                },
+                            });
+                        }
+                    }, 4000);
+                }}
+                on:pointerup={() => {
+                    hold = false;
+                }}>clear all local storage (hold for 4 seconds)</button
+            ><br />
+            <button
+                class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
+                on:pointerdown={() => {
+                    hold = true;
+                    setTimeout(() => {
+                        if (hold) openFullscreen();
+                    }, 2000);
+                }}
+                on:pointerup={() => {
+                    hold = false;
+                }}>Fullscreen (hold for 2 seconds)</button
+            ><br />
+            <button
+                class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
+                on:pointerdown={() => {
+                    hold = true;
+                    setTimeout(() => {
+                        if (hold) closeFullscreen();
+                    }, 2000);
+                }}
+                on:pointerup={() => {
+                    hold = false;
+                }}>Not Fullscreen (hold for 2 seconds)</button
             >
         </div>
         <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" on:pointerup={pop}>

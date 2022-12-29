@@ -25,6 +25,7 @@ import Reading1 from "./apps/TinyQuest/Reading1.svelte";
 import BusStop from "./apps/TinyQuest/BusStop.svelte";
 import MathGrid from "./apps/TinyQuest/MathGrid.svelte";
 import AirplaneCrash from "./apps/TinyQuest/AirplaneCrash.svelte";
+import BlockDrop from "./apps/TinyQuest/BlockDrop.svelte";
 
 
 export const routes = {
@@ -88,6 +89,7 @@ export const routes = {
     "/tinyquest/busstop": BusStop,
     "/tinyquest/mathgrid": MathGrid,
     "/tinyquest/airplanecrash": AirplaneCrash,
+    "/tinyquest/blockdrop": BlockDrop,
 
     // // Wildcard parameter
     // "/go/*": MainGame,

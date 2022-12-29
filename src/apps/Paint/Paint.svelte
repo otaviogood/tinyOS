@@ -16,7 +16,7 @@
     import { BitmapABGR } from "./BitmapABGR";
     import { ColorABGR } from "./ColorABGR";
 
-    import { onMount, onDestroy } from "svelte";
+    import { onMount, onDestroy, tick } from "svelte";
     import { afterUpdate } from "svelte";
     // import ConfirmButton from "../ConfirmButton.svelte";
     import ColorWheel from "./ColorWheel.svelte";
@@ -32,8 +32,8 @@
     let bmpBottom;
     let topCtx;
     let bottomCtx;
-    let width = 800;
-    let height = 600;
+    let width = 1280;
+    let height = 960;
     let border = 2; // rem units
     let selectedColor = "#000000";
     let colorWheelVisible = false;
@@ -46,14 +46,37 @@
     let pointerLastPos = [0, 0];
     let colorSampler;
 
-    onMount(() => {
+    // TODO: make aspect ratios not just scale to fill space.
+    // width and height to scale the image to onscreen.
+    let visWidth = width;
+    let visHeight = height;
+
+    onMount(async () => {
+        var rect = document.getElementById("canvasholder").getBoundingClientRect();
+        // console.log("Paint mount", rect.width, rect.height);
+        // convert rem to px units
+        let border2 = $bigScale * 0.01 * border;
+
+        width = Math.floor(rect.width - border2 * 2) | 0;
+        height = Math.floor(rect.height - border2 * 2) | 0;
+        visWidth = width;
+        visHeight = height;
+        canvasTop.width = width;
+        canvasTop.height = height;
+        canvasBottom.width = width;
+        canvasBottom.height = height;
         topCtx = canvasTop.getContext("2d");
         bottomCtx = canvasBottom.getContext("2d");
-        bmpTop = new BitmapABGR(canvasTop.width, canvasTop.height, topCtx);
+        // log canvasTop element's width and height style properties
+        // console.log("Paint mount", canvasTop.style.width, canvasTop.style.height);
+        console.log("Paint mount", canvasTop.width, canvasTop.height);
+        bmpTop = new BitmapABGR(width, height, topCtx);
         // bmpTop.DrawCircle(200, 100, 50, 0xffa0ffff);
-        bmpBottom = new BitmapABGR(canvasBottom.width, canvasBottom.height, bottomCtx);
+        bmpBottom = new BitmapABGR(width, height, bottomCtx);
         bmpBottom.Clear(0xff707070);
         // bmpBottom.DrawCircle(200, 200, 50, 0xffa0a0ff);
+
+        await tick();
         bmpBottom.DrawImage(0, 0);
         bmpTop.DrawImage(0, 0);
 
@@ -84,12 +107,17 @@
     let newLayer = null;
 
     function getPointerPos(ev) {
+        // console.log("ctxw", bottomCtx.canvas.width, bottomCtx.canvas.height);
+        let actualWidth = bottomCtx.canvas.width;
+        let actualHeight = bottomCtx.canvas.height;
+        // Does this stall the UI thread? Cache the canvas width and height on mount / resize?
         var rect = document.getElementById("canvasholder").getBoundingClientRect();
+        // console.log("getPointerPos", rect.top, rect.bottom);
         // convert rem to px units
         let border2 = $bigScale * 0.01 * border;
-        let x = ((ev.clientX - border2 - rect.left) / (rect.right - rect.left - border2 * 2)) * width;
-        let y = ((ev.clientY - border2 - rect.top) / (rect.bottom - rect.top - border2 * 2)) * height;
-        pointerXY = [Math.floor(x), Math.floor(y)];
+        let x = (ev.clientX - border2 - rect.left) / (rect.right - rect.left - border2 * 2);
+        let y = (ev.clientY - border2 - rect.top) / (rect.bottom - rect.top - border2 * 2);
+        pointerXY = [Math.floor(x * width), Math.floor(y * height)];
         return pointerXY;
     }
 
@@ -147,11 +175,12 @@
                 // showNewLayer();
                 last = now();
             }
+            bmpTop.DrawImage(0, 0);
         } else if (pointerMode === 1) {
             colorSampler = sampleColor();
         }
         pointerLastPos = xy;
-        bmpTop.DrawImage(0, 0);
+        // bmpTop.DrawImage(0, 0);
     }
 
     function sampleColor() {
@@ -240,22 +269,33 @@
         console.log("Saved to indexedDB");
     }
 
-    async function load() {
+    async function load(id) {
         // Load from indexedDB using idb
-        let allKeys = await keys();
-        let id = allKeys[0];
+        // let allKeys = await keys();
+        // id = allKeys[0];
         let file = await get(id);
         let url = URL.createObjectURL(file);
         let img = new Image();
         img.src = url;
-        img.onload = function () {
+        img.onload = async function () {
             // copy img into Int32Array in bmpBottom.data2
             let w = img.width;
             let h = img.height;
+            width = w;
+            height = h;
+            console.log("loading", w, h);
+            topCtx = canvasTop.getContext("2d");
+            bmpTop = new BitmapABGR(w, h, topCtx);
+            bottomCtx = canvasBottom.getContext("2d");
+            bmpBottom = new BitmapABGR(w, h, bottomCtx);
             let data = bmpBottom.data2; //new Int32Array(w * h);
             let ctx = document.createElement("canvas").getContext("2d");
             ctx.canvas.width = w;
             ctx.canvas.height = h;
+            topCtx.canvas.width = w;
+            topCtx.canvas.height = h;
+            bottomCtx.canvas.width = w;
+            bottomCtx.canvas.height = h;
             ctx.drawImage(img, 0, 0);
             let imgData = ctx.getImageData(0, 0, w, h);
             for (let i = 0; i < w * h; i++) {
@@ -266,8 +306,9 @@
                     imgData.data[i * 4];
             }
             bmpBottom.data2 = data;
+            // Why do I need this timeout? Something to do with creating that canvas up top?
+            await tick();
             bmpBottom.DrawImage(0, 0);
-
             bmpTop.Clear(0);
         };
         console.log("Loaded from indexedDB");
@@ -277,7 +318,25 @@
     async function browse() {
         allKeys = keys();
     }
-    browse();
+    let hw = false;
+    function calcScale(width, height) {
+        let scale;
+        let aspect = width / height;
+        let visAspect = visWidth / visHeight;
+        if (aspect > visAspect) {
+            // width is limiting
+            hw = true;
+            scale = visWidth / width;
+            console.log("width is limiting", width, height, visWidth, visHeight);
+        } else {
+            // height is limiting
+            hw = false;
+            scale = visHeight / height;
+            console.log("height is limiting", width, height, visWidth, visHeight);
+        }
+        console.log("scale", scale);
+        return scale;
+    }
 </script>
 
 <div class="fit-full-space select-none overflow-hidden" style="background-color:#404040;" on:touchstart={preventZoom}>
@@ -285,7 +344,14 @@
         class="relative overflow-hidden select-none"
         style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px;"
     >
-        <!-- <ImageBrowser keyPromise={allKeys}></ImageBrowser> -->
+        <ImageBrowser
+            keyPromise={allKeys}
+            {dbPromise}
+            on:loadimg={(k) => {
+                allKeys = null;
+                load(k.detail);
+            }}
+        />
         <div class="flex-center-all flex-col h-full w-full">
             <!-- on:pointerdown|preventDefault|stopPropagation={() => console.log("colorWheelVisible = false")} -->
             <div
@@ -315,12 +381,13 @@
                     <div
                         style="display:inline-block;text-align:left;position: relative;padding:.5rem {border}rem .5rem {border}rem;width:max-content;"
                     >
-                        <!-- <span class="w-24 h-24 p-6 align-middle" on:click={() => browse()} style="background-color:#000000;" >browse</span> -->
-                        <span class="w-24 h-24 p-6 align-middle" on:click={() => load()} style="background-color:#000000;"
-                            >load</span
+                        <span
+                            class="w-24 h-24 px-4 text-gray-300 hover:text-gray-100 active:text-yellow-400 align-middle text-6xl"
+                            on:click={() => browse()}><i class="fas fa-icons" /></span
                         >
-                        <span class="w-24 h-24 mr-48 p-6 align-middle" on:click={() => save()} style="background-color:#000000;"
-                            >save</span
+                        <span
+                            class="w-24 h-24 px-4 text-gray-300 hover:text-gray-100 active:text-yellow-400 mr-48 align-middle text-6xl"
+                            on:click={() => save()}><i class="fas fa-file-upload" /></span
                         >
                         <span class="colorcircle" on:click={() => selectColor("#000000")} style="background-color:#000000;" />
                         <span class="colorcircle" on:click={() => selectColor("#ff4040")} style="background-color:#ff4040;" />
@@ -355,8 +422,9 @@
                     <div />
                     <div
                         id="canvasholder"
-                        style="display:inline-block;text-align:left;touch-action:none;position:relative;height:69rem;width:99rem;--aspect-ratio:{width /
-                            height};border:{border}rem solid #202020;border-radius: {border}rem;cursor:{pointerMode === 0
+                        class="overflow-hidden"
+                        style="display:inline-block;text-align:left;touch-action:none;position:relative;height:69rem;width:99rem;--aspeXXct-ratio:{width /
+                            height};border:{border}rem solid #202020;background-color:#202020;border-radius: {border}rem;cursor:{pointerMode === 0
                             ? 'auto'
                             : 'crosshair'};"
                         on:pointerdown|preventDefault|stopPropagation={handlePointerdown}

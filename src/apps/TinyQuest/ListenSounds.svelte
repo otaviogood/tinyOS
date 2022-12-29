@@ -25,6 +25,7 @@
     import { Animator, frameCount, animateCount } from "../../animator";
     import { pulseShadow, scaleDown, scalePulse } from "./Transitions";
     import IconsMisc from "./IconsMisc.svelte";
+    import FourByThreeScreen from "../../components/FourByThreeScreen.svelte";
 
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
@@ -228,90 +229,84 @@
     // startGame();
 </script>
 
-<div class="fit-full-space select-none overflow-hidden" style="backgXXXround-color:black" on:touchstart={preventZoom}>
-    <div
-        class="relative overflow-hidden select-none"
-        style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px"
-    >
-        {#if !started}
-            <div class="flex-center-all h-full w-full flex flex-col bg-black">
-                <img
-                    src="TinyQuest/gamedata/listensounds/otavio_beats_and_dj_and_speakers_and_lights_vector_art_25a81f5b-ef79-412c-ae84-6a30e5c42481.webp"
-                    class="absolute"
-                    alt="skyscraper"
-                    style="height:74rem"
-                />
-                <div
-                    in:fade={{ duration: 2000 }}
-                    class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1"
-                    style="margin-top:26rem;background-color:#40101080"
-                >
-                    {town?.name}
-                </div>
-                <button
-                    in:fade={{ duration: 2000 }}
-                    class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10"
-                    style="margin-top:24rem"
-                    on:pointerup|preventDefault|stopPropagation={startGame}>START</button
-                >
+<FourByThreeScreen>
+    {#if !started}
+        <div class="flex-center-all h-full w-full flex flex-col bg-black">
+            <img
+                src="TinyQuest/gamedata/listensounds/otavio_beats_and_dj_and_speakers_and_lights_vector_art_25a81f5b-ef79-412c-ae84-6a30e5c42481.webp"
+                class="absolute"
+                alt="skyscraper"
+                style="height:74rem"
+            />
+            <div
+                in:fade={{ duration: 2000 }}
+                class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1"
+                style="margin-top:26rem;background-color:#40101080"
+            >
+                {town?.name}
             </div>
-        {:else}
-            <div class="flex flex-row h-full w-full">
-                <div class="fit-full-space" style="">
+            <button
+                in:fade={{ duration: 2000 }}
+                class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10"
+                style="margin-top:24rem"
+                on:pointerup|preventDefault|stopPropagation={startGame}>START</button
+            >
+        </div>
+    {:else}
+        <div class="flex flex-row h-full w-full">
+            <div class="fit-full-space" style="">
+                <div
+                    class="absolute"
+                    style="left:-30rem;right:-30rem;top:0rem;bottom:-2rem;width:160rem;background-color:{playState
+                        ? '#080828'
+                        : '#280828'};"
+                >
+                    <!-- <img src="TinyQuest/gamedata/rocketlaunch/background.webp" class="absolute" alt="" style="bottom:0px;" /> -->
+                </div>
+                {#key played0}
                     <div
-                        class="absolute"
-                        style="left:-30rem;right:-30rem;top:0rem;bottom:-2rem;width:160rem;background-color:{playState
-                            ? '#080828'
-                            : '#280828'};"
+                        in:scalePulse|local={{ delay: 0, duration: 200 }}
+                        class="absolute rounded-full {currentSong[currentPlayIndex] === 0 && playState === 0
+                            ? 'orbshow'
+                            : 'orb'} flex-center-all font-bold"
+                        style="width:16rem;height:16rem;left:16rem;top:30rem;"
+                        on:pointerdown|preventDefault|stopPropagation={buttonA}
                     >
-                        <!-- <img src="TinyQuest/gamedata/rocketlaunch/background.webp" class="absolute" alt="" style="bottom:0px;" /> -->
-                    </div>
-                    {#key played0}
-                        <div
-                            in:scalePulse|local={{ delay: 0, duration: 200 }}
-                            class="absolute rounded-full {currentSong[currentPlayIndex] === 0 && playState === 0
-                                ? 'orbshow'
-                                : 'orb'} flex-center-all font-bold"
-                            style="width:16rem;height:16rem;left:16rem;top:30rem;"
-                            on:pointerdown|preventDefault|stopPropagation={buttonA}
-                        >
-                            <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">
-                                <i class="fas fa-music text-9xl text-pink-400" />
-                            </div>
+                        <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">
+                            <i class="fas fa-music text-9xl text-pink-400" />
                         </div>
+                    </div>
 
-                        <!-- <div
+                    <!-- <div
                             class="absolute rounXXded-full border border-pink-500 hex2"
                             style="width:16rem;height:16rem;left:15rem;top:30rem;"
                         >
                             <i class="absolute top-24 left-32 fas fa-music text-9xl text-pink-400" />
                         </div> -->
-                    {/key}
-                    {#key played1}
-                        <button
-                            in:scalePulse|local={{ delay: 0, duration: 200 }}
-                            class="absolute rounded-full {currentSong[currentPlayIndex] === 1 && playState === 0
-                                ? 'orbshow'
-                                : 'orb'} flex-center-all font-bold"
-                            style="width:16rem;height:16rem;left:56rem;top:30rem;"
-                            on:pointerdown|preventDefault|stopPropagation={buttonB}
-                        >
-                            <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">
-                                <i class="fas fa-music text-9xl text-pink-400" />
-                            </div>
-                        </button>
-                    {/key}
-                </div>
-                <div class="absolute top-8 left-8 h-8 flex flex-row flex-wrap text-white" style="width:80rem">
-                    {#each Array(songLength) as _, i}
-                        <div
-                            class="text-4xl text-white bg-pink-500 w-12 h-12 rounded-full flex-center-all m-2"
-                        >
-                            {i + 1}
+                {/key}
+                {#key played1}
+                    <button
+                        in:scalePulse|local={{ delay: 0, duration: 200 }}
+                        class="absolute rounded-full {currentSong[currentPlayIndex] === 1 && playState === 0
+                            ? 'orbshow'
+                            : 'orb'} flex-center-all font-bold"
+                        style="width:16rem;height:16rem;left:56rem;top:30rem;"
+                        on:pointerdown|preventDefault|stopPropagation={buttonB}
+                    >
+                        <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">
+                            <i class="fas fa-music text-9xl text-pink-400" />
                         </div>
-                    {/each}
-                </div>
-                <!-- {#each currentSong as a, i}
+                    </button>
+                {/key}
+            </div>
+            <div class="absolute top-8 left-8 h-8 flex flex-row flex-wrap text-white" style="width:80rem">
+                {#each Array(songLength) as _, i}
+                    <div class="text-4xl text-white bg-pink-500 w-12 h-12 rounded-full flex-center-all m-2">
+                        {i + 1}
+                    </div>
+                {/each}
+            </div>
+            <!-- {#each currentSong as a, i}
                     <div
                         class="absolute top-32 text-4xl text-white bg-green-500 w-12 h-12 rounded-full flex-center-all"
                         style="left:{i * 4 + 2}rem"
@@ -319,46 +314,45 @@
                         {a}
                     </div>
                 {/each} -->
-                <!-- <div class="absolute top-0 left-0 text-4xl text-white">{playState}</div> -->
-                {#if playState === 2}
-                    <div
-                        class="absolute flex-center-all w-full h-full text-pink-200"
-                        style="font-size:30rem;line-height:30rem;background-color:#302060c0"
-                        on:pointerdown={startGame}
-                    >
-                        OOPS
-                    </div>
-                {/if}
-
+            <!-- <div class="absolute top-0 left-0 text-4xl text-white">{playState}</div> -->
+            {#if playState === 2}
                 <div
-                    class="absolute right-0 top-0 cursor-pointer select-none m-4"
-                    style="padding:0 0.75rem;border-radius:0.75rem;"
-                    on:pointerup|preventDefault|stopPropagation={resetToSplashScreen}
-                    on:touchstart={preventZoom}
+                    class="absolute flex-center-all w-full h-full text-pink-200"
+                    style="font-size:30rem;line-height:30rem;background-color:#302060c0"
+                    on:pointerdown={startGame}
                 >
-                    <IconsMisc icon="treasure-map" size="7.5rem" style="" />
+                    OOPS
                 </div>
+            {/if}
 
-                <!-- <div class="absolute right-0 top-0 bottom-0 flex flex-row">
+            <div
+                class="absolute right-0 top-0 cursor-pointer select-none m-4"
+                style="padding:0 0.75rem;border-radius:0.75rem;"
+                on:pointerup|preventDefault|stopPropagation={resetToSplashScreen}
+                on:touchstart={preventZoom}
+            >
+                <IconsMisc icon="treasure-map" size="7.5rem" style="" />
+            </div>
+
+            <!-- <div class="absolute right-0 top-0 bottom-0 flex flex-row">
                     <StarBar {maxStars} {starCount} bg="#00000080" on:pointerup={resetToSplashScreen} />
                 </div> -->
-                <WinScreen
-                    {maxStars}
-                    active={finalGraphic}
-                    bg="#00000010"
-                    on:startGame={startGame}
-                    on:resetToSplashScreen={resetToSplashScreen}
-                    style="position:absolute;top:10rem;z-index:100;"
-                />
-            </div>
-            <!-- <div class="absolute left-2 bottom-2" style="width:{60*5+16}px;height:{16.67*0.2}rem;background-color:#ffff00a0">
+            <WinScreen
+                {maxStars}
+                active={finalGraphic}
+                bg="#00000010"
+                on:startGame={startGame}
+                on:resetToSplashScreen={resetToSplashScreen}
+                style="position:absolute;top:10rem;z-index:100;"
+            />
+        </div>
+        <!-- <div class="absolute left-2 bottom-2" style="width:{60*5+16}px;height:{16.67*0.2}rem;background-color:#ffff00a0">
                 {#each timingQueue as t, i}
                     <div class="bg-red-600 absolute bottom-0" style="width:4px;height:{Math.min(74,t*0.2)}rem;left:{i * 5}px"></div>
                 {/each}
             </div> -->
-        {/if}
-    </div>
-</div>
+    {/if}
+</FourByThreeScreen>
 
 <style>
     .orb {
