@@ -1,152 +1,177 @@
+<!-- Svelte / Tailwind component to take a picture from the camera with a preview, and save them as PNGs -->
 <script>
+    import { onMount } from "svelte";
+    import { pop } from "svelte-spa-router";
+    import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
+    import ImageBrowser from "./Paint/ImageBrowser.svelte";
+    import { openDB, deleteDB, wrap, unwrap } from "idb";
 
-  // The width and height of the captured photo. We will set the
-  // width to the value defined here, but the height will be
-  // calculated based on the aspect ratio of the input stream.
+    let video;
+    let canvas;
+    let photos = [];
+    let stream;
+    let facingMode = "environment"; // default to rear facing camera (user, environment)
+    let previewImage = null;
 
-  const width = 320; // We will scale the photo width to this
-  let height = 0; // This will be computed based on the input stream
+    onMount(() => {
+        startCamera();
 
-  // |streaming| indicates whether or not we're currently streaming
-  // video from the camera. Obviously, we start at false.
+        return () => {
+            stopCamera();
+        };
+    });
 
-  let streaming = false;
-
-  // The various HTML elements we need to configure or control. These
-  // will be set by the startup() function.
-
-  let video = null;
-  let canvas = null;
-  let photo = null;
-  let startbutton = null;
-
-  function showViewLiveResultButton() {
-    if (window.self !== window.top) {
-      // Ensure that if our document is in a frame, we get the user
-      // to first open it in its own tab or window. Otherwise, it
-      // won't be able to request permission for camera access.
-      document.querySelector(".contentarea").remove();
-      const button = document.createElement("button");
-      button.textContent = "View live result of the example code above";
-      document.body.append(button);
-      button.addEventListener("click", () => window.open(location.href));
-      return true;
+    function startCamera() {
+        navigator.mediaDevices
+            .getUserMedia({ video: { facingMode }, audio: false })
+            .then((s) => {
+                stream = s;
+                video.srcObject = stream;
+                video.play();
+            })
+            .catch((err) => {
+                console.error("Unable to access camera:", err);
+            });
     }
-    return false;
-  }
 
-  function startup() {
-    if (showViewLiveResultButton()) {
-      return;
+    function stopCamera() {
+        video.srcObject = null;
+        stream.getTracks().forEach((track) => track.stop());
+        stream = null;
     }
-    video = document.getElementById("video");
-    canvas = document.getElementById("canvas");
-    photo = document.getElementById("photo");
-    startbutton = document.getElementById("startbutton");
 
-    navigator.mediaDevices
-      .getUserMedia({ video: true, audio: false })
-      .then((stream) => {
-        video.srcObject = stream;
-        video.play();
-      })
-      .catch((err) => {
-        console.error(`An error occurred: ${err}`);
-      });
+    async function takeSnapshot() {
+        canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+        await save();
+        const img = canvas.toDataURL("image/png");
+        // make a circular buffer of 3 images
+        if (photos.length >= 3) photos.shift();
+        photos.push(img);
+        photos = photos;
+    }
 
-    video.addEventListener(
-      "canplay",
-      (ev) => {
-        if (!streaming) {
-          height = video.videoHeight / (video.videoWidth / width);
+    const dbPromise = openDB("keyval-store-tinyos-camera", 1, {
+        upgrade(db) {
+            console.log("upgrade");
+            db.createObjectStore("keyval_camera");
+            console.log("upgrade done");
+        },
+    });
 
-          // Firefox currently has a bug where the height can't be read from
-          // the video, so we will make assumptions if this happens.
+    export async function get(key) {
+        return (await dbPromise).get("keyval_camera", key);
+    }
+    export async function set(key, val) {
+        return (await dbPromise).put("keyval_camera", val, key);
+    }
+    export async function del(key) {
+        return (await dbPromise).delete("keyval_camera", key);
+    }
+    export async function clear() {
+        return (await dbPromise).clear("keyval_camera");
+    }
+    export async function keys() {
+        return (await dbPromise).getAllKeys("keyval_camera");
+    }
 
-          if (isNaN(height)) {
-            height = width / (4 / 3);
-          }
+    function dataURItoBlob(dataURI) {
+        // convert base64/URLEncoded data component to raw binary data held in a string
+        var byteString;
+        if (dataURI.split(",")[0].indexOf("base64") >= 0) byteString = atob(dataURI.split(",")[1]);
+        else byteString = unescape(dataURI.split(",")[1]);
 
-          video.setAttribute("width", width);
-          video.setAttribute("height", height);
-          canvas.setAttribute("width", width);
-          canvas.setAttribute("height", height);
-          streaming = true;
+        // separate out the mime component
+        var mimeString = dataURI.split(",")[0].split(":")[1].split(";")[0];
+
+        // write the bytes of the string to a typed array
+        var ia = new Uint8Array(byteString.length);
+        for (var i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
         }
-      },
-      false
-    );
 
-    startbutton.addEventListener(
-      "click",
-      (ev) => {
-        takepicture();
-        ev.preventDefault();
-      },
-      false
-    );
-
-    clearphoto();
-  }
-
-  // Fill the photo with an indication that none has been
-  // captured.
-
-  function clearphoto() {
-    const context = canvas.getContext("2d");
-    context.fillStyle = "#AAA";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    const data = canvas.toDataURL("image/png");
-    photo.setAttribute("src", data);
-  }
-
-  // Capture a photo by fetching the current contents of the video
-  // and drawing it into a canvas, then converting that to a PNG
-  // format data URL. By drawing it on an offscreen canvas and then
-  // drawing that to the screen, we can change its size and/or apply
-  // other changes before drawing it.
-
-  function takepicture() {
-    const context = canvas.getContext("2d");
-    if (width && height) {
-      canvas.width = width;
-      canvas.height = height;
-      context.drawImage(video, 0, 0, width, height);
-
-      const data = canvas.toDataURL("image/png");
-      photo.setAttribute("src", data);
-    } else {
-      clearphoto();
+        return new Blob([ia], { type: mimeString });
     }
-  }
 
-  // Set up our event listener to run the startup process
-  // once loading is complete.
-  window.addEventListener("load", startup, false);
+    async function save() {
+        // Save to indexedDB using idb
+        let data = canvas.toDataURL("image/png");
+        let blob = dataURItoBlob(data);
+        let id = Date.now(); // Use current time as id since kids won't be able to type a name.
+        let name = "camera_" + id + ".png";
+        let file = new File([blob], name, { type: "image/png" });
+        // let store = db.transaction("files", "readwrite").objectStore("files");
+        // store.put(file, id);
+        await set(id, file);
+        console.log("Saved to indexedDB", name);
+    }
 
+    async function load(key) {
+        // Load from indexedDB using idb
+        let file = await get(key);
+        previewImage = URL.createObjectURL(file);
+    }
+
+    let allKeys = null;
+    async function browse() {
+        allKeys = keys();
+    }
+
+    function toggleFacing() {
+        facingMode = facingMode === "user" ? "environment" : "user";
+        stopCamera();
+        startCamera();
+    }
 </script>
 
-<div class="contentarea">
-  <h1>MDN - navigator.mediaDevices.getUserMedia(): Still photo capture demo</h1>
-  <p>
-    This example demonstrates how to set up a media stream using your built-in
-    webcam, fetch an image from that stream, and create a PNG using that image.
-  </p>
-  <div class="camera">
-    <video id="video">Video stream not available.</video>
-    <button id="startbutton">Take photo</button>
-  </div>
-  <canvas id="canvas"> </canvas>
-  <div class="output">
-    <img id="photo" alt="The screen capture will appear in this box." />
-  </div>
-  <p>
-    Visit our article
-    <a
-      href="https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Taking_still_photos">
-      Taking still photos with WebRTC</a
-    >
-    to learn more about the technologies used here.
-  </p>
-</div>
+<FourByThreeScreen>
+    <ImageBrowser
+        keyPromise={allKeys}
+        {dbPromise}
+        dbStr={"keyval_camera"}
+        on:loadimg={(k) => {
+            load(k.detail);
+        }}
+    />
+    <!-- Make a fullscreen image preview of the key that was returned from the ImageBrowser. -->
+    {#if previewImage}
+        <div class="absolute top-0 left-0 w-full h-full p-2 bg-black z-10">
+            <img src={previewImage} class="w-full h-full object-contain" on:pointerup={() => (previewImage = null)} />
+            <!-- <div
+                class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl"
+                on:pointerup={() => (previewImage = null)}
+            >
+                <i class="fas fa-times-circle" />
+            </div> -->
+        </div>
+    {/if}
+    <div class="flex flex-col overflow-auto">
+        <video
+            bind:this={video}
+            class="block"
+            style="wiXXdth:512px;heXXight:480px;max-height:62rem;{false ? '' : 'border:2px solid #404040;'}"
+        />
+        <canvas bind:this={canvas} width="640" height="480" style="display:none;" />
+
+        <div class="flex flex-row overflow-hidden">
+            {#each photos as photo}
+                <img src={photo} class="max-h-32 m-2 mt-8" on:pointerup={browse} />
+            {/each}
+        </div>
+    </div>
+    <button class="absolute right-[4rem] bottom-10 cursor-pointer select-none text-9xl w-32 h-32" on:click={browse}>
+        <i class="fa-solid fa-images" />
+    </button>
+    <button class="absolute right-[20rem] bottom-10 cursor-pointer select-none text-9xl w-32 h-32" on:click={toggleFacing}>
+        <i class="fa-solid fa-camera-rotate" />
+    </button>
+    <button
+        class="absolute left-[43.5rem] bottom-10 cursor-pointer select-none rounded-full bg-white w-32 h-32"
+        on:click={takeSnapshot}
+    />
+    <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" on:pointerup={pop}>
+        <i class="fas fa-times-circle" />
+    </div>
+</FourByThreeScreen>
+
+<style>
+</style>

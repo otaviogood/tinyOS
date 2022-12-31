@@ -69,17 +69,22 @@
                     hold = true;
                     setTimeout(async () => {
                         if (hold) {
-                            await deleteDB("keyval-store-tinyos", {
+                            // TODO: make these share DBs. hacky to have to put another one in for each app
+                            await deleteDB("keyval-store-tinyos-paint", {
                                 blocked() {
-                                    // …
                                 },
                             });
+                            await deleteDB("keyval-store-tinyos-camera", {
+                                blocked() {
+                                },
+                            });
+                            window.location.reload();
                         }
                     }, 4000);
                 }}
                 on:pointerup={() => {
                     hold = false;
-                }}>clear all local storage (hold for 4 seconds)</button
+                }}>clear all local storage (paintings, photos) (hold for 4 seconds)</button
             ><br />
             <button
                 class="bg-gray-600 text-white text-3xl rounded p-4 m-2"

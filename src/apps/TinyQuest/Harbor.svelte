@@ -8,7 +8,18 @@
     import { pop } from "svelte-spa-router";
     import { allTowns, currentTownIndex, earnedStar } from "./stores";
     import { spin } from "./Transitions";
-    import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";
+    import {
+        invAspectRatio,
+        fullWidth,
+        fullHeight,
+        landscape,
+        bigWidth,
+        bigHeight,
+        bigScale,
+        bigPadX,
+        bigPadY,
+        handleResize,
+    } from "../../screen";
     import { sleep, getRandomInt, preventZoom } from "./util";
     import { pulseShadow, scaleDown, scalePulse } from "./Transitions";
     import { tweened } from "svelte/motion";
@@ -33,6 +44,7 @@
     let town;
     let gameType;
     let stage = 0;
+    let seed = 0;
 
     const scale = 19.8;
     const spaceX = scale * 0.5;
@@ -46,8 +58,12 @@
     let grid = [];
     let gridWidth;
     let gridHeight;
-    function setGrid(x, y, a) { grid[x + y * gridWidth] = a; }
-    function getGrid(x, y) { return grid[x + y * gridWidth]; }
+    function setGrid(x, y, a) {
+        grid[x + y * gridWidth] = a;
+    }
+    function getGrid(x, y) {
+        return grid[x + y * gridWidth];
+    }
     function calcGrid() {
         for (let i = 0; i < grid.length; i++) {
             if (grid[i] > 0) grid[i] = 0;
@@ -88,7 +104,7 @@
             } else {
                 await sleep(3000);
                 stage++;
-                setStage(stage);
+                setStage(stage, seed);
             }
         } else if (winSpot[0] === -1000) {
             myShip.x += 0.01;
@@ -122,8 +138,8 @@
             setGrid(0, i, -2 - 16);
             setGrid(gridWidth - 1, i, -2 - 16);
         }
-        setGrid(0,0, -1);
-        setGrid(w-1,h-1, -1);
+        setGrid(0, 0, -1);
+        setGrid(w - 1, h - 1, -1);
         for (let i = 0; i < gridWidth * gridHeight; i++) {
             if (grid[i] < 0) {
                 if (Math.random() < 0.1) grid[i] += -256 * 1;
@@ -136,60 +152,104 @@
         console.log(grid);
     }
 
-    function setStage(s) {
-        if (s === 0) {
-            ships = [
-                { img: "sailboat1", x: 2, y: 4, w: 1, h: 1 },
-                { img: "tanker2", x: 1, y: 2, w: 2, h: 1 },
-            ];
+    function setStage(stage, seed) {
+        if (!seed) {
+            if (stage === 0) {
+                ships = [
+                    { img: "sailboat1", x: 2, y: 4, w: 1, h: 1 },
+                    { img: "tanker2", x: 1, y: 2, w: 2, h: 1 },
+                ];
+            } else if (stage === 1) {
+                ships = [
+                    { img: "yacht1", x: 1, y: 2, w: 1, h: 1 },
+                    { img: "container2", x: 4, y: 2, w: 1, h: 2 },
+                ];
+            } else if (stage === 2) {
+                ships = [
+                    { img: "tanker2", x: 1, y: 1, w: 2, h: 1 },
+                    { img: "tugboat1", x: 2, y: 2, w: 1, h: 1 },
+                    { img: "cruise2", x: 3, y: 1, w: 1, h: 2 },
+                    { img: "container2", x: 2, y: 3, w: 2, h: 1 },
+                ];
+            } else if (stage === 3) {
+                ships = [
+                    { img: "tugboat1", x: 2, y: 2, w: 1, h: 1 },
+                    { img: "tanker2", x: 1, y: 1, w: 2, h: 1 },
+                    { img: "container2", x: 4, y: 1, w: 1, h: 2 },
+                    { img: "cruise2", x: 3, y: 2, w: 1, h: 2 },
+                    { img: "sailboat1", x: 2, y: 4, w: 1, h: 1 },
+                    { img: "yacht1", x: 3, y: 4, w: 1, h: 1 },
+                ];
+            } else if (stage === 4) {
+                ships = [
+                    { img: "fishing1", x: 1, y: 1, w: 1, h: 1 },
+                    { img: "container2", x: 1, y: 3, w: 2, h: 1 },
+                    { img: "tanker2", x: 2, y: 1, w: 1, h: 2 },
+                    { img: "tugboat1", x: 3, y: 1, w: 1, h: 1 },
+                    { img: "research2", x: 4, y: 2, w: 1, h: 2 },
+                    { img: "cruise2", x: 3, y: 2, w: 1, h: 2 },
+                    { img: "yacht1", x: 3, y: 4, w: 1, h: 1 },
+                ];
+            } else if (stage === 5) {
+                ships = [
+                    { img: "research2", x: 1, y: 3, w: 2, h: 1 },
+                    { img: "tanker2", x: 2, y: 1, w: 1, h: 2 },
+                    { img: "tugboat1", x: 3, y: 1, w: 1, h: 1 },
+                    { img: "container2", x: 4, y: 2, w: 1, h: 2 },
+                    { img: "cruise2", x: 3, y: 2, w: 1, h: 2 },
+                    { img: "fishing1", x: 2, y: 4, w: 1, h: 1 },
+                    { img: "sailboat1", x: 1, y: 4, w: 1, h: 1 },
+                    { img: "yacht1", x: 3, y: 4, w: 1, h: 1 },
+                ];
+            }
             clearGridWithBorders(6, 6, 5, 2);
-        } else if (s === 1) {
-            ships = [
-                { img: "yacht1", x: 1, y: 2, w: 1, h: 1 },
-                { img: "container2", x: 4, y: 2, w: 1, h: 2 },
-            ];
-            clearGridWithBorders(6, 6, 5, 2);
-        } else if (s === 2) {
-            ships = [
-                { img: "tanker2", x: 1, y: 1, w: 2, h: 1 },
-                { img: "tugboat1", x: 2, y: 2, w: 1, h: 1 },
-                { img: "cruise2", x: 3, y: 1, w: 1, h: 2 },
-                { img: "container2", x: 2, y: 3, w: 2, h: 1 },
-            ];
-            clearGridWithBorders(6, 6, 5, 2);
-        } else if (s === 3) {
-            ships = [
-                { img: "tugboat1", x: 2, y: 2, w: 1, h: 1 },
-                { img: "tanker2", x: 1, y: 1, w: 2, h: 1 },
-                { img: "container2", x: 4, y: 1, w: 1, h: 2 },
-                { img: "cruise2", x: 3, y: 2, w: 1, h: 2 },
-                { img: "sailboat1", x: 2, y: 4, w: 1, h: 1 },
-                { img: "yacht1", x: 3, y: 4, w: 1, h: 1 },
-            ];
-            clearGridWithBorders(6, 6, 5, 2);
-        } else if (s === 4) {
-            ships = [
-                { img: "fishing1", x: 1, y: 1, w: 1, h: 1 },
-                { img: "container2", x: 1, y: 3, w: 2, h: 1 },
-                { img: "tanker2", x: 2, y: 1, w: 1, h: 2 },
-                { img: "tugboat1", x: 3, y: 1, w: 1, h: 1 },
-                { img: "research2", x: 4, y: 2, w: 1, h: 2 },
-                { img: "cruise2", x: 3, y: 2, w: 1, h: 2 },
-                { img: "yacht1", x: 3, y: 4, w: 1, h: 1 },
-            ];
-            clearGridWithBorders(6, 6, 5, 2);
-        } else if (s === 5) {
-            ships = [
-                { img: "research2", x: 1, y: 3, w: 2, h: 1 },
-                { img: "tanker2", x: 2, y: 1, w: 1, h: 2 },
-                { img: "tugboat1", x: 3, y: 1, w: 1, h: 1 },
-                { img: "container2", x: 4, y: 2, w: 1, h: 2 },
-                { img: "cruise2", x: 3, y: 2, w: 1, h: 2 },
-                { img: "fishing1", x: 2, y: 4, w: 1, h: 1 },
-                { img: "sailboat1", x: 1, y: 4, w: 1, h: 1 },
-                { img: "yacht1", x: 3, y: 4, w: 1, h: 1 },
-            ];
-            clearGridWithBorders(6, 6, 5, 2);
+        } else if (seed === 1) {
+            // stage = 4;
+            if (stage === 0) {
+                ships = [
+                    { img: "fishing1", x: 2, y: 3, w: 1, h: 1 },
+                    { img: "cruise2", x: 3, y: 2, w: 2, h: 1 },
+                ];
+            } else if (stage === 1) {
+                ships = [
+                    { img: "tugboat1", x: 1, y: 3, w: 1, h: 1 },
+                    { img: "container2", x: 3, y: 4, w: 2, h: 1 },
+                ];
+            } else if (stage === 2) {
+                ships = [
+                    { img: "tugboat1", x: 1, y: 3, w: 1, h: 1 },
+                    { img: "container2", x: 1, y: 4, w: 2, h: 1 },
+                    { img: "tanker2", x: 3, y: 4, w: 2, h: 1 },
+                ];
+            } else if (stage === 3) {
+                ships = [
+                    { img: "tugboat1", x: 1, y: 3, w: 1, h: 1 },
+                    { img: "container2", x: 1, y: 4, w: 2, h: 1 },
+                    { img: "tanker2", x: 3, y: 4, w: 2, h: 1 },
+                    { img: "research2", x: 2, y: 2, w: 1, h: 2 },
+                    { img: "cruise2", x: 4, y: 2, w: 1, h: 2 },
+                ];
+            } else if (stage === 4) {
+                ships = [
+                    { img: "research2", x: 3, y: 1, w: 2, h: 1 },
+                    { img: "tugboat1", x: 1, y: 3, w: 1, h: 1 },
+                    { img: "container2", x: 1, y: 4, w: 2, h: 1 },
+                    { img: "tanker2", x: 3, y: 4, w: 2, h: 1 },
+                    { img: "cruise2", x: 4, y: 2, w: 1, h: 2 },
+                ];
+            } else if (stage === 5) {
+                ships = [
+                    { img: "research2", x: 1, y: 1, w: 2, h: 1 },
+                    { img: "tugboat1", x: 1, y: 3, w: 1, h: 1 },
+                    { img: "sailboat1", x: 2, y: 4, w: 1, h: 1 },
+                    { img: "yacht1", x: 1, y: 4, w: 1, h: 1 },
+                    { img: "tanker2", x: 3, y: 4, w: 2, h: 1 },
+                    { img: "container2", x: 2, y: 2, w: 1, h: 2 },
+                    { img: "cruise2", x: 4, y: 2, w: 1, h: 2 },
+                    { img: "tanker2", x: 3, y: 1, w: 2, h: 1 },
+                ];
+            }
+            clearGridWithBorders(6, 6, 5, 4);
         }
     }
 
@@ -202,8 +262,9 @@
         scrollY.set(0.0, { duration: 0 });
         scaleAnim.set(1.0, { duration: 0 });
         clickedShip = null;
+        if (gameType === "2") seed = 1;
 
-        setStage(0);
+        setStage(0, seed);
         animator.start();
     }
 
@@ -247,7 +308,7 @@
     let clickedShip = null;
     let shipDragX = 0;
     let shipDragY = 0;
-    let clickedIso = [0,0];
+    let clickedIso = [0, 0];
     function handleDragStart(e) {
         // In case we missed a pointer up event, let's reset all ships to integer coords so things don't freak out.
         for (let i = 0; i < ships.length; i++) {
@@ -279,7 +340,8 @@
     }
 
     let iso = [0, 0];
-    let dirx = 0, diry = 0;
+    let dirx = 0,
+        diry = 0;
     function handleDragMove(e) {
         if (!dragging) return;
         let xy = getPointerPos(e);
@@ -300,21 +362,22 @@
                 for (let dy = 0; dy < clickedShip.h; dy++) {
                     for (let dx = 0; dx < clickedShip.w; dx++) {
                         let testPos = [shipDragX + dx, shipDragY + dy];
-                        if (dirx > 0) testPos[0] = Math.ceil((shipDragX + dx + i*Math.sign(dirx)) + 1 - waterDepth);
-                        else if (dirx < 0) testPos[0] = Math.trunc((shipDragX + dx + i*Math.sign(dirx)) + 0 - waterDepth);
-                        if (diry > 0) testPos[1] = Math.ceil((shipDragY + dy + i*Math.sign(diry)) + 1 - waterDepth);
-                        else if (diry < 0) testPos[1] = Math.trunc((shipDragY + dy + i*Math.sign(diry)) + 0 - waterDepth);
+                        if (dirx > 0) testPos[0] = Math.ceil(shipDragX + dx + i * Math.sign(dirx) + 1 - waterDepth);
+                        else if (dirx < 0) testPos[0] = Math.trunc(shipDragX + dx + i * Math.sign(dirx) + 0 - waterDepth);
+                        if (diry > 0) testPos[1] = Math.ceil(shipDragY + dy + i * Math.sign(diry) + 1 - waterDepth);
+                        else if (diry < 0) testPos[1] = Math.trunc(shipDragY + dy + i * Math.sign(diry) + 0 - waterDepth);
 
                         let tempHitShip = findShipAt(testPos[0], testPos[1], clickedShip);
                         if (tempHitShip) hitShip = tempHitShip;
-                        if (testPos[0] < 0 || testPos[0] >= gridWidth || testPos[1] < 0 || testPos[1] >= gridHeight) hitShip = "outerWall";
+                        if (testPos[0] < 0 || testPos[0] >= gridWidth || testPos[1] < 0 || testPos[1] >= gridHeight)
+                            hitShip = "outerWall";
                         else if (getGrid(testPos[0], testPos[1]) < 0) hitShip = "wall";
                     }
                 }
 
                 if (hitShip) {
-                    dirx = i*Math.sign(dirx);
-                    diry = i*Math.sign(diry);
+                    dirx = i * Math.sign(dirx);
+                    diry = i * Math.sign(diry);
                     break;
                 }
             }
@@ -352,32 +415,66 @@
         {#if !started}
             <div class="flex-center-all h-full flex flex-col">
                 <img src="TinyQuest/gamedata/harbor/splash_screen.webp" class="absolute" alt="skyscraper" style="height:72rem" />
-                <div in:fade={{ duration: 2000 }} class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1" style="margin-top:44rem;background-color:#40101080">{town?.name}</div>
-                <button in:fade={{ duration: 2000 }} class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10" on:pointerup|preventDefault|stopPropagation={startGame}>START</button>
+                <div
+                    in:fade={{ duration: 2000 }}
+                    class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1"
+                    style="margin-top:44rem;background-color:#40101080"
+                >
+                    {town?.name}<br/>
+                    {(gameType === "2") ? "GAME 2" : "GAME 1"}
+                </div>
+                <button
+                    in:fade={{ duration: 2000 }}
+                    class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10"
+                    on:pointerup|preventDefault|stopPropagation={startGame}>START</button
+                >
             </div>
         {:else}
             <div class="flex flex-row h-full w-full">
                 <div class="fit-full-space" style="transform: scale({$scaleAnim}) translate(0rem, {$scrollY}rem)">
                     <div class="absolute" style="left:0rem;right:0rem;top:0rem;bottom:-2rem;background-color:#57b2d8" />
-                    <div class="absolute" style="left:-50rem;right:-50rem;top:0rem;bottom:-2rem;" >
-                        <img class="absolute" style="left:-38rem;top:-21.75rem;width:160rem;transform:scale(-1,1);" src="TinyQuest/gamedata/harbor/parking_lot.webp" alt=""/>
-                        <img class="absolute" style="left:45rem;top:-34rem;width:160rem;" src="TinyQuest/gamedata/harbor/parking_lot.webp" alt=""/>
+                    <div class="absolute" style="left:-50rem;right:-50rem;top:0rem;bottom:-2rem;">
+                        <img
+                            class="absolute"
+                            style="left:-38rem;top:-21.75rem;width:160rem;transform:scale(-1,1);"
+                            src="TinyQuest/gamedata/harbor/parking_lot.webp"
+                            alt=""
+                        />
+                        <img
+                            class="absolute"
+                            style="left:45rem;top:-34rem;width:160rem;"
+                            src="TinyQuest/gamedata/harbor/parking_lot.webp"
+                            alt=""
+                        />
                     </div>
                     {#each Array(gridHeight) as _, y}
                         {#each Array(gridWidth) as _, x}
                             {#if getGrid(x, y) < 0}
                                 <img
-                                    src="TinyQuest/gamedata/harbor/{['concrete_slab.png', 'simple_border.png', 'container_loader.png', 'rolling_gantry.png'][(Math.abs(getGrid(x, y))-1) & 0xf]}"
+                                    src="TinyQuest/gamedata/harbor/{[
+                                        'concrete_slab.png',
+                                        'simple_border.png',
+                                        'container_loader.png',
+                                        'rolling_gantry.png',
+                                    ][(Math.abs(getGrid(x, y)) - 1) & 0xf]}"
                                     class="absolute"
                                     alt=""
-                                    style="left:{isometricX(x,y)}rem;top:{isometricY(x,y)}rem;width:{scale}rem;z-index:{x + y};transform:scale({((Math.abs(getGrid(x, y))-1) & 0x10)?-1:1},1);"
+                                    style="left:{isometricX(x, y)}rem;top:{isometricY(x, y)}rem;width:{scale}rem;z-index:{x +
+                                        y};transform:scale({(Math.abs(getGrid(x, y)) - 1) & 0x10 ? -1 : 1},1);"
                                 />
-                                {#if Math.abs(getGrid(x, y))-1 >= 256}
+                                {#if Math.abs(getGrid(x, y)) - 1 >= 256}
                                     <img
-                                        src="TinyQuest/gamedata/harbor/{['','container_loader.png', 'rolling_gantry.png', 'big_crane.png', 'container_pile.png'][(Math.abs(getGrid(x, y))-1) >>> 8]}"
+                                        src="TinyQuest/gamedata/harbor/{[
+                                            '',
+                                            'container_loader.png',
+                                            'rolling_gantry.png',
+                                            'big_crane.png',
+                                            'container_pile.png',
+                                        ][(Math.abs(getGrid(x, y)) - 1) >>> 8]}"
                                         class="absolute"
                                         alt=""
-                                        style="left:{isometricX(x,y)}rem;top:{isometricY(x,y)}rem;width:{scale}rem;z-index:{x + y};transform:scale({((Math.abs(getGrid(x, y))-1) & 0x10)?-1:1},1);"
+                                        style="left:{isometricX(x, y)}rem;top:{isometricY(x, y)}rem;width:{scale}rem;z-index:{x +
+                                            y};transform:scale({(Math.abs(getGrid(x, y)) - 1) & 0x10 ? -1 : 1},1);"
                                     />
                                 {/if}
                             {:else if findShipAt(x, y) === ships[0]}
@@ -385,14 +482,19 @@
                                     src="TinyQuest/gamedata/harbor/water_empty_grid.png"
                                     class="absolute"
                                     alt=""
-                                    style="left:{isometricX(x,y)}rem;top:{isometricY(x,y)}rem;width:{scale}rem;filter: brightness({1.0 + Math.sin($frameCount * 0.05)*0.15+0.15});"
+                                    style="left:{isometricX(x, y)}rem;top:{isometricY(
+                                        x,
+                                        y
+                                    )}rem;width:{scale}rem;filter: brightness({1.0 +
+                                        Math.sin($frameCount * 0.05) * 0.15 +
+                                        0.15});"
                                 />
                             {:else}
                                 <img
                                     src="TinyQuest/gamedata/harbor/water_empty_grid.png"
                                     class="absolute"
                                     alt=""
-                                    style="left:{isometricX(x,y)}rem;top:{isometricY(x,y)}rem;width:{scale}rem"
+                                    style="left:{isometricX(x, y)}rem;top:{isometricY(x, y)}rem;width:{scale}rem"
                                 />
                             {/if}
                         {/each}
@@ -406,7 +508,10 @@
                                         src="TinyQuest/gamedata/harbor/water_empty_grid.png"
                                         class="absolute"
                                         alt=""
-                                        style="left:{isometricX(clickedShip.x + x,y)}rem;top:{isometricY(clickedShip.x + x,y)}rem;width:{scale}rem;filter: brightness(1.1);"
+                                        style="left:{isometricX(clickedShip.x + x, y)}rem;top:{isometricY(
+                                            clickedShip.x + x,
+                                            y
+                                        )}rem;width:{scale}rem;filter: brightness(1.1);"
                                     />
                                 {/each}
                             {/each}
@@ -417,7 +522,10 @@
                                         src="TinyQuest/gamedata/harbor/water_empty_grid.png"
                                         class="absolute"
                                         alt=""
-                                        style="left:{isometricX(x, clickedShip.y + y)}rem;top:{isometricY(x, clickedShip.y + y)}rem;width:{scale}rem;filter: brightness(1.1);"
+                                        style="left:{isometricX(x, clickedShip.y + y)}rem;top:{isometricY(
+                                            x,
+                                            clickedShip.y + y
+                                        )}rem;width:{scale}rem;filter: brightness(1.1);"
                                     />
                                 {/each}
                             {/each}
@@ -428,8 +536,11 @@
                             src="TinyQuest/gamedata/harbor/{s.img}.png"
                             class="absolute"
                             alt=""
-                            style="left:{isometricX(s.x, s.y) - (s.h > s.w ? scale * 0.5 : 0)}rem;top:{isometricY(s.x,s.y)}rem;width:{scale +
-                                scale * 0.5 * ((s.h > s.w ? s.h : s.w) - 1)}rem;z-index:{s.x + s.y};transform:scale({s.h > s.w ? -1 : 1},1);"
+                            style="left:{isometricX(s.x, s.y) - (s.h > s.w ? scale * 0.5 : 0)}rem;top:{isometricY(
+                                s.x,
+                                s.y
+                            )}rem;width:{scale + scale * 0.5 * ((s.h > s.w ? s.h : s.w) - 1)}rem;z-index:{s.x +
+                                s.y};transform:scale({s.h > s.w ? -1 : 1},1);"
                         />
                     {/each}
                     <!-- {#each grid as c, i}
@@ -462,7 +573,13 @@
                 <div class="absolute right-0 top-0 bottom-0 flex flex-row">
                     <StarBar {maxStars} {starCount} bg="#00000080" on:pointerup={resetToSplashScreen} />
                 </div>
-                <WinScreen {maxStars} active={finalGraphic} on:startGame={startGame} on:resetToSplashScreen={resetToSplashScreen} style="position:absolute;top:10rem;z-index:100;" />
+                <WinScreen
+                    {maxStars}
+                    active={finalGraphic}
+                    on:startGame={startGame}
+                    on:resetToSplashScreen={resetToSplashScreen}
+                    style="position:absolute;top:10rem;z-index:100;"
+                />
             </div>
         {/if}
     </div>

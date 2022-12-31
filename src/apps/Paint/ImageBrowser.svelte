@@ -5,6 +5,7 @@
 
     export let keyPromise;
     export let dbPromise;
+    export let dbStr = "keyval_paint";
 
     let deleteMode = 0;
     let chosen = -1;
@@ -15,10 +16,10 @@
     }
 
     export async function del(key) {
-        return (await dbPromise).delete("keyval_paint", key);
+        return (await dbPromise).delete(dbStr, key);
     }
     export async function keys() {
-        return (await dbPromise).getAllKeys("keyval_paint");
+        return (await dbPromise).getAllKeys(dbStr);
     }
 
     function selectImage(key) {
@@ -26,7 +27,6 @@
             chosen = key;
             deleteMode = 2;
         } else {
-            keyPromise = null;
             dispatch("loadimg", key);
         }
     }
@@ -85,10 +85,10 @@
                             class="border-[.2rem] border-gray-900 p-6 bg-black rounded-3xl h-min"
                             on:pointerup={() => selectImage(key)}
                         >
-                            <ImagePreview {key} {dbPromise} />
+                            <ImagePreview {key} {dbPromise} {dbStr} />
                         </div>
                     {:else}
-                        <div class="flex-center-all w-full h-full text-7xl">NO PAINTINGS SAVED YET</div>
+                        <div class="flex-center-all w-full h-full text-7xl">NO PICTURES SAVED YET</div>
                     {/each}
                 </div>
             </div>

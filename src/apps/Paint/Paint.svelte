@@ -215,7 +215,7 @@
         selectedColor = color;
     }
 
-    const dbPromise = openDB("keyval-store-tinyos", 1, {
+    const dbPromise = openDB("keyval-store-tinyos-paint", 1, {
         upgrade(db) {
             db.createObjectStore("keyval_paint");
         },
@@ -237,7 +237,7 @@
         return (await dbPromise).getAllKeys("keyval_paint");
     }
 
-    console.log("keys", keys());
+    // console.log("keys", keys());
     function dataURItoBlob(dataURI) {
         // convert base64/URLEncoded data component to raw binary data held in a string
         var byteString;

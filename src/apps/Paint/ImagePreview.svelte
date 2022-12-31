@@ -4,13 +4,14 @@
 
     export let key;
     export let dbPromise;
+    export let dbStr = "keyval_paint";
 
     let bmpBottom;
     let bottomCtx;
     let canvasBottom;
 
     export async function get(key) {
-        return (await dbPromise).get("keyval_paint", key);
+        return (await dbPromise).get(dbStr, key);
     }
 
     async function load() {

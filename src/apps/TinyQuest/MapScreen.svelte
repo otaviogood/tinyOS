@@ -48,7 +48,8 @@
         $allTowns.push(new Town(0.62, 0.78, "BABY LETTERS", "/TinyQuest/eggmatch"));
         $allTowns.push(new Town(0.46, 0.14, "PIE AND CAKE", "/TinyQuest/numberpies"));
         $allTowns.push(new Town(0.45, 0.26, "SKYSCRAPER", "/TinyQuest/skyscraper"));
-        $allTowns.push(new Town(0.42, 0.4, "HARBOR", "/TinyQuest/harbor"));
+        $allTowns.push(new Town(0.38, 0.36, "HARBOR", "/TinyQuest/harbor"));
+        $allTowns.push(new Town(0.42, 0.42, "HARBOR", "/TinyQuest/harbor", { game: "2" }));
         $allTowns.push(new Town(0.8, 0.13, "MORSE CODE", "/TinyQuest/morsecode"));
         $allTowns.push(new Town(0.685, 0.5, "ROCKET LAUNCH", "/TinyQuest/rocketlaunch"));
         $allTowns.push(new Town(0.68, 0.68, "BUS STOP", "/TinyQuest/busstop"));
@@ -57,7 +58,7 @@
         $allTowns.push(new Town(0.94, 0.62, "AIRPLANE CRASH", "/TinyQuest/airplanecrash"));
         $allTowns.push(new Town(0.94, 0.72, "READING", "/TinyQuest/reading1"));
         $allTowns.push(new Town(0.94, 0.82, "TONES", "/TinyQuest/listensounds"));
-        // $allTowns.push(new Town(0.94, 0.92, "BLOCKER", "/TinyQuest/blockdrop"));
+        // $allTowns.push(new Town(0.94, 0.92, "CHROMA-FLOWMA", "/TinyQuest/blockdrop"));
         $allTowns = $allTowns;
         allRoads = [];
         // allRoads.push(new Road("ALPHABET TOWN", "LOWER CASE CAVE", $allTowns));

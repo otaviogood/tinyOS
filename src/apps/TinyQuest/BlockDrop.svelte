@@ -67,8 +67,8 @@
         // O
         [
             [0, 0, 0, 0],
-            [1, 1, 0, 0],
-            [1, 1, 0, 0],
+            [0, 1, 1, 0],
+            [0, 1, 1, 0],
             [0, 0, 0, 0],
         ],
         // S
@@ -103,6 +103,8 @@
     let linesGot = 0;
     let score = 0;
     let dropping = false;
+    let pieceQueue = [];
+    let pieceQueueSize = 4;
 
     // 2d tetris board placed pieces
     const solid = 0xff;
@@ -124,13 +126,24 @@
         };
     });
 
+    function genPiece() {
+        return {
+            piece: getRandomInt(pieces.length),
+            rotation: getRandomInt(4),
+            color: getRandomInt(2) + 1,
+        };
+    }
+
     function resetPiece() {
-        console.log("reset piece");
-        pieceX = 4;
+        pieceX = 3;
         pieceY = 0;
-        currentPiece = getRandomInt(pieces.length);
-        currentRotation = getRandomInt(4);
-        currentPieceColor = getRandomInt(2) + 1;
+        // Get a piece from the piece queue and put a new one at the end.
+        currentPiece = pieceQueue[0].piece;
+        currentRotation = pieceQueue[0].rotation;
+        currentPieceColor = pieceQueue[0].color;
+        pieceQueue.shift();
+        pieceQueue.push(genPiece());
+        pieceQueue = pieceQueue;
     }
     function touchBoard() {
         for (let i = 0; i < boardHeight; i++) {
@@ -148,6 +161,9 @@
         }
         console.log("reset game");
         touchBoard();
+        for (let i = 0; i < pieceQueueSize; i++) {
+            pieceQueue[i] = genPiece();
+        }
         resetPiece();
     }
 
@@ -229,7 +245,8 @@
                 touchBoard();
             }
         }
-        if (total > 0) score += Math.pow(2, total - 1);
+        console.log("total, got, pow", total, linesGot, Math.pow(2, total) - 1);
+        if (total > 0) score += Math.pow(2, total) - 1;
     }
     function checkLose() {
         for (let i = 0; i < boardWidth; i++) {
@@ -282,7 +299,7 @@
     }
 
     function keyDown(e) {
-        console.log("keyDown", e.key);
+        // console.log("keyDown", e.key);
         if (e.key === "ArrowLeft") {
             sideMove(-1);
         } else if (e.key === "ArrowRight") {
@@ -297,7 +314,7 @@
     }
 
     function pieceColor(c) {
-        let colors = ["#ff0000", "#00ff00", "#ffff00"];
+        let colors = ["#e03030", "#20c020", "#e0e030"];
         if (c > colors.length) return "#b0b0b0";
         return colors[c - 1];
     }
@@ -364,6 +381,11 @@
                                         >
                                             <!-- {safeGetBoard(x - 1, y)} -->
                                         </div>
+                                        <!-- {:else}
+                                        <div
+                                            class="flex-center-all border-l border-gray-900"
+                                            style="width:1.85rem;height:1.85rem;backgrounXXd-color:#ffffff80"
+                                        /> -->
                                     {/if}
                                     <!-- <div class="flex-center-all" style="width:1.75rem;height:1.75rem;background-color:#ffffff80">
                                     {safeGetBoard(x - 1, y)}
@@ -388,7 +410,7 @@
                                             style="width:2rem;height:2rem;background-color:{pieceColor(currentPieceColor)}"
                                         />
                                     {:else}
-                                        <div class="" style="width:2rem;height:2rem;background-color:#70401020" />
+                                        <div class="" style="width:2rem;height:2rem;backXXground-color:#70401020" />
                                     {/if}
                                 {/each}
                             </div>
@@ -418,23 +440,56 @@
                 </div> -->
             </div>
 
+            <div class="absolute left-[64rem] top-0 h-[50rem] border border-gray-800 bg-gray-900" style="">
+                {#each pieceQueue as piece, i}
+                    <div class="m-16">
+                        {#each Array(4) as _, y}
+                            <div class="flex flex-row w-32 h-8">
+                                {#each Array(4) as _, x}
+                                    {#if rotatedPiece(pieces[piece.piece], piece.rotation)[y][x]}
+                                        <div
+                                            class=" border border-gray-300"
+                                            style="width:2rem;height:2rem;background-color:{pieceColor(piece.color)}"
+                                        />
+                                    {:else}
+                                        <div class="" style="width:2rem;height:2rem;bacXXXkground-color:#70401020" />
+                                    {/if}
+                                {/each}
+                            </div>
+                        {/each}
+                    </div>
+                {/each}
+            </div>
+
             <div
-                class="flex-center-all text-8xl absolute left-10 bottom-10 cursor-pointer select-none rounded-full bg-blue-700 w-48 h-48"
+                class="flex-center-all text-8xl absolute left-10 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
                 on:pointerdown|preventDefault|stopPropagation={() => sideMove(-1)}
             >
                 L
             </div>
             <div
-                class="flex-center-all text-8xl absolute right-10 bottom-10 cursor-pointer select-none rounded-full bg-blue-700 w-48 h-48"
+                class="flex-center-all text-8xl absolute right-10 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
                 on:pointerdown|preventDefault|stopPropagation={() => sideMove(1)}
             >
                 R
             </div>
             <div
-                class="flex-center-all text-8xl absolute left-64 bottom-10 cursor-pointer select-none rounded-full bg-blue-700 w-48 h-48"
-                on:pointerdown|preventDefault|stopPropagation={() => rotate(-1)}
+                class="flex-center-all text-8xl absolute left-72 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
+                on:pointerdown|preventDefault|stopPropagation={() => rotate(1)}
             >
                 <i class="fa-solid fa-rotate-right" />
+            </div>
+            <div
+                class="flex-center-all text-8xl absolute right-72 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
+                on:pointerdown|preventDefault|stopPropagation={() => rotate(-1)}
+            >
+                <i class="fa-solid fa-rotate-left" />
+            </div>
+            <div
+                class="flex-center-all text-8xl absolute left-[43.5rem] bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
+                on:pointerdown|preventDefault|stopPropagation={() => (dropping = true)}
+            >
+                <i class="fa-solid fa-arrow-down" />
             </div>
 
             <div class="text-4xl absolute left-2 top-2 select-none p-4">
