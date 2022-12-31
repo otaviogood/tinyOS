@@ -12,6 +12,8 @@
     let stream;
     let facingMode = "environment"; // default to rear facing camera (user, environment)
     let previewImage = null;
+    let camWidth = 640;
+    let camHeight = 480;
 
     onMount(() => {
         startCamera();
@@ -23,11 +25,14 @@
 
     function startCamera() {
         navigator.mediaDevices
-            .getUserMedia({ video: { facingMode }, audio: false })
+            .getUserMedia({ video: { width: { ideal: 4096 }, height: { ideal: 2160 }, facingMode }, audio: false })
             .then((s) => {
                 stream = s;
                 video.srcObject = stream;
                 video.play();
+                let settings = s.getVideoTracks()[0].getSettings();
+                camWidth = settings.width;
+                camHeight = settings.height;
             })
             .catch((err) => {
                 console.error("Unable to access camera:", err);
@@ -41,6 +46,8 @@
     }
 
     async function takeSnapshot() {
+        canvas.width = camWidth;
+        canvas.height = camHeight;
         canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
         await save();
         const img = canvas.toDataURL("image/png");

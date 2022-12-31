@@ -82,7 +82,7 @@
                 <div class="flex flex-row flex-wrap overflow-y-auto h-full w-full pb-4">
                     {#each keys as key, i}
                         <div
-                            class="border-[.2rem] border-gray-900 p-6 bg-black rounded-3xl h-min"
+                            class="border-[.2rem] border-gray-900 p-6 bg-black rounded-3xl h-48 w-64"
                             on:pointerup={() => selectImage(key)}
                         >
                             <ImagePreview {key} {dbPromise} {dbStr} />

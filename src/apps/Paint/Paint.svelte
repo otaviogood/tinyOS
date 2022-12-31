@@ -212,6 +212,7 @@
     }
 
     function selectColor(color) {
+        pointerMode = 0;
         selectedColor = color;
     }
 
@@ -413,7 +414,7 @@
                                 colorWheelVisible = false;
                             }}
                             ><i
-                                class="fas fa-eye-dropper rounded-full"
+                                class="fas fa-eye-dropper rounded-full border border-gray-500"
                                 style="background-color:{colorSampler || (pointerMode === 1 ? '#b0b0b0' : '')}"
                             /></span
                         >

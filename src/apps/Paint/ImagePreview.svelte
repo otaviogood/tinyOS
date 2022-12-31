@@ -42,6 +42,4 @@
     });
 </script>
 
-<div class="w-[16.3rem]">
-    <canvas id="bottom" style="width:100%;height:100%" bind:this={canvasBottom} class="bottomcanvas" />
-</div>
+<canvas class="object-contain w-full h-full" bind:this={canvasBottom} />
