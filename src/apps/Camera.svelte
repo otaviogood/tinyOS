@@ -7,13 +7,14 @@
     import { openDB, deleteDB, wrap, unwrap } from "idb";
 
     let video;
-    let canvas;
+    let canvas, canvasThumb;
     let photos = [];
     let stream;
     let facingMode = "environment"; // default to rear facing camera (user, environment)
     let previewImage = null;
     let camWidth = 640;
     let camHeight = 480;
+    let saving = false;
 
     onMount(() => {
         startCamera();
@@ -25,7 +26,7 @@
 
     function startCamera() {
         navigator.mediaDevices
-            .getUserMedia({ video: { width: { ideal: 4096 }, height: { ideal: 2160 }, facingMode }, audio: false })
+            .getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1280 }, facingMode }, audio: false })
             .then((s) => {
                 stream = s;
                 video.srcObject = stream;
@@ -41,20 +42,25 @@
 
     function stopCamera() {
         video.srcObject = null;
-        stream.getTracks().forEach((track) => track.stop());
+        stream?.getTracks()?.forEach((track) => track?.stop());
         stream = null;
     }
 
     async function takeSnapshot() {
+        saving = true;
+        canvasThumb.getContext("2d").drawImage(video, 0, 0, canvasThumb.width, canvasThumb.height);
+        let timestamp = Date.now().toString(); // Use current time as id since kids won't be able to type a name.
+        await save(canvasThumb, timestamp + "_thumb", "jpg");
         canvas.width = camWidth;
         canvas.height = camHeight;
         canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-        await save();
-        const img = canvas.toDataURL("image/png");
+        const img = canvasThumb.toDataURL("image/jpg");
         // make a circular buffer of 3 images
         if (photos.length >= 3) photos.shift();
         photos.push(img);
         photos = photos;
+        await save(canvas, timestamp + "_camera", "jpg");
+        saving = false;
     }
 
     const dbPromise = openDB("keyval-store-tinyos-camera", 1, {
@@ -99,16 +105,15 @@
         return new Blob([ia], { type: mimeString });
     }
 
-    async function save() {
+    async function save(canvas, str = "camera", ext = "png") {
         // Save to indexedDB using idb
-        let data = canvas.toDataURL("image/png");
+        let data = canvas.toDataURL("image/" + ext);
         let blob = dataURItoBlob(data);
-        let id = Date.now(); // Use current time as id since kids won't be able to type a name.
-        let name = "camera_" + id + ".png";
-        let file = new File([blob], name, { type: "image/png" });
+        let name = str + "." + ext;
+        let file = new File([blob], name, { type: "image/" + ext });
         // let store = db.transaction("files", "readwrite").objectStore("files");
         // store.put(file, id);
-        await set(id, file);
+        await set(str, file);
         console.log("Saved to indexedDB", name);
     }
 
@@ -136,7 +141,7 @@
         {dbPromise}
         dbStr={"keyval_camera"}
         on:loadimg={(k) => {
-            load(k.detail);
+            load(k.detail.replace("thumb", "camera"));
         }}
     />
     <!-- Make a fullscreen image preview of the key that was returned from the ImageBrowser. -->
@@ -158,6 +163,7 @@
             style="wiXXdth:512px;heXXight:480px;max-height:62rem;{false ? '' : 'border:2px solid #404040;'}"
         />
         <canvas bind:this={canvas} width="640" height="480" style="display:none;" />
+        <canvas bind:this={canvasThumb} width="320" height="200" style="display:none;" />
 
         <div class="flex flex-row overflow-hidden">
             {#each photos as photo}
@@ -171,10 +177,14 @@
     <button class="absolute right-[20rem] bottom-10 cursor-pointer select-none text-9xl w-32 h-32" on:click={toggleFacing}>
         <i class="fa-solid fa-camera-rotate" />
     </button>
-    <button
-        class="absolute left-[43.5rem] bottom-10 cursor-pointer select-none rounded-full bg-white w-32 h-32"
-        on:click={takeSnapshot}
-    />
+    {#if !saving}
+        <button
+            class="absolute left-[43.5rem] bottom-10 cursor-pointer select-none rounded-full bg-white w-32 h-32"
+            on:click={takeSnapshot}
+        />
+    {:else}
+        <button class="absolute left-[43.5rem] bottom-10 cursor-pointer select-none rounded-full bg-red-800 w-32 h-32" />
+    {/if}
     <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" on:pointerup={pop}>
         <i class="fas fa-times-circle" />
     </div>

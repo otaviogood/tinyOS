@@ -81,12 +81,14 @@
             <div class="absolute top-24 left-0 right-0 bottom-0">
                 <div class="flex flex-row flex-wrap overflow-y-auto h-full w-full pb-4">
                     {#each keys as key, i}
-                        <div
-                            class="border-[.2rem] border-gray-900 p-6 bg-black rounded-3xl h-48 w-64"
-                            on:pointerup={() => selectImage(key)}
-                        >
-                            <ImagePreview {key} {dbPromise} {dbStr} />
-                        </div>
+                        {#if key.includes("thumb")}
+                            <div
+                                class="border-[.2rem] border-gray-900 p-6 bg-black rounded-3xl h-48 w-64"
+                                on:pointerup={() => selectImage(key)}
+                            >
+                                <ImagePreview {key} {dbPromise} {dbStr} />
+                            </div>
+                        {/if}
                     {:else}
                         <div class="flex-center-all w-full h-full text-7xl">NO PICTURES SAVED YET</div>
                     {/each}
