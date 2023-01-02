@@ -246,18 +246,18 @@
         if (snd_current == null) return;
         if (duration == 0) return;
         if (startTime == null) return;
-        let xy = getPointerPos(e);
-        if (xy[1] == 0) {
-            startX = xy[0];
-            return;
-        }
-        let alpha = (xy[0] - startX);
-        startX = xy[0];
-        let newPos = snd_current.seek() + alpha * duration;
-        if (newPos < 0) newPos = 0;
-        if (newPos > duration) newPos = duration;
-        percentComplete = snd_current.seek(newPos) / duration;
-        // console.log("seek", alpha, percentComplete);
+        // let xy = getPointerPos(e);
+        // if (xy[1] == 0) {
+        //     startX = xy[0];
+        //     return;
+        // }
+        // let alpha = (xy[0] - startX);
+        // startX = xy[0];
+        // let newPos = snd_current.seek() + alpha * duration;
+        // if (newPos < 0) newPos = 0;
+        // if (newPos > duration) newPos = duration;
+        // percentComplete = snd_current.seek(newPos) / duration;
+        // // console.log("seek", alpha, percentComplete);
     }
 
     handleResize();

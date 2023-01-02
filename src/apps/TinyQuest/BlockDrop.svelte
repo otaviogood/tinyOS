@@ -105,6 +105,8 @@
     let dropping = false;
     let pieceQueue = [];
     let pieceQueueSize = 4;
+    let colorMask = 3; // 1 for Red, 3 for red/green, 7 for red/green/blue
+    let baseColors = [1, 2]; //, 4];
 
     // 2d tetris board placed pieces
     const solid = 0xff;
@@ -130,7 +132,7 @@
         return {
             piece: getRandomInt(pieces.length),
             rotation: getRandomInt(4),
-            color: getRandomInt(2) + 1,
+            color: baseColors[getRandomInt(baseColors.length)],
         };
     }
 
@@ -161,8 +163,9 @@
         }
         console.log("reset game");
         touchBoard();
+        pieceQueue = [];
         for (let i = 0; i < pieceQueueSize; i++) {
-            pieceQueue[i] = genPiece();
+            pieceQueue.push(genPiece());
         }
         resetPiece();
     }
@@ -230,7 +233,7 @@
         for (let i = 0; i < boardHeight; i++) {
             let full = true;
             for (let j = 0; j < boardWidth; j++) {
-                if ((board[i][j] & 3) != 3) {
+                if ((board[i][j] & colorMask) != colorMask) {
                     full = false;
                     break;
                 }
@@ -315,8 +318,18 @@
 
     function pieceColor(c) {
         let colors = ["#e03030", "#20c020", "#e0e030"];
+        if (colorMask === 7) colors = ["#e03030", "#20c020", "#e0e030", "#2020e0", "#e020e0", "#20c0e0", "#e0e0e0"];
         if (c > colors.length) return "#b0b0b0";
         return colors[c - 1];
+    }
+
+    function setColorsMode(mask) {
+        colorMask = mask; // 1 for Red, 3 for red/green, 7 for red/green/blue
+        baseColors = [1, 2, 4];
+        if (mask === 3) baseColors = [1, 2];
+        if (mask === 1) baseColors = [1];
+        baseColors = baseColors;
+        resetGame();
     }
 
     async function startGame() {
@@ -491,6 +504,29 @@
             >
                 <i class="fa-solid fa-arrow-down" />
             </div>
+
+            {#if colorMask === 1}
+                <div
+                    class="flex-center-all text-4xl absolute left-[2rem] top-[10rem] cursor-pointer select-none rounded bg-red-900 text-gray-200 h-12 p-2"
+                    on:pointerdown|preventDefault|stopPropagation={() => setColorsMode(3)}
+                >
+                    RED
+                </div>
+            {:else if colorMask === 3}
+                <div
+                    class="flex-center-all text-4xl absolute left-[2rem] top-[10rem] cursor-pointer select-none rounded bg-green-900 text-gray-200 h-12 p-2"
+                    on:pointerdown|preventDefault|stopPropagation={() => setColorsMode(7)}
+                >
+                    RED/GREEN
+                </div>
+            {:else if colorMask === 7}
+                <div
+                    class="flex-center-all text-4xl absolute left-[2rem] top-[10rem] cursor-pointer select-none rounded bg-red-900 text-gray-200 h-12 p-2"
+                    on:pointerdown|preventDefault|stopPropagation={() => setColorsMode(1)}
+                >
+                    RED/GREEN/BLUE
+                </div>
+            {/if}
 
             <div class="text-4xl absolute left-2 top-2 select-none p-4">
                 LINES&nbsp;&nbsp;&nbsp;&nbsp;{linesGot}

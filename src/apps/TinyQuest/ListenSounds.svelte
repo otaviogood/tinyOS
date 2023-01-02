@@ -47,9 +47,11 @@
     // let playTime = 0;
     let playStartTime = 0;
     let currentPlayIndex = -1;
-    let played0 = 0;
-    let played1 = 0;
+    let numButtons = 3;
+    let played = [];
+    for (let i = 0; i < numButtons; i++) played.push(0);
     let songLength = 1;
+    let speed = 1;
 
     // let imageCache=[];
     onMount(() => {
@@ -61,10 +63,12 @@
     });
 
     function genSong(numNotes) {
-        if (numNotes === currentSong.length + 1) currentSong.push(Math.random() > 0.5 ? 1 : 0);
+        // append to song
+        if (numNotes === currentSong.length + 1) currentSong.push(getRandomInt(numButtons));
         else {
+            // new song
             for (let i = 0; i < numNotes; i++) {
-                currentSong.push(Math.random() > 0.5 ? 1 : 0);
+                currentSong.push(getRandomInt(numButtons));
             }
         }
         currentSong = currentSong;
@@ -87,14 +91,13 @@
             let divTime = 0;
             do {
                 let playTime = (Date.now() - playStartTime) / 1000;
-                divTime = (playTime * 2) | 0;
+                divTime = (playTime * speed) | 0;
                 // console.log(playTime, divTime);
                 if (currentPlayIndex !== divTime) {
                     let note = currentSong[divTime];
                     // console.log("note", note);
                     beep(1000, freq((freq_c5 + 7 * note) | 0), 0.75);
-                    if (note === 0) played0++;
-                    else played1++;
+                    played[note]++;
                 }
                 currentPlayIndex = divTime;
 
@@ -191,20 +194,11 @@
         playState = 2;
     }
 
-    function buttonA() {
+    function button(i) {
         if (playState !== 1) return;
-        played0++;
-        beep(1000, freq(freq_c5), 0.5);
-        let note = 0;
-        if (currentSong[currentPlayIndex] === note) gotNote();
-        else failed();
-    }
-
-    function buttonB() {
-        if (playState !== 1) return;
-        played1++;
-        beep(1000, freq(freq_c5 + 7), 0.5);
-        let note = 1;
+        played[i]++;
+        beep(1000, freq(freq_c5 + 7 * i), 0.5);
+        let note = i;
         if (currentSong[currentPlayIndex] === note) gotNote();
         else failed();
     }
@@ -263,41 +257,29 @@
                 >
                     <!-- <img src="TinyQuest/gamedata/rocketlaunch/background.webp" class="absolute" alt="" style="bottom:0px;" /> -->
                 </div>
-                {#key played0}
-                    <div
-                        in:scalePulse|local={{ delay: 0, duration: 200 }}
-                        class="absolute rounded-full {currentSong[currentPlayIndex] === 0 && playState === 0
-                            ? 'orbshow'
-                            : 'orb'} flex-center-all font-bold"
-                        style="width:16rem;height:16rem;left:16rem;top:30rem;"
-                        on:pointerdown|preventDefault|stopPropagation={buttonA}
-                    >
-                        <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">
-                            <i class="fas fa-music text-9xl text-pink-400" />
+                {#each Array(numButtons) as _, i}
+                    {#key played[i]}
+                        <div
+                            in:scalePulse|local={{ delay: 0, duration: 200 }}
+                            class="absolute rounded-full {currentSong[currentPlayIndex] === 0 && playState === 0
+                                ? 'orbshow'
+                                : 'orb'} flex-center-all font-bold"
+                            style="width:16rem;height:16rem;left:{16 + i * 20}rem;top:30rem;"
+                            on:pointerdown|preventDefault|stopPropagation={() => button(i)}
+                        >
+                            <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">
+                                <i class="fas fa-music text-9xl text-pink-400" />
+                            </div>
                         </div>
-                    </div>
 
-                    <!-- <div
+                        <!-- <div
                             class="absolute rounXXded-full border border-pink-500 hex2"
                             style="width:16rem;height:16rem;left:15rem;top:30rem;"
                         >
                             <i class="absolute top-24 left-32 fas fa-music text-9xl text-pink-400" />
                         </div> -->
-                {/key}
-                {#key played1}
-                    <button
-                        in:scalePulse|local={{ delay: 0, duration: 200 }}
-                        class="absolute rounded-full {currentSong[currentPlayIndex] === 1 && playState === 0
-                            ? 'orbshow'
-                            : 'orb'} flex-center-all font-bold"
-                        style="width:16rem;height:16rem;left:56rem;top:30rem;"
-                        on:pointerdown|preventDefault|stopPropagation={buttonB}
-                    >
-                        <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">
-                            <i class="fas fa-music text-9xl text-pink-400" />
-                        </div>
-                    </button>
-                {/key}
+                    {/key}
+                {/each}
             </div>
             <div class="absolute top-8 left-8 h-8 flex flex-row flex-wrap text-white" style="width:80rem">
                 {#each Array(songLength) as _, i}
@@ -324,6 +306,13 @@
                     OOPS
                 </div>
             {/if}
+
+            <div
+                class="orbsmall flex-center-all text-4xl absolute left-[2rem] top-[10rem] cursor-pointer select-none rounded-xl bg-gray-700 text-gray-200 h-12 p-2"
+                on:pointerdown|preventDefault|stopPropagation={() => (speed = [2, 3, 4, 1][speed - 1])}
+            >
+                SPEED {speed}
+            </div>
 
             <div
                 class="absolute right-0 top-0 cursor-pointer select-none m-4"
@@ -372,6 +361,10 @@
             /* inset -4px -4px 12px #555555,
             inset 4px 4px 12px #000000, */ 0px 0 60px #f060cf, 0px 0 5px #ffffff;
         /* font-size: 136px; */
+    }
+    .orbsmall {
+        box-shadow: inset 0 0 10px #111111, inset 0px 0 4px #c0307f, 0px 0 12px #f060cf;
+        border: 0.2rem solid #706090;
     }
 
     .hexagon {

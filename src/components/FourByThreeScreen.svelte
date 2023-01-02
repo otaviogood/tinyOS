@@ -16,7 +16,7 @@
     let clazz = "";
     export { clazz as class };
 
-    let bg;
+    let bg = "#000000";
 </script>
 
 <div class="fit-full-space select-none overflow-hidden" style={bg ? "background-color:" + bg : ""} on:touchstart={preventZoom}>
