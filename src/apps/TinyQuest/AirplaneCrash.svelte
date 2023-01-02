@@ -7,12 +7,24 @@
     import WinScreen from "./WinScreen.svelte";
     import { pop } from "svelte-spa-router";
     import { allTowns, currentTownIndex, earnedStar } from "./stores";
-    import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";
+    import {
+        invAspectRatio,
+        fullWidth,
+        fullHeight,
+        landscape,
+        bigWidth,
+        bigHeight,
+        bigScale,
+        bigPadX,
+        bigPadY,
+        handleResize,
+    } from "../../screen";
     import { sleep, getRandomInt, shuffleArray, preventZoom } from "./util";
     import { tweened } from "svelte/motion";
     import { cubicInOut } from "svelte/easing";
     import { Animator, frameCount, animateCount } from "../../animator";
     import AirplaneCrashSprites from "./AirplaneCrashSprites.svelte";
+    import FourByThreeScreen from "../../components/FourByThreeScreen.svelte";
 
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
@@ -64,7 +76,18 @@
         for (let i = 0; i < maxShapes; i++) {
             let xy = genPos();
             xy = [i * 0.1115 + 0.083, 0.222];
-            currentShapes.push({ type: "plane", sprite: "plane" + i, x0: xy[0], y0: xy[1], rad: Math.PI * 0.5, scale: 0.5, doneAnim: 0.0, state: "starting", index: i, touch: true });
+            currentShapes.push({
+                type: "plane",
+                sprite: "plane" + i,
+                x0: xy[0],
+                y0: xy[1],
+                rad: Math.PI * 0.5,
+                scale: 0.5,
+                doneAnim: 0.0,
+                state: "starting",
+                index: i,
+                touch: true,
+            });
         }
     }
 
@@ -93,7 +116,14 @@
                         if (dist < 0.08 && shape.doneAnim === 0.0) {
                             console.log("CRASHED");
                             let xy = [(shape.x0 + other.x0) / 2, (shape.y0 + other.y0) / 2];
-                            currentShapes.push({ type: "explosion", sprite: "explosion", x0: xy[0], y0: xy[1], rad: 0, doneAnim: 0.01 });
+                            currentShapes.push({
+                                type: "explosion",
+                                sprite: "explosion",
+                                x0: xy[0],
+                                y0: xy[1],
+                                rad: 0,
+                                doneAnim: 0.01,
+                            });
                             shape.doneAnim = 0.01;
                             other.doneAnim = 0.01;
                             shape.state = "landing";
@@ -290,20 +320,34 @@
     startGame();
 </script>
 
-<div class="fit-full-space select-none overflow-hidden" style="backgXXXround-color:black" on:touchstart={preventZoom}>
-    <div class="relative overflow-hidden select-none" style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px;tranXXXsform:scale(0.4)">
-        {#if !started}
-            <div class="flex-center-all h-full flex flex-col">
-                <img src="TinyQuest/gamedata/busstop/intro.webp" class="absolute top-0" alt="skyscraper" style="height:64rem" />
-                <div in:fade={{ duration: 2000 }} class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1" style="margin-top:44rem;background-color:#40101080">{town?.name}</div>
-                <button in:fade={{ duration: 2000 }} class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10" on:pointerup|preventDefault|stopPropagation={startGame}>START</button>
+<FourByThreeScreen>
+    {#if !started}
+        <div class="flex-center-all h-full flex flex-col">
+            <img src="TinyQuest/gamedata/busstop/intro.webp" class="absolute top-0" alt="skyscraper" style="height:64rem" />
+            <div
+                in:fade={{ duration: 2000 }}
+                class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1"
+                style="margin-top:44rem;background-color:#40101080"
+            >
+                {town?.name}
             </div>
-        {:else}
-            <div class="flex flex-row h-full w-full">
-                <div class="fit-full-space" style="">
-                    <img src="TinyQuest/gamedata/airplanecrash/Airport.png" class="absolute top-0 left-0 w-full h-full" alt="bus stop background" style="opacity:0.66" />
+            <button
+                in:fade={{ duration: 2000 }}
+                class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10"
+                on:pointerup|preventDefault|stopPropagation={startGame}>START</button
+            >
+        </div>
+    {:else}
+        <div class="flex flex-row h-full w-full">
+            <div class="fit-full-space" style="">
+                <img
+                    src="TinyQuest/gamedata/airplanecrash/Airport.png"
+                    class="absolute top-0 left-0 w-full h-full"
+                    alt="bus stop background"
+                    style="opacity:0.66"
+                />
 
-                    <!-- <div class="absolute" style="left:-50rem;right:-50rem;top:0rem;bottom:0rem">
+                <!-- <div class="absolute" style="left:-50rem;right:-50rem;top:0rem;bottom:0rem">
                         <img
                             src="TinyQuest/gamedata/busstop/{vehicle}.png"
                             class="absolute"
@@ -311,41 +355,45 @@
                             style="width:{vsizes[vehicle] / 8.0}rem;left:{carAnim * (vsizes[vehicle] / 8 + 100) - vsizes[vehicle] / 8.0 + 50}rem;bottom:2rem;"
                         />
                     </div> -->
-                    <!-- <div class="bg-red-600 absolute bottom-4" style="width:4rem;height:4rem;left:16rem;transform: translate({Math.sin(animateCount*0.1)*16}rem, 0rem);"></div> -->
-                </div>
-                {#each currentShapes as s, i}
-                    <div
-                        class="absolute boXXXrder border-red-500 rounded-full {s.touch ? '' : 'pointer-events-none'}"
-                        style="left:{s.x0 * 100}rem;top:{s.y0 * 100}rem;transform-origin:50% 50%; transform:rotate({s.rad + 0.7854}rad) scale({s.scale ?? 1.0}); opacity:{s.doneAnim >= 1.0
-                            ? 0.0
-                            : 1.0};will-change:transform;"
-                        on:pointerdown|preventDefault|stopPropagation={() => pointerDown(i, s)}
-                        on:pointerup|preventDefault|stopPropagation={() => pointerUp(i, s)}
-                        on:pointerleave|preventDefault|stopPropagation={() => pointerUp(i, s)}
-                        on:touchstart|preventDefault|stopPropagation={(e) => touchStart(e, i, s)}
-                    >
-                        <AirplaneCrashSprites icon={s.sprite} size="8rem" style="margin:0;" />
-                    </div>
-                {/each}
-                {#each extras as s, i}
-                    <div
-                        class="absolute border border-red-500 rounded-full pointer-events-none"
-                        style="left:{s.x0 * 100}rem;top:{s.y0 * 100}rem;traXXnsform-origin:50% 50%; transform:rotate({s.rad + 0.7854}rad); opaXXXcity:{s.doneAnim > 0.0
-                            ? 0.0
-                            : 1.0};will-change:transform;"
-                    >
-                        <AirplaneCrashSprites icon={s.sprite} size="8rem" style="margin:0;" />
-                    </div>
-                {/each}
-
-                <div class="absolute right-0 top-0 bottom-0 flex flex-row">
-                    <StarBar {maxStars} {starCount} bg="#00000080" on:pointerup={resetToSplashScreen} />
-                </div>
-                <WinScreen {maxStars} active={finalGraphic} bg="#00000010" on:startGame={startGame} on:resetToSplashScreen={resetToSplashScreen} style="position:absolute;top:10rem;z-index:100;" />
+                <!-- <div class="bg-red-600 absolute bottom-4" style="width:4rem;height:4rem;left:16rem;transform: translate({Math.sin(animateCount*0.1)*16}rem, 0rem);"></div> -->
             </div>
-        {/if}
-    </div>
-</div>
+            {#each currentShapes as s, i}
+                <div
+                    class="absolute boXXXrder border-red-500 rounded-full {s.touch ? '' : 'pointer-events-none'}"
+                    style="left:{s.x0 * 100}rem;top:{s.y0 * 100}rem;transform-origin:50% 50%; transform:rotate({s.rad +
+                        0.7854}rad) scale({s.scale ?? 1.0}); opacity:{s.doneAnim >= 1.0 ? 0.0 : 1.0};will-change:transform;"
+                    on:pointerdown|preventDefault|stopPropagation={() => pointerDown(i, s)}
+                    on:pointerup|preventDefault|stopPropagation={() => pointerUp(i, s)}
+                    on:pointerleave|preventDefault|stopPropagation={() => pointerUp(i, s)}
+                    on:touchstart|preventDefault|stopPropagation={(e) => touchStart(e, i, s)}
+                >
+                    <AirplaneCrashSprites icon={s.sprite} size="8rem" style="margin:0;" />
+                </div>
+            {/each}
+            {#each extras as s, i}
+                <div
+                    class="absolute border border-red-500 rounded-full pointer-events-none"
+                    style="left:{s.x0 * 100}rem;top:{s.y0 * 100}rem;traXXnsform-origin:50% 50%; transform:rotate({s.rad +
+                        0.7854}rad); opaXXXcity:{s.doneAnim > 0.0 ? 0.0 : 1.0};will-change:transform;"
+                >
+                    <AirplaneCrashSprites icon={s.sprite} size="8rem" style="margin:0;" />
+                </div>
+            {/each}
+
+            <div class="absolute right-0 top-0 bottom-0 flex flex-row">
+                <StarBar {maxStars} {starCount} bg="#00000080" on:pointerup={resetToSplashScreen} />
+            </div>
+            <WinScreen
+                {maxStars}
+                active={finalGraphic}
+                bg="#00000010"
+                on:startGame={startGame}
+                on:resetToSplashScreen={resetToSplashScreen}
+                style="position:absolute;top:10rem;z-index:100;"
+            />
+        </div>
+    {/if}
+</FourByThreeScreen>
 
 <style>
 </style>
