@@ -107,6 +107,7 @@
     let pieceQueueSize = 4;
     let colorMask = 3; // 1 for Red, 3 for red/green, 7 for red/green/blue
     let baseColors = [1, 2]; //, 4];
+    let difficultyMenu = true;
 
     // 2d tetris board placed pieces
     const solid = 0xff;
@@ -262,8 +263,12 @@
     // This is a crazy generator function that lets us do the game loop without ever really returning.
     async function* gameplay() {
         console.log("gameplay");
+        while (difficultyMenu) {
+            yield 1;
+        }
+        difficultyMenu = false;
+        resetPiece();
         while (true) {
-            resetPiece();
             do {
                 let speed = 0.125 * 0.25;
                 if (dropping) speed *= 8;
@@ -294,6 +299,7 @@
                 yield 1;
                 // console.log("pieceY", pieceY);
             } while (true);
+            resetPiece();
         }
     }
 
@@ -378,60 +384,99 @@
             >
         </div>
     {:else}
-        <div class="flex flex-row h-full w-full">
-            <div class="ml-[38rem] relative" style="">
-                {#key board}
-                    {#each Array(boardHeight + 1) as _, y}
-                        <div class="flex flex-row">
-                            {#each Array(boardWidth + 2) as _, x}
-                                <div class="flex-center-all" style="width:2rem;height:2rem;backgrXXound-color:#30405080">
-                                    {#if safeGetBoard(x - 1, y) > 0}
-                                        <div
-                                            class="flex-center-all"
-                                            style="width:1.85rem;height:1.85rem;background-color:{pieceColor(
-                                                safeGetBoard(x - 1, y)
-                                            )}"
-                                        >
-                                            <!-- {safeGetBoard(x - 1, y)} -->
-                                        </div>
-                                        <!-- {:else}
+        {#if difficultyMenu}
+            <div class="flex-center-all flex-col h-full w-full">
+                <div class="flex-center-all flex flex-col h-min w-full bg-black text-white">
+                    <div class="text-7xl">SELECT DIFFICULTY</div>
+                    <div class="flex-center-all flex flex-row h-full w-full bg-black">
+                        <img
+                            src="TinyQuest/gamedata/blockdrop/R.png"
+                            class="m-8 cursor-pointer select-none"
+                            alt="R color circles"
+                            style="height:14rem"
+                            on:pointerup={() => {
+                                difficultyMenu = false;
+                                setColorsMode(1);
+                            }}
+                        />
+                        <img
+                            src="TinyQuest/gamedata/blockdrop/RG.png"
+                            class="m-8 cursor-pointer select-none"
+                            alt="RG color circles"
+                            style="height:14rem"
+                            on:pointerup={() => {
+                                difficultyMenu = false;
+                                setColorsMode(3);
+                            }}
+                        />
+                        <img
+                            src="TinyQuest/gamedata/blockdrop/RGB.png"
+                            class="m-8 cursor-pointer select-none"
+                            alt="RGB color circles"
+                            style="height:14rem"
+                            on:pointerup={() => {
+                                difficultyMenu = false;
+                                setColorsMode(7);
+                            }}
+                        />
+                    </div>
+                </div>
+            </div>
+        {:else}
+            <div class="flex flex-row h-full w-full">
+                <div class="ml-[38rem] relative" style="">
+                    {#key board}
+                        {#each Array(boardHeight + 1) as _, y}
+                            <div class="flex flex-row">
+                                {#each Array(boardWidth + 2) as _, x}
+                                    <div class="flex-center-all" style="width:2rem;height:2rem;backgrXXound-color:#30405080">
+                                        {#if safeGetBoard(x - 1, y) > 0}
+                                            <div
+                                                class="flex-center-all"
+                                                style="width:1.85rem;height:1.85rem;background-color:{pieceColor(
+                                                    safeGetBoard(x - 1, y)
+                                                )}"
+                                            >
+                                                <!-- {safeGetBoard(x - 1, y)} -->
+                                            </div>
+                                            <!-- {:else}
                                         <div
                                             class="flex-center-all border-l border-gray-900"
                                             style="width:1.85rem;height:1.85rem;backgrounXXd-color:#ffffff80"
                                         /> -->
-                                    {/if}
-                                    <!-- <div class="flex-center-all" style="width:1.75rem;height:1.75rem;background-color:#ffffff80">
+                                        {/if}
+                                        <!-- <div class="flex-center-all" style="width:1.75rem;height:1.75rem;background-color:#ffffff80">
                                     {safeGetBoard(x - 1, y)}
                                 </div> -->
-                                </div>
-                            {/each}
-                        </div>
-                    {/each}
-                {/key}
-                <div
-                    class="absolute left-0 top-0"
-                    style="width:8rem;height:8rem;background-coXXlor:#30405080;transform:translate({(pieceX + 1) *
-                        2}rem, {pieceY * 2}rem) rotate({currentRotation * 90}deg)"
-                >
-                    {#key currentPiece}
-                        {#each Array(4) as _, y}
-                            <div class="flex flex-row w-32 h-8">
-                                {#each Array(4) as _, x}
-                                    {#if pieces[currentPiece][y][x]}
-                                        <div
-                                            class=""
-                                            style="width:2rem;height:2rem;background-color:{pieceColor(currentPieceColor)}"
-                                        />
-                                    {:else}
-                                        <div class="" style="width:2rem;height:2rem;backXXground-color:#70401020" />
-                                    {/if}
+                                    </div>
                                 {/each}
                             </div>
                         {/each}
                     {/key}
-                </div>
+                    <div
+                        class="absolute left-0 top-0"
+                        style="width:8rem;height:8rem;background-coXXlor:#30405080;transform:translate({(pieceX + 1) *
+                            2}rem, {pieceY * 2}rem) rotate({currentRotation * 90}deg)"
+                    >
+                        {#key currentPiece}
+                            {#each Array(4) as _, y}
+                                <div class="flex flex-row w-32 h-8">
+                                    {#each Array(4) as _, x}
+                                        {#if pieces[currentPiece][y][x]}
+                                            <div
+                                                class=""
+                                                style="width:2rem;height:2rem;background-color:{pieceColor(currentPieceColor)}"
+                                            />
+                                        {:else}
+                                            <div class="" style="width:2rem;height:2rem;backXXground-color:#70401020" />
+                                        {/if}
+                                    {/each}
+                                </div>
+                            {/each}
+                        {/key}
+                    </div>
 
-                <!-- <div
+                    <!-- <div
                     class="absolute left-0 top-0 border border-pink-500"
                     style="width:8rem;height:8rem;bacXXkground-color:#30405080;transform:translate({(pieceX + 1) *
                         2}rem, {Math.round(pieceY) * 2}rem)"
@@ -451,110 +496,111 @@
                         </div>
                     {/each}
                 </div> -->
-            </div>
+                </div>
 
-            <div class="absolute left-[64rem] top-0 h-[50rem] border border-gray-800 bg-gray-900" style="">
-                {#each pieceQueue as piece, i}
-                    <div class="m-16">
-                        {#each Array(4) as _, y}
-                            <div class="flex flex-row w-32 h-8">
-                                {#each Array(4) as _, x}
-                                    {#if rotatedPiece(pieces[piece.piece], piece.rotation)[y][x]}
-                                        <div
-                                            class=" border border-gray-300"
-                                            style="width:2rem;height:2rem;background-color:{pieceColor(piece.color)}"
-                                        />
-                                    {:else}
-                                        <div class="" style="width:2rem;height:2rem;bacXXXkground-color:#70401020" />
-                                    {/if}
-                                {/each}
-                            </div>
-                        {/each}
+                <div class="absolute left-[64rem] top-0 h-[50rem] border border-gray-800 bg-gray-900" style="">
+                    {#each pieceQueue as piece, i}
+                        <div class="m-16">
+                            {#each Array(4) as _, y}
+                                <div class="flex flex-row w-32 h-8">
+                                    {#each Array(4) as _, x}
+                                        {#if rotatedPiece(pieces[piece.piece], piece.rotation)[y][x]}
+                                            <div
+                                                class=" border border-gray-300"
+                                                style="width:2rem;height:2rem;background-color:{pieceColor(piece.color)}"
+                                            />
+                                        {:else}
+                                            <div class="" style="width:2rem;height:2rem;bacXXXkground-color:#70401020" />
+                                        {/if}
+                                    {/each}
+                                </div>
+                            {/each}
+                        </div>
+                    {/each}
+                </div>
+
+                <div
+                    class="flex-center-all text-8xl absolute left-10 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
+                    on:pointerdown|preventDefault|stopPropagation={() => sideMove(-1)}
+                >
+                    L
+                </div>
+                <div
+                    class="flex-center-all text-8xl absolute right-10 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
+                    on:pointerdown|preventDefault|stopPropagation={() => sideMove(1)}
+                >
+                    R
+                </div>
+                <div
+                    class="flex-center-all text-8xl absolute left-72 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
+                    on:pointerdown|preventDefault|stopPropagation={() => rotate(1)}
+                >
+                    <i class="fa-solid fa-rotate-right" />
+                </div>
+                <div
+                    class="flex-center-all text-8xl absolute right-72 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
+                    on:pointerdown|preventDefault|stopPropagation={() => rotate(-1)}
+                >
+                    <i class="fa-solid fa-rotate-left" />
+                </div>
+                <div
+                    class="flex-center-all text-8xl absolute left-[43.5rem] bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
+                    on:pointerdown|preventDefault|stopPropagation={() => (dropping = true)}
+                >
+                    <i class="fa-solid fa-arrow-down" />
+                </div>
+
+                {#if colorMask === 1}
+                    <div
+                        class="flex-center-all text-4xl absolute left-[2rem] top-[10rem] cursor-pointer select-none rounded bg-red-900 text-gray-200 h-12 p-2"
+                        on:pointerdown|preventDefault|stopPropagation={() => setColorsMode(3)}
+                    >
+                        RED
                     </div>
-                {/each}
-            </div>
+                {:else if colorMask === 3}
+                    <div
+                        class="flex-center-all text-4xl absolute left-[2rem] top-[10rem] cursor-pointer select-none rounded bg-green-900 text-gray-200 h-12 p-2"
+                        on:pointerdown|preventDefault|stopPropagation={() => setColorsMode(7)}
+                    >
+                        RED/GREEN
+                    </div>
+                {:else if colorMask === 7}
+                    <div
+                        class="flex-center-all text-4xl absolute left-[2rem] top-[10rem] cursor-pointer select-none rounded bg-red-900 text-gray-200 h-12 p-2"
+                        on:pointerdown|preventDefault|stopPropagation={() => setColorsMode(1)}
+                    >
+                        RED/GREEN/BLUE
+                    </div>
+                {/if}
 
-            <div
-                class="flex-center-all text-8xl absolute left-10 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
-                on:pointerdown|preventDefault|stopPropagation={() => sideMove(-1)}
-            >
-                L
-            </div>
-            <div
-                class="flex-center-all text-8xl absolute right-10 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
-                on:pointerdown|preventDefault|stopPropagation={() => sideMove(1)}
-            >
-                R
-            </div>
-            <div
-                class="flex-center-all text-8xl absolute left-72 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
-                on:pointerdown|preventDefault|stopPropagation={() => rotate(1)}
-            >
-                <i class="fa-solid fa-rotate-right" />
-            </div>
-            <div
-                class="flex-center-all text-8xl absolute right-72 bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
-                on:pointerdown|preventDefault|stopPropagation={() => rotate(-1)}
-            >
-                <i class="fa-solid fa-rotate-left" />
-            </div>
-            <div
-                class="flex-center-all text-8xl absolute left-[43.5rem] bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
-                on:pointerdown|preventDefault|stopPropagation={() => (dropping = true)}
-            >
-                <i class="fa-solid fa-arrow-down" />
-            </div>
-
-            {#if colorMask === 1}
-                <div
-                    class="flex-center-all text-4xl absolute left-[2rem] top-[10rem] cursor-pointer select-none rounded bg-red-900 text-gray-200 h-12 p-2"
-                    on:pointerdown|preventDefault|stopPropagation={() => setColorsMode(3)}
-                >
-                    RED
+                <div class="text-4xl absolute left-2 top-2 select-none p-4">
+                    LINES&nbsp;&nbsp;&nbsp;&nbsp;{linesGot}
                 </div>
-            {:else if colorMask === 3}
-                <div
-                    class="flex-center-all text-4xl absolute left-[2rem] top-[10rem] cursor-pointer select-none rounded bg-green-900 text-gray-200 h-12 p-2"
-                    on:pointerdown|preventDefault|stopPropagation={() => setColorsMode(7)}
-                >
-                    RED/GREEN
+                <div class="text-4xl absolute left-2 top-16 select-none p-4">
+                    SCORE&nbsp;&nbsp;&nbsp;{score}
                 </div>
-            {:else if colorMask === 7}
                 <div
-                    class="flex-center-all text-4xl absolute left-[2rem] top-[10rem] cursor-pointer select-none rounded bg-red-900 text-gray-200 h-12 p-2"
-                    on:pointerdown|preventDefault|stopPropagation={() => setColorsMode(1)}
+                    class="absolute right-0 top-0 cursor-pointer select-none m-4"
+                    style="padding:0 0.75rem;border-radius:0.75rem;"
+                    on:pointerup|preventDefault|stopPropagation={resetToSplashScreen}
+                    on:touchstart={preventZoom}
                 >
-                    RED/GREEN/BLUE
+                    <IconsMisc icon="treasure-map" size="7.5rem" style="" />
                 </div>
-            {/if}
 
-            <div class="text-4xl absolute left-2 top-2 select-none p-4">
-                LINES&nbsp;&nbsp;&nbsp;&nbsp;{linesGot}
-            </div>
-            <div class="text-4xl absolute left-2 top-16 select-none p-4">
-                SCORE&nbsp;&nbsp;&nbsp;{score}
-            </div>
-            <div
-                class="absolute right-0 top-0 cursor-pointer select-none m-4"
-                style="padding:0 0.75rem;border-radius:0.75rem;"
-                on:pointerup|preventDefault|stopPropagation={resetToSplashScreen}
-                on:touchstart={preventZoom}
-            >
-                <IconsMisc icon="treasure-map" size="7.5rem" style="" />
-            </div>
-
-            <!-- <div class="absolute right-0 top-0 bottom-0 flex flex-row">
+                <!-- <div class="absolute right-0 top-0 bottom-0 flex flex-row">
                     <StarBar {maxStars} {starCount} bg="#00000080" on:pointerup={resetToSplashScreen} />
                 </div> -->
-            <WinScreen
-                {maxStars}
-                active={finalGraphic}
-                bg="#00000010"
-                on:startGame={startGame}
-                on:resetToSplashScreen={resetToSplashScreen}
-                style="position:absolute;top:10rem;z-index:100;"
-            />
-        </div>
+                <WinScreen
+                    {maxStars}
+                    active={finalGraphic}
+                    bg="#00000010"
+                    on:startGame={startGame}
+                    on:resetToSplashScreen={resetToSplashScreen}
+                    style="position:absolute;top:10rem;z-index:100;"
+                />
+            </div>
+        {/if}
         <!-- <div class="absolute left-2 bottom-2" style="width:{60*5+16}px;height:{16.67*0.2}rem;background-color:#ffff00a0">
                 {#each timingQueue as t, i}
                     <div class="bg-red-600 absolute bottom-0" style="width:4px;height:{Math.min(74,t*0.2)}rem;left:{i * 5}px"></div>

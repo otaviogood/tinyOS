@@ -392,7 +392,7 @@
     .cell {
         border: 0.2rem solid #00000018;
         background-color: #00000020;
-        aspect-ratio: 1;
+        aspect-ratio: 1 / 1;
     }
     .reveal {
         background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal.webp");

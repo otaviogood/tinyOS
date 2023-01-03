@@ -26,6 +26,7 @@
 
     handleResize();
 
+    let canvasThumb;
     let canvasTop;
     let canvasBottom;
     let bmpTop;
@@ -257,17 +258,34 @@
         return new Blob([ia], { type: mimeString });
     }
 
-    async function save() {
+    let saving = false;
+    async function takeSnapshot() {
+        saving = true;
+        canvasThumb.getContext("2d").drawImage(canvasBottom, 0, 0, canvasThumb.width, canvasThumb.height);
+        let timestamp = Date.now().toString(); // Use current time as id since kids won't be able to type a name.
+        await save(canvasThumb, timestamp + "_thumb", "jpg");
+        // canvas.width = camWidth;
+        // canvas.height = camHeight;
+        // canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+        // const img = canvasThumb.toDataURL("image/jpg");
+        // make a circular buffer of 3 images
+        // if (photos.length >= 3) photos.shift();
+        // photos.push(img);
+        // photos = photos;
+        await save(canvasBottom, timestamp + "_camera", "png");
+        saving = false;
+    }
+
+    async function save(canvas, str = "camera", ext = "png") {
         // Save to indexedDB using idb
-        let data = canvasBottom.toDataURL("image/png");
+        let data = canvas.toDataURL("image/" + ext);
         let blob = dataURItoBlob(data);
-        let id = Date.now(); // Use current time as id since kids won't be able to type a name.
-        let name = "paint_" + id + ".png";
-        let file = new File([blob], name, { type: "image/png" });
+        let name = str + "." + ext;
+        let file = new File([blob], name, { type: "image/" + ext });
         // let store = db.transaction("files", "readwrite").objectStore("files");
         // store.put(file, id);
-        await set(id, file);
-        console.log("Saved to indexedDB");
+        await set(str, file);
+        console.log("Saved to indexedDB", name);
     }
 
     async function load(id) {
@@ -345,12 +363,13 @@
         class="relative overflow-hidden select-none"
         style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px;"
     >
+        <canvas bind:this={canvasThumb} width="320" height="216" style="display:none;" />
         <ImageBrowser
             keyPromise={allKeys}
             {dbPromise}
             on:loadimg={(k) => {
                 allKeys = null;
-                load(k.detail);
+                load(k.detail.replace("thumb", "camera"));
             }}
         />
         <div class="flex-center-all flex-col h-full w-full">
@@ -387,8 +406,8 @@
                             on:click={() => browse()}><i class="fas fa-icons" /></span
                         >
                         <span
-                            class="w-24 h-24 px-4 text-gray-300 hover:text-gray-100 active:text-yellow-400 mr-48 align-middle text-6xl"
-                            on:click={() => save()}><i class="fas fa-file-upload" /></span
+                            class="w-24 h-24 px-4 text-gray-300 hover:text-gray-100 active:text-yellow-400 {saving ? 'bg-red-600' : ''} mr-48 align-middle text-6xl"
+                            on:click={() => takeSnapshot()}><i class="fas fa-file-upload" /></span
                         >
                         <span class="colorcircle" on:click={() => selectColor("#000000")} style="background-color:#000000;" />
                         <span class="colorcircle" on:click={() => selectColor("#ff4040")} style="background-color:#ff4040;" />

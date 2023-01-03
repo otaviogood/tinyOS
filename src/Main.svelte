@@ -14,24 +14,18 @@
     import { sleep, getRandomInt, shuffleArray, preventZoom } from "./utils";
 
     const icons = [
-        {name: "Weather", icon: "fa-cloud-sun-rain", bgcolor: "bg-blue-500", link: "weather"},
+        {name: "Tiny Quest", icon: "fa-hat-wizard", bgcolor: "bg-green-500", link: "tinyquest/mapscreen"},
         // {name: "Video", icon: "fa-play", bgcolor: "bg-indigo-500", link: "video"},
         {name: "Music", icon: "fa-music", bgcolor: "bg-pink-500", link: "musicplayer"},
+        {name: "Paint", icon: "fa-paint-brush", bgcolor: "bg-orange-500", link: "paint"},
+        {name: "Camera", icon: "fa-camera", bgcolor: "bg-red-500", link: "camera"},
         {name: "Microphone", icon: "fa-microphone", bgcolor: "bg-indigo-500", link: "microphone"},
         // {name: "Calendar", icon: "fa-calendar", bgcolor: "bg-indigo-500", link: "calendar"},
         // {name: "Maps", icon: "fa-map-marker", bgcolor: "bg-orange-500", link: "maps"},
-        {name: "Tiny Quest", icon: "fa-hat-wizard", bgcolor: "bg-green-500", link: "tinyquest/mapscreen"},
         // {name: "Photos", icon: "fa-images", bgcolor: "bg-green-500", link: "photos"},
-        {name: "Paint", icon: "fa-paint-brush", bgcolor: "bg-orange-500", link: "paint"},
-        {name: "Camera", icon: "fa-camera", bgcolor: "bg-red-500", link: "camera"},
+        {name: "Weather", icon: "fa-cloud-sun-rain", bgcolor: "bg-blue-500", link: "weather"},
         {name: "Settings", icon: "fa-cog", bgcolor: "bg-gray-500", link: "settings"},
     ];
-    // const userAction = async () => {
-    //     const response = await fetch('http://example.com/movies.json');
-    //     const myJson = await response.json(); //extract JSON from the http response
-    //     console.log(myJson);
-    // }
-    // userAction();
 
     handleResize();
 </script>
