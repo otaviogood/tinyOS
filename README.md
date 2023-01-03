@@ -12,6 +12,9 @@ I'd like to make all the code public domain. Not sure how that works since there
 
 This project uses Svelte, Vite, Tailwind.
 
+### Speech Synthesis
+Since the browser's built in speech synthesis gave me trouble, I'm using Google Cloud speech as a preprocess to generate all speech that I put in comments in the files that use that speech. It's pretty sucky. To run it, set GOOGLE_APPLICATION_CREDENTIALS=[your key file], go to the "speech" folder and type node genSpeech.cjs. You will need to supply a key for google cloud though.
+
 ## Recommended
 
 [VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
