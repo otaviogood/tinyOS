@@ -429,6 +429,10 @@
                     on:pointerup|preventDefault|stopPropagation={startGame}>START</button
                 >
             </div>
+            <div class="absolute top-6 left-0 bg-[#00000080] rounded-br-3xl z-30 text-4xl p-4">
+                <p>Find the flashing ship and get it out of the harbor.</p>
+                <p>You can move on only one axis at a time.</p>
+            </div>
         {:else}
             <div class="flex flex-row h-full w-full">
                 <div class="fit-full-space" style="transform: scale({$scaleAnim}) translate(0rem, {$scrollY}rem)">

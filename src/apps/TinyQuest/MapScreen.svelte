@@ -6,7 +6,6 @@
     import { Howl, Howler } from "howler";
     import { Road, Town } from "./places";
     import IconsMisc from "./IconsMisc.svelte";
-    import HelpScreen from "./HelpScreen.svelte";
     import { animInterp, currentX, currentY, earnedStar, currentTownIndex, allTowns } from "./stores.js";
     import { slideLeft, pulseShadow, scaleDown } from "./Transitions";
     import {
@@ -31,7 +30,6 @@
 
     // let webgl;
 
-    let showHelpScreen = false;
     let allRoads = [];
 
     let fast2d;
@@ -212,25 +210,9 @@
     </div>
     <!-- <WebGL bind:this={webgl}></WebGL> -->
     <!-- <Three>WTF</Three>ABC -->
-    {#if showHelpScreen}
-        <div
-            on:pointerup|preventDefault|stopPropagation={(e) => {
-                if (e.target.localName !== "a") showHelpScreen = !showHelpScreen;
-            }}
-        >
-            <HelpScreen />
-        </div>
-    {:else}
-        <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-300 text-8xl" on:pointerup={pop}>
-            <i class="fas fa-times-circle" />
-        </div>
-        <div
-            class="text-gray-500 absolute top-2 left-2 m-2 text-5xl"
-            on:pointerup|preventDefault|stopPropagation={() => (showHelpScreen = !showHelpScreen)}
-        >
-            <i class="fas fa-cog" />
-        </div>
-    {/if}
+    <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-300 text-8xl" on:pointerup={pop}>
+        <i class="fas fa-times-circle" />
+    </div>
     <!-- {#if glIsSupported} -->
     <!-- <Fast2d bind:this={fast2d} id="graphRT">
         {#each Array(2400) as _, i}

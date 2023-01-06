@@ -171,7 +171,7 @@
             {/each}
         </div>
     </div>
-    <button class="absolute right-[4rem] bottom-10 cursor-pointer select-none text-9xl w-32 h-32" on:click={browse}>
+    <button class="absolute right-[5rem] bottom-10 cursor-pointer select-none text-9xl w-32 h-32" on:click={browse}>
         <i class="fa-solid fa-images" />
     </button>
     <button class="absolute right-[20rem] bottom-10 cursor-pointer select-none text-9xl w-32 h-32" on:click={toggleFacing}>
@@ -179,7 +179,7 @@
     </button>
     {#if !saving}
         <button
-            class="absolute left-[43.5rem] bottom-10 cursor-pointer select-none rounded-full bg-white w-32 h-32"
+            class="absolute left-[43.5rem] bottom-10 cursor-pointer select-none rounded-full bg-gray-600 w-32 h-32 border-[.5rem] border-white"
             on:click={takeSnapshot}
         />
     {:else}
