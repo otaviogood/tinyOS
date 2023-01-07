@@ -64,6 +64,8 @@
         "count": ["ZIniljT5lJI", "Y2Mate.is - Sesame Street Song of the Count-ZIniljT5lJI-128k-1657741419872.mp3"],
         "count bones": ["LP2rVGbZXrw", "Y2Mate.is - Sesame Street The Count's Bones Song-LP2rVGbZXrw-128k-1656273325777.mp3"],
         "batty bat": ["N7yAe2MBIpE", "Y2Mate.is - Sesame Street Batty Bat-N7yAe2MBIpE-128k-1656273051319.mp3"],
+        "bruno": ["EgCofsnrz2I", "Y2Mate.is - Encanto - We Don't Talk About Bruno (Lyrics)-EgCofsnrz2I-128k-1655255270647.mp3"],
+        "lava": ["uh4dTLJ9q9o", "Y2Mate.is - Disney Music - Lava (Official Lyric Video from Lava)-uh4dTLJ9q9o-128k-1659075815451.mp3"],
     };
     /*!speech
 [
@@ -97,6 +99,8 @@
         "count",
         "count bones",
         "batty bat",
+        "bruno",
+        "lava",
 ]
     */
     let allMedia;
