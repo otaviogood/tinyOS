@@ -32,15 +32,23 @@
     }
 
     let pressed = false;
+    let lastY = -1;
     function setBrushSize(e, down) {
         if (down === -1) pressed = false;
         if (!pressed && down == 0) return;
-        if (down === 1) pressed = down;
         if (!e) return;
         let xy = getPointerPos(e);
         let y = 1-xy[1];
-        brushSize = y*100;
-        brushSize = Math.max(brushSize, 1);
+        if (down === 1) {
+            pressed = down;
+            lastY = y;
+        } else {
+            let delta = (y - lastY);
+            brushSize += delta*100;
+            lastY = y;
+        }
+        brushSize = Math.max(brushSize, 1.1);
+        brushSize = Math.min(brushSize, 99);
         dispatch("brushSize", brushSize);
     }
 </script>
@@ -53,7 +61,8 @@
         <div class="size-icons pointer-events-none" style="top:{9.3*scale}rem;left:{0.6*scale}rem; width:{1.9*scale}rem;height:{1.9*scale}rem;"></div>
         <div class="size-icons pointer-events-none" style="top:{11.8*scale}rem;left:{0.9*scale}rem; width:{1.2*scale}rem;height:{1.2*scale}rem;"></div>
         <!-- <div style="pointer-events:none;position:absolute;top:{16.9*scale}rem;left:0; width:{3*scale}rem;height:{.2*scale}rem;background-color:#707070;display:inline-block;"></div> -->
-        <div style="pointer-events:none;position:absolute;bottom:calc({brushSize*.2*scale}rem + {-.1*scale}rem);left:0; width:{3*scale}rem;height:{.2*scale}rem;background-color:#ffffff;display:inline-block;border-radius:10%"></div>
+        <div style="pointer-events:none;position:absolute;bottom:calc({(brushSize*scale*2.35)/($bigScale*0.01)}rem + {-.1*scale}rem);left:0; width:{3*scale}rem;height:{.2*scale}rem;background-color:#ffffff;display:inline-block;border-radius:10%"></div>
+        <div class="text-2xl w-full text-center" style="pointer-events:none;position:absolute;top:1rem;left:0rem;">{brushSize.toFixed(1)}</div>
         <!-- <input type="range" min="1" max="32" bind:value={brushSize} class="vol-slider" style="width:{18*scale}rem;margin:0"/> -->
     </div>
     <!-- Brush size visualizer -->

@@ -133,10 +133,10 @@
                 xy[1],
                 xy[0],
                 xy[1],
-                brushSize | 0,
+                brushSize,
                 ColorABGR.fromHashTagColor(selectedColor) | (255 << 24),
                 ColorABGR.fromHashTagColor(selectedColor) | (255 << 24),
-                1
+                .95 // Revisit - i have no idea about this number.
             );
 
             newLayer = {
@@ -160,10 +160,10 @@
                 pointerLastPos[1],
                 xy[0],
                 xy[1],
-                brushSize | 0,
+                brushSize,
                 ColorABGR.fromHashTagColor(selectedColor) | (255 << 24),
                 ColorABGR.fromHashTagColor(selectedColor) | (255 << 24),
-                1
+                .95 // Revisit - i have no idea about this number.
             );
 
             if (lastMoveSent < now() - 100) {
