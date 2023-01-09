@@ -22,6 +22,7 @@
     export let colorStr;
     export let brushSize;
 
+    let originalColorStr = colorStr;
     function getPointerPos(ev) {
         let rect = ev.target.getBoundingClientRect();
         const border = 0;
@@ -60,27 +61,21 @@
         <div style="position:absolute;bottom:calc({-brushSize}px + {1.4*scale}rem);left:calc({-brushSize}px + {1.4*scale}rem); background-color:white;display:inline-block;width:{brushSize*2}px;height:{brushSize*2}px;border-radius:{brushSize*2}px"></div>
     </div>
     <!-- Current color example -->
-    <div style="position:absolute;top:{.6*scale}rem;left:{4.25*scale}rem; background-color:{colorStr};display:inline-block;width:{2.8*scale}rem;height:{2.8*scale}rem;border-radius:{.6*scale}rem"></div>
+    <div style="position:absolute;top:{.6*scale}rem;left:{4.25*scale}rem; background-color:{originalColorStr};display:inline-block;width:{2.8*scale}rem;height:{2.8*scale}rem;border-radius:{.6*scale}rem"></div>
+    <div style="position:absolute;top:{.6*scale}rem;left:{4.75*scale}rem; background-color:{colorStr};display:inline-block;width:{2.3*scale}rem;height:{2.8*scale}rem;border-radius:{.6*scale}rem"></div>
     <ColorWheel size={($bigScale*.2*scale) | 0} bind:colorStr on:change on:close />
     <!-- Close button -->
-    <span style="position:absolute;top:{.5*scale}rem;right:{.4*scale}rem;pointer-events:auto" on:click={() => dispatch('close', {})}>
+    <span style="position:absolute;top:{.5*scale}rem;right:{.4*scale}rem;pointer-events:auto" on:pointerup={() => dispatch('close', {})}>
         <!-- <Icons img="close" size="40" color="#e0e0e0" hover="true" background="#00000060" /> -->
         <div class="cursor-pointer select-none rounded-full text-gray-200" style="font-size:{3*scale}rem;line-height:1" ><i class="fas fa-times-circle"></i></div>
     </span>
-    <span style="position:absolute;bottom:{.4*scale}rem;right:{.4*scale}rem;pointer-events:auto" on:click={() => dispatch('eyeDropper', {})}>
+    <span style="position:absolute;bottom:{.4*scale}rem;right:{.4*scale}rem;pointer-events:auto" on:pointerup={() => dispatch('eyeDropper', {})}>
         <!-- <Icons img="eyeDropper" size="40" color="#e0e0e0" hover="true" background="#00000060" /> -->
         <div class="cursor-pointer select-none rounded-full text-gray-200" style="font-size:{3*scale}rem;line-height:1" ><i class="fas fa-eye-dropper"></i></div>
     </span>
 </div>
 
 <style>
-    input[type="range"] {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%) rotate(270deg);
-    }
-
     .size-icons {
         position: absolute;
         background-color: #808080;

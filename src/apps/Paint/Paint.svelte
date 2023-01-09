@@ -403,21 +403,21 @@
                     >
                         <span
                             class="w-24 h-24 px-4 text-gray-300 hover:text-gray-100 active:text-yellow-400 align-middle text-6xl"
-                            on:click={() => browse()}><i class="fas fa-icons" /></span
+                            on:pointerup={() => browse()}><i class="fas fa-icons" /></span
                         >
                         <span
                             class="w-24 h-24 px-4 text-gray-300 hover:text-gray-100 active:text-yellow-400 {saving ? 'bg-red-600' : ''} mr-48 align-middle text-6xl"
-                            on:click={() => takeSnapshot()}><i class="fas fa-file-upload" /></span
+                            on:pointerup={() => takeSnapshot()}><i class="fas fa-file-upload" /></span
                         >
-                        <span class="colorcircle" on:click={() => selectColor("#000000")} style="background-color:#000000;" />
-                        <span class="colorcircle" on:click={() => selectColor("#ff4040")} style="background-color:#ff4040;" />
-                        <span class="colorcircle" on:click={() => selectColor("#40ff40")} style="background-color:#40ff40;" />
+                        <span class="colorcircle" on:pointerup={() => selectColor("#000000")} style="background-color:#000000;" />
+                        <span class="colorcircle" on:pointerup={() => selectColor("#ff4040")} style="background-color:#ff4040;" />
+                        <span class="colorcircle" on:pointerup={() => selectColor("#40ff40")} style="background-color:#40ff40;" />
                         <!-- {#if $mobileScreen} -->
                         <!-- <div style="margin-top:2px" /> -->
                         <!-- {/if} -->
-                        <span class="colorcircle" on:click={() => selectColor("#4040ff")} style="background-color:#4040ff;" />
-                        <span class="colorcircle" on:click={() => selectColor("#ffffff")} style="background-color:#ffffff;" />
-                        <span id="pickHolder" class="colorcircle" on:click={() => (colorWheelVisible = true)} style="border:0;">
+                        <span class="colorcircle" on:pointerup={() => selectColor("#4040ff")} style="background-color:#4040ff;" />
+                        <span class="colorcircle" on:pointerup={() => selectColor("#ffffff")} style="background-color:#ffffff;" />
+                        <span id="pickHolder" class="colorcircle" on:pointerup={() => (colorWheelVisible = true)} style="border:0;">
                             <ColorWheel
                                 size={$bigScale * 0.042}
                                 thumb

@@ -34,7 +34,7 @@
     <div class="wrapper">
         {#each icons as icon, i}
             <div class="flex-center-all flex-col text-white select-none bXXorder border-red-500">
-                <button class="p-2 active:scale-105 transform transition-all duration-75" on:click={() => {push("/" + icon.link)}}>
+                <button class="p-2 active:scale-105 transform transition-all duration-75" on:pointerup={() => {push("/" + icon.link)}}>
                     <div class="w-64 h-64 roundeXXd-3xl {icon.bgcolor} flex-center-all text-9xl text-white" style="border-radius:5rem"><i class="fas {icon.icon}"></i></div>
                     <div class="font-bold text-3xl m-2">{icon.name.toUpperCase()}</div>
                 </button>

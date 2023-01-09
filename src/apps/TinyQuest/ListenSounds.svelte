@@ -234,15 +234,15 @@
             />
             <div
                 in:fade={{ duration: 2000 }}
-                class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1"
-                style="margin-top:26rem;background-color:#40101080"
+                class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1 w-[70rem] text-center"
+                style="margin-top:25rem;background:linear-gradient(.25turn, #40101000, #f01080f0, #40101000);"
             >
                 {town?.name}
             </div>
             <button
                 in:fade={{ duration: 2000 }}
                 class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10"
-                style="margin-top:24rem"
+                style="margin-top:25rem"
                 on:pointerup|preventDefault|stopPropagation={startGame}>START</button
             >
         </div>
@@ -267,8 +267,8 @@
                             style="width:16rem;height:16rem;left:{16 + i * 20}rem;top:30rem;"
                             on:pointerdown|preventDefault|stopPropagation={() => button(i)}
                         >
-                            <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 22px #50307f;">
-                                <i class="fas fa-music text-9xl text-pink-400" />
+                            <div class="flex-center-all" style="color:#e8c0ff;text-shadow: 0px 0px 16px {['#f840a0', '#30c030', '#ff8020'][i]};">
+                                <i class="fas fa-music text-9xl text-Xpink-400" style="color:{['#f840a0', '#30c030', '#ff8020'][i]}" />
                             </div>
                         </div>
 
@@ -367,7 +367,7 @@
         border: 0.2rem solid #706090;
     }
 
-    .hexagon {
+    /* .hexagon {
         height: 20rem;
         width: 10rem;
         background: #282828;
@@ -383,7 +383,6 @@
         height: 0;
         width: 0;
         top: 0;
-        /* half height */
         border-top: 10rem solid transparent;
         border-bottom: 10rem solid transparent;
     }
@@ -427,5 +426,5 @@
         background: blue;
         -webkit-clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
         clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
-    }
+    } */
 </style>

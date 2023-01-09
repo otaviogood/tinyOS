@@ -15,6 +15,7 @@
     import SVGArcDeg from "../components/SVGArcDeg.svelte";
     // import IconsMisc from "./IconsMisc.svelte";
     import { speechPlay } from "../utils";
+    import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
 
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
@@ -268,77 +269,61 @@
     startGame();
 </script>
 
-<div class="fit-full-space select-none overflow-hidden" style="backgXXXround-color:black" on:touchstart={preventZoom}>
-    <div class="relative overflow-hidden select-none" style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px;tranXXXsform:scale(0.4)">
-        {#if !started}
-            <div class="flex-center-all h-full flex flex-col">
-                <!-- <img src="gamedata/busstop/intro.webp" class="absolute top-0" alt="skyscraper" style="height:64rem" />
-                <div in:fade={{ duration: 2000 }} class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1" style="margin-top:44rem;background-color:#40101080">{town?.name}</div>
-                <button in:fade={{ duration: 2000 }} class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10" on:pointerup|preventDefault|stopPropagation={startGame}>START</button> -->
-            </div>
-        {:else}
-            <div class="flex flex-row h-full w-full" style="{playing?"background-color:#ACEAFF":""}">
-                <!-- <div class="fit-full-space" style=""> -->
-                <!-- <img src="gamedata/airplanecrash/Airport.png" class="absolute top-0 left-0 w-full h-full" alt="bus stop background" style="opacity:0.66" /> -->
-                <!-- </div> -->
-
-                <!-- <div class="w-full"><audio bind:this={playbackElement} id="youtube" autoplay controls loop></audio></div> -->
-                <!-- <div id="player"></div> -->
-                <!-- <iframe bind:this={player} id="player" type="text/html" width="640" height="390" title="player" src="http://www.youtube.com/embed/M7lc1UVf-VE?enablejsapi=1&origin=http://example.com" frameborder="0"></iframe> -->
-                <!-- <div id="YouTube" style="width:0px;height:0px"></div>
-                <div class="player" on:click={toggle_player}>
-                <div class="player-button" on:click={start_player}>
-                    Listen to "Deep House Mix"
-                    <span class="duration">0:00</span></div>
-                </div> -->
-
-                {#if !playing}
-                    <div class="flex flex-col w-full">
-                        <div class="flex flex-row flex-wrap w-full overflow-hidden overflow-y-scroll scroll" style="height:30rem;touch-action:auto;scroll-behavior:auto;" on:touchmove={(e) => {window.letMeScroll = true; e.currentTarget.dataset.lastTouch = 0;
-                        }}>
-                            {#each Object.entries(allMedia) as media, i}
-                                <div class="w-1/3 border-white active:scale-110 transform transition-all duration-75" on:pointerup={() => {speechPlay(media[0])}}>
-                                    <VideoCard label={media[0]} id={media[1][0]} highlight={media[0].toLowerCase() === typed.toLowerCase()} {typed} />
-                                </div>
-                            {/each}
-                        </div>
-                        <pre class="border border-pink-500 bg-pink-900 text-white text-7xl p-2 my-2 rounded-2xl">{typed}{sinTime > 0.5 ? '_' : ''}&nbsp;</pre>
-                        <Keyboard on:pressed={keyPressed} enterEnabled={matchedMedia(typed)?.length > 0} />
+<FourByThreeScreen>
+    {#if !started}
+        <div class="flex-center-all h-full flex flex-col">
+            <!-- <img src="gamedata/busstop/intro.webp" class="absolute top-0" alt="skyscraper" style="height:64rem" />
+            <div in:fade={{ duration: 2000 }} class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1" style="margin-top:44rem;background-color:#40101080">{town?.name}</div>
+            <button in:fade={{ duration: 2000 }} class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10" on:pointerup|preventDefault|stopPropagation={startGame}>START</button> -->
+        </div>
+    {:else}
+        <div class="flex flex-row h-full w-full" style="{playing?"background-color:#ACEAFF":""}">
+            {#if !playing}
+                <div class="flex flex-col w-full">
+                    <div class="flex flex-row flex-wrap w-full overflow-hidden overflow-y-scroll scroll" style="height:30rem;touch-action:auto;scroll-behavior:auto;" on:touchmove={(e) => {window.letMeScroll = true; e.currentTarget.dataset.lastTouch = 0;
+                    }}>
+                        {#each Object.entries(allMedia) as media, i}
+                            <div class="w-1/3 border-white active:scale-110 transform transition-all duration-75" on:pointerup={() => {speechPlay(media[0])}}>
+                                <VideoCard label={media[0]} id={media[1][0]} highlight={media[0].toLowerCase() === typed.toLowerCase()} {typed} />
+                            </div>
+                        {/each}
                     </div>
-                    <div class="cursor-pointer select-none absolute right-4" style="bottom:31rem; padding:0 0.75rem;border-radius:0.75rem;backXXXground-color:#486870" on:pointerup|preventDefault|stopPropagation={resetToSplashScreen} on:touchstart={preventZoom}>
-                        <!-- <IconsMisc icon="treasure-map" size="7.5rem" style="" /> -->
-                    </div>
-        <div class="absolute right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" style="bottom:32rem" on:pointerup={pop}><i class="fas fa-times-circle"></i></div>
-                {:else}
-                    <div class="flex-center-all flex-col w-full" on:pointermove={(e) => handleMove(e)} on:pointerdown={(e) => handleDown(e)} on:pointerup={() => handleUp()}>
-                        <!-- clouds at end of rainbow -->
-                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffffd0;left:19.5rem; bottom:34rem;"></div>
-                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;left:17rem; bottom:33rem;"></div>
-                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;left:22rem; bottom:32rem;"></div>
+                    <pre class="border border-pink-500 bg-pink-900 text-white text-7xl p-2 my-2 rounded-2xl">{typed}{sinTime > 0.5 ? '_' : ''}&nbsp;</pre>
+                    <Keyboard on:pressed={keyPressed} enterEnabled={matchedMedia(typed)?.length > 0} />
+                </div>
+                <div class="cursor-pointer select-none absolute right-4" style="bottom:31rem; padding:0 0.75rem;border-radius:0.75rem;backXXXground-color:#486870" on:pointerup|preventDefault|stopPropagation={resetToSplashScreen} on:touchstart={preventZoom}>
+                    <!-- <IconsMisc icon="treasure-map" size="7.5rem" style="" /> -->
+                </div>
+    <div class="absolute right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" style="bottom:32rem" on:pointerup={pop}><i class="fas fa-times-circle"></i></div>
+            {:else}
+                <div class="flex-center-all flex-col w-full" on:pointermove={(e) => handleMove(e)} on:pointerdown={(e) => handleDown(e)} on:pointerup={() => handleUp()}>
+                    <!-- clouds at end of rainbow -->
+                    <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffffd0;left:19.5rem; bottom:34rem;"></div>
+                    <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;left:17rem; bottom:33rem;"></div>
+                    <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;left:22rem; bottom:32rem;"></div>
 
-                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffffd0;right:19.5rem; bottom:34rem;"></div>
-                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;right:18rem; bottom:33.5rem;"></div>
-                        <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;right:22rem; bottom:33rem;"></div>
-                        <!-- rainbow -->
-                        <SVGArcDeg class="absolute" color="#ff0000" startAngle={-90} endAngle={-90 + percentComplete*180} />
-                        {#if startX === -1}
-                        <SVGArcDeg class="absolute" color="#ff8000" startAngle={-90} endAngle={-90 + percentComplete*180} radius={77} />
-                        <SVGArcDeg class="absolute" color="#ffff00" startAngle={-90} endAngle={-90 + percentComplete*180} radius={74} />
-                        <SVGArcDeg class="absolute" color="#00ff00" startAngle={-90} endAngle={-90 + percentComplete*180} radius={71} />
-                        <SVGArcDeg class="absolute" color="#00ffff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={68} />
-                        <SVGArcDeg class="absolute" color="#0000ff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={65} />
-                        <SVGArcDeg class="absolute" color="#8000ff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={62} />
-                        {/if}
-                        <img src={GetVideoThumb(playing[0])} alt="" class="flex-center-all max-h-96 w-96 h-96 mt-32 text-center rounded-xl bg-transparent"/>
-                        <div class="text-6xl m-2 p-2 w-full flex-center-all text-white" style="filter: drop-shadow(0 0 0.75rem #105080);">{cleanFilename(playing[1])}</div>
-                        <button class="bg-red-500 text-white text-9xl rounded-3xl px-8 mt-4 z-10 h-32" on:pointerup|preventDefault|stopPropagation={() => {snd_current.stop(); startGame()}}>STOP</button>
-                    </div>
-                {/if}
+                    <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffffd0;right:19.5rem; bottom:34rem;"></div>
+                    <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;right:18rem; bottom:33.5rem;"></div>
+                    <div class="absolute bg-white rounded-full w-32 h-32 z-10" style="background-color:#ffffff80;right:22rem; bottom:33rem;"></div>
+                    <!-- rainbow -->
+                    <SVGArcDeg class="absolute" color="#ff0000" startAngle={-90} endAngle={-90 + percentComplete*180} />
+                    {#if startX === -1}
+                    <SVGArcDeg class="absolute" color="#ff8000" startAngle={-90} endAngle={-90 + percentComplete*180} radius={77} />
+                    <SVGArcDeg class="absolute" color="#ffff00" startAngle={-90} endAngle={-90 + percentComplete*180} radius={74} />
+                    <SVGArcDeg class="absolute" color="#00ff00" startAngle={-90} endAngle={-90 + percentComplete*180} radius={71} />
+                    <SVGArcDeg class="absolute" color="#00ffff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={68} />
+                    <SVGArcDeg class="absolute" color="#0000ff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={65} />
+                    <SVGArcDeg class="absolute" color="#8000ff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={62} />
+                    {/if}
+                    <img src={GetVideoThumb(playing[0])} alt="" class="flex-center-all max-h-96 w-96 h-96 mt-32 text-center rounded-xl bg-transparent"/>
+                    <div class="text-6xl m-2 p-2 w-full flex-center-all text-white" style="filter: drop-shadow(0 0 0.75rem #105080);">{cleanFilename(playing[1])}</div>
+                    <button class="bg-red-500 text-white text-9xl rounded-3xl px-8 mt-4 z-10 h-32" on:pointerup|preventDefault|stopPropagation={() => {snd_current.stop(); startGame()}}>STOP</button>
+                </div>
+            {/if}
 
-            </div>
-        {/if}
-    </div>
-</div>
+        </div>
+    {/if}
+</FourByThreeScreen>
 
 <style>
       .player {
