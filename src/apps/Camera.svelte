@@ -147,7 +147,7 @@
     <!-- Make a fullscreen image preview of the key that was returned from the ImageBrowser. -->
     {#if previewImage}
         <div class="absolute top-0 left-0 w-full h-full p-2 bg-black z-10">
-            <img src={previewImage} class="w-full h-full object-contain" on:pointerup={() => (previewImage = null)} />
+            <img src={previewImage} class="w-full h-full object-contain" alt="camera" on:pointerup={() => (previewImage = null)} />
             <!-- <div
                 class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl"
                 on:pointerup={() => (previewImage = null)}
@@ -157,6 +157,7 @@
         </div>
     {/if}
     <div class="flex flex-col overflow-auto">
+        <!-- svelte-ignore a11y-media-has-caption -->
         <video
             bind:this={video}
             class="block"
@@ -167,7 +168,7 @@
 
         <div class="flex flex-row overflow-hidden">
             {#each photos as photo}
-                <img src={photo} class="max-h-32 m-2 mt-8" on:pointerup={browse} />
+                <img src={photo} class="max-h-32 m-2 mt-8" alt="thumbnail" on:pointerup={browse} />
             {/each}
         </div>
     </div>

@@ -157,7 +157,6 @@
     let mouseX = -1;
     let mouseY = -1;
     function handleDragStart(e, i) {
-        speechSynthesis.cancel();
         if (occupied[i] > 0) return;
         dragging = i + 1;
         let xy = getPointerPos(e);

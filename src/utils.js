@@ -176,32 +176,32 @@ export function HSVToRGB(hi, si, vi) {
 
 // Youtube utils
 
-const youtube = (function () {
-    let video, results;
+// const youtube = (function () {
+//     let video, results;
 
-    const getThumbnail = function (url, size) {
-        if (url == null) {
-            return "";
-        }
+//     const getThumbnail = function (url, size) {
+//         if (url == null) {
+//             return "";
+//         }
 
-        size = size == null ? "big" : size;
-        results = url.match("[\\?&]v=([^&#]*)");
-        video = results == null ? url : results[1];
+//         size = size == null ? "big" : size;
+//         results = url.match("[\\?&]v=([^&#]*)");
+//         video = results == null ? url : results[1];
 
-        if (size == "small") {
-            return `http://img.youtube.com/vi/${video}/2.jpg`;
-        }
+//         if (size == "small") {
+//             return `http://img.youtube.com/vi/${video}/2.jpg`;
+//         }
 
-        return `http://img.youtube.com/vi/${video}/0.jpg`;
-    };
+//         return `http://img.youtube.com/vi/${video}/0.jpg`;
+//     };
 
-    return {
-        thumbnail: getThumbnail,
-    };
-})();
-export function GetVideoThumb(id) {
-    return youtube.thumbnail("http://www.youtube.com/watch?v=" + id, "big");
-}
+//     return {
+//         thumbnail: getThumbnail,
+//     };
+// })();
+// export function GetVideoThumb(id) {
+//     return youtube.thumbnail("http://www.youtube.com/watch?v=" + id, "big");
+// }
 
     // Debugging function that speaks text through audio out. Also logs it.
     let speaking = false;

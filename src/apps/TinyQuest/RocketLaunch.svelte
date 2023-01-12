@@ -131,7 +131,6 @@
         // let imageList = ["TinyQuest/gamedata/rocketlaunch/explosion_ground.png", "TinyQuest/gamedata/rocketlaunch/smoke_ground.png", "TinyQuest/gamedata/rocketlaunch/jet_flame.png", "TinyQuest/gamedata/rocketlaunch/smoke_ground_r.png", "TinyQuest/gamedata/rocketlaunch/smoke_ground_l.png"];
         // imageList.forEach( function(path) { let temp = new Image(); temp.src=path; imageCache.push(temp); } );
         return () => {
-            speechSynthesis.cancel();
             snd_engines.stop();
             animator.stop();
         };
@@ -222,7 +221,6 @@
 
     function resetToSplashScreen() {
         started = false;
-        speechSynthesis.cancel();
         pop();
     }
 

@@ -84,7 +84,6 @@
         town = $allTowns[$currentTownIndex];
         gameType = town?.options?.game;
         return () => {
-            speechSynthesis.cancel();
         };
     });
 
@@ -145,7 +144,6 @@
 
     function resetToSplashScreen() {
         started = false;
-        speechSynthesis.cancel();
         pop();
     }
 

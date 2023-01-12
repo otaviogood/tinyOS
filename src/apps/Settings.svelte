@@ -12,7 +12,6 @@
         bigPadY,
         handleResize,
     } from "../screen";
-    import { sleep, getRandomInt, shuffleArray, preventZoom, GetVideoThumb } from "../utils";
     import { openDB, deleteDB, wrap, unwrap } from "idb";
     import { Howl, Howler } from "howler";
     import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
@@ -146,9 +145,5 @@
         margin: 20px;
         text-indent: 3ch;
         display: block;
-    }
-    a {
-        color: #69c;
-        text-decoration: underline;
     }
 </style>

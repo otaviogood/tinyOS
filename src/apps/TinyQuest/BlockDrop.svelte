@@ -272,10 +272,10 @@
             do {
                 let speed = 0.125 * 0.25;
                 if (dropping) speed *= 8;
-                dropping = false;
                 if (pieceFits(pieceX, pieceY + speed, currentRotation)) {
                     pieceY += speed;
                 } else {
+                    dropping = false;
                     let piece = pieces[currentPiece];
                     if (currentRotation) {
                         piece = rotatedPiece(pieces[currentPiece], currentRotation);
@@ -546,6 +546,8 @@
                 <div
                     class="flex-center-all text-8xl absolute left-[43.5rem] bottom-10 cursor-pointer select-none rounded-full bg-blue-900 text-gray-200 w-48 h-48"
                     on:pointerdown|preventDefault|stopPropagation={() => (dropping = true)}
+                    on:pointerup|preventDefault|stopPropagation={() => (dropping = false)}
+                    on:pointerleave|preventDefault|stopPropagation={() => (dropping = false)}
                 >
                     <i class="fa-solid fa-arrow-down" />
                 </div>
