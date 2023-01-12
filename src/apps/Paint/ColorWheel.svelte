@@ -64,7 +64,7 @@
         const magic = bmp.width * 0.25;
         const margin = 1 / 64.0;
         for (let y = 0, count1 = bmp.height; y < count1; y = (y + 1) | 0) {
-            let pixIndex = (Math.imul(y, bmp.width)) | 0;
+            let pixIndex = Math.imul(y, bmp.width) | 0;
             for (let x = 0, count = bmp.width; x < count; x = (x + 1) | 0) {
                 let pix = 0;
                 let alphaX = x / bmp.width;
@@ -91,11 +91,11 @@
 
                     dist = Math.abs(dist);
 
-                    if (Math.abs(dist) < notchSize) {
-                        let intensity = Math.max(0, Math.min(1, (notchSize - dist) * 512));
-                        col = ColorABGR.lerp(col, ColorABGR.WHITE, (intensity * 255) | 0);
-                        fade = Math.max(fade, intensity);
-                    }
+                    // if (Math.abs(dist) < notchSize) {
+                    //     let intensity = Math.max(0, Math.min(1, (notchSize - dist) * 512));
+                    //     col = ColorABGR.lerp(col, ColorABGR.WHITE, (intensity * 255) | 0);
+                    //     fade = Math.max(fade, intensity);
+                    // }
 
                     pix = ColorABGR.withAlpha(col, (fade * 255) | 0);
                 }
@@ -114,11 +114,11 @@
         bmp.dirty = true;
 
         // Selection circle
-        let xp = selectedSat * boxExt * 2 - boxExt;
-        let yp = selectedLum * boxExt * 2 - boxExt;
-        xp = (xp * 0.5 + 0.5) * bmp.width;
-        yp = (-yp * 0.5 + 0.5) * bmp.height;
-        bmp.DrawCircle(xp | 0, yp | 0, thumb ? 6 : 16, ColorABGR.WHITE);
+        // let xp = selectedSat * boxExt * 2 - boxExt;
+        // let yp = selectedLum * boxExt * 2 - boxExt;
+        // xp = (xp * 0.5 + 0.5) * bmp.width;
+        // yp = (-yp * 0.5 + 0.5) * bmp.height;
+        // bmp.DrawCircle(xp | 0, yp | 0, thumb ? 6 : 16, ColorABGR.WHITE);
         //   this.dirty = true;
         bmp.DrawImage(0, 0);
     }
@@ -175,9 +175,9 @@
 
     function finalizeColor() {
         selectedColor = ColorABGR.HSVToRGB(selectedHue, selectedSat, selectedLum);
-        draw();
+        // draw();
         //   document.getElementById('currentColor').style.background = ColorABGR.toRGBString(selectedColor);
-        if ((lastSelectedColor != selectedColor) || (lastHue != selectedHue)) {
+        if (lastSelectedColor != selectedColor || lastHue != selectedHue) {
             colorStr = ColorABGR.toRGBString(selectedColor);
             dispatch("change", {
                 color: selectedColor,
@@ -214,15 +214,36 @@
     }
 </script>
 
-<canvas
-    id="colorWheelCanvas"
-    bind:this={canvas}
-    width={size}
-    height={size}
-    style="width: {size}px; height: {size}px;display:block"
-    on:pointerdown|preventDefault|stopPropagation={handlePointerdown}
-    on:pointerup={handlePointerup}
-    on:pointermove|preventDefault|stopPropagation={handlePointermove}
-    on:pointerleave={handlePointerleave}
-    on:touchend={handlePointerup}
-    on:touchcancel={handlePointerup} />
+<div class="relative" style="width: {size}px; height: {size}px;">
+    <canvas
+        id="colorWheelCanvas"
+        bind:this={canvas}
+        width={size}
+        height={size}
+        style="width: {size}px; height: {size}px;display:block"
+        on:pointerdown|preventDefault|stopPropagation={handlePointerdown}
+        on:pointerup={handlePointerup}
+        on:pointermove|preventDefault|stopPropagation={handlePointermove}
+        on:pointerleave={handlePointerleave}
+        on:touchend={handlePointerup}
+        on:touchcancel={handlePointerup}
+    />
+    <div class="absolute top-[25%] left-[25%] w-[50%] h-[50%] pointer-events-none">
+        <div
+            class="absolute rounded-full border-2 border-white"
+            style="left:calc({selectedSat * 100}% - {thumb ? 3 : 8}px);bottom:calc({selectedLum * 100}% - {thumb
+                ? 3
+                : 8}px);width:{thumb ? 6 : 16}px; height:{thumb ? 6 : 16}px"
+        />
+    </div>
+    <div class="absolute top-0 left-0 w-full h-full pointer-events-none">
+        <div class="absolute top-[50%] left-[50%]">
+            <div class="relative" style="transform:rotate({selectedHue * 360}deg);transform-origin:0px 0px;">
+                <div
+                    class="absolute bg-white"
+                    style="right:{size * 0.37}px;top:{-size * 0.005}px;width:{size * 0.135}px; height:{size * 0.01}px"
+                />
+            </div>
+        </div>
+    </div>
+</div>
