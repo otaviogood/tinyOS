@@ -410,12 +410,12 @@
                             on:pointerup={() => takeSnapshot()}><i class="fas fa-file-upload" /></span
                         >
                         <span class="colorcircle" on:pointerup={() => selectColor("#000000")} style="background-color:#000000;" />
-                        <span class="colorcircle" on:pointerup={() => selectColor("#ff4040")} style="background-color:#ff4040;" />
-                        <span class="colorcircle" on:pointerup={() => selectColor("#40ff40")} style="background-color:#40ff40;" />
+                        <span class="colorcircle" on:pointerup={() => selectColor("#ff2020")} style="background-color:#ff2020;" />
+                        <span class="colorcircle" on:pointerup={() => selectColor("#40fe40")} style="background-color:#40fe40;" />
                         <!-- {#if $mobileScreen} -->
                         <!-- <div style="margin-top:2px" /> -->
                         <!-- {/if} -->
-                        <span class="colorcircle" on:pointerup={() => selectColor("#4040ff")} style="background-color:#4040ff;" />
+                        <span class="colorcircle" on:pointerup={() => selectColor("#1080ff")} style="background-color:#1080ff;" />
                         <span class="colorcircle" on:pointerup={() => selectColor("#ffffff")} style="background-color:#ffffff;" />
                         <span id="pickHolder" class="colorcircle" on:pointerup={() => (colorWheelVisible = true)} style="border:0;">
                             <ColorWheel

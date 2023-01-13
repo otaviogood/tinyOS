@@ -34,7 +34,9 @@ const allVids = {
     "mahna mahna": "QTXyXuqfBLA",
     "choo choo": "3Awey7AbXT0",
     "christmas in hollis": "C0b8FqocXcU",
+    "mahna remix": "rxsI6YHRmfU",
     "sweet dreams": "eRhg7qPLeN8",
+    "stick em": "zUWwglLXV8g",
 };
 
 async function sleep(ms) {
@@ -61,7 +63,11 @@ async function downloadAudio(shortName, link, destFolder = "../public/youtube") 
     const info = await ytdl.getInfo(link);
     const audioFormats = ytdl.filterFormats(info.formats, "audioonly");
     // const audioFormats = ytdl.filterFormats(info.formats, (format) => format.container === "mp4");
-    const audioFormat = audioFormats[0];
+    // Find in audioFormats one with mimeType that starts with 'audio/mp4', and with the highest bitrate
+    const audioFormat = audioFormats.reduce((prev, curr) => {
+        if (curr.mimeType.startsWith("audio/mp4") && curr.bitrate > prev.bitrate) return curr;
+        return prev;
+    }, { bitrate: 0 });
     const audioStream = ytdl(link, { format: audioFormat });
 
     // Also get the description and thumbnail.
@@ -81,7 +87,7 @@ async function downloadAudio(shortName, link, destFolder = "../public/youtube") 
                 console.log("Download thumb complete!");
             });
         console.log(`Downloading audio of "${info.videoDetails.title}" to ${fileName}... thumb: ${thumb}`);
-        // await sleep(1000);
+        await sleep(500);
     }
     // Fill out jsonInfo with shortName as the key, and hash
     jsonInfo += `"${shortName}": ["${hash}", "${info.videoDetails.title.replaceAll('"', "")}", "${audioFormat.container}"],\r\n`;

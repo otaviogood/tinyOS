@@ -77,7 +77,7 @@
         return null;
     }
 
-    function keyPressed(e) {
+    async function keyPressed(e) {
         let key = e.detail.key;
         if (key == "backspace") {
             typed = typed.slice(0, -1);
@@ -85,13 +85,13 @@
             let media = matchedMedia(typed);
             console.log("media", media, typed);
             if (media) {
-                speechPlay(Object.keys(allMedia).find((m) => m.toLowerCase() == typed.toLowerCase()))
-                typed = "";
                 playing = media;
+                await speechPlay(Object.keys(allMedia).find((m) => m.toLowerCase() == typed.toLowerCase()))
+                typed = "";
                 // getYoutubeAudio(media, playbackElement);
 
                 snd_current = new Howl({
-                    src: ["youtube/_" + media[0] + "." + media[2]],
+                    src: ["youtube/_" + playing[0] + "." + playing[2]],
                     html5: true
                 });
                 snd_current.once('load', function(){

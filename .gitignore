@@ -25,3 +25,4 @@ dist-ssr
 
 src/secrets.js
 speech/tinyos-7c514-a8428deb9354.json
+public/youtube/*
