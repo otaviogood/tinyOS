@@ -482,17 +482,19 @@
                                     />
                                 {/if}
                             {:else if findShipAt(x, y) === ships[0]}
-                                <img
-                                    src="TinyQuest/gamedata/harbor/water_empty_grid.png"
-                                    class="absolute"
-                                    alt=""
-                                    style="left:{isometricX(x, y)}rem;top:{isometricY(
-                                        x,
-                                        y
-                                    )}rem;width:{scale}rem;filter: brightness({1.0 +
-                                        Math.sin($frameCount * 0.05) * 0.15 +
-                                        0.15});"
-                                />
+                                {#key $frameCount}
+                                    <img
+                                        src="TinyQuest/gamedata/harbor/water_empty_grid.png"
+                                        class="absolute"
+                                        alt=""
+                                        style="left:{isometricX(x, y)}rem;top:{isometricY(
+                                            x,
+                                            y
+                                        )}rem;width:{scale}rem;filter: brightness({1.0 +
+                                            Math.sin($frameCount * 0.05) * 0.15 +
+                                            0.15});"
+                                    />
+                                {/key}
                             {:else}
                                 <img
                                     src="TinyQuest/gamedata/harbor/water_empty_grid.png"

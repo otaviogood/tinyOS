@@ -395,13 +395,13 @@
         aspect-ratio: 1 / 1;
     }
     .reveal {
-        background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal.webp");
+        background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal.jpg");
         background-attachment: fixed;
         background-position: var(--bigpadx) var(--bigpady);
         background-size: 100rem 75rem;
     }
     .reveal2 {
-        background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal2.webp");
+        background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal2.jpg");
         background-attachment: fixed;
         background-position: var(--bigpadx) var(--bigpady);
         background-size: 100rem 75rem;

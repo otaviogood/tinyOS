@@ -59,66 +59,47 @@
         }
     }
 
-    function draw() {
+    function draw(innerOnly = false) {
         const notchSize = thumb ? 0.01 : 0.0025;
         const magic = bmp.width * 0.25;
         const margin = 1 / 64.0;
         for (let y = 0, count1 = bmp.height; y < count1; y = (y + 1) | 0) {
             let pixIndex = Math.imul(y, bmp.width) | 0;
+            let alphaY = y / bmp.height;
+            alphaY = alphaY * 2 - 1;
             for (let x = 0, count = bmp.width; x < count; x = (x + 1) | 0) {
-                let pix = 0;
                 let alphaX = x / bmp.width;
-                let alphaY = y / bmp.height;
                 alphaX = alphaX * 2 - 1;
-                alphaY = alphaY * 2 - 1;
-                let radSquared = alphaX * alphaX + alphaY * alphaY;
 
-                if (radSquared > innerRad * innerRad && radSquared < outerRad * outerRad) {
-                    let fade = Math.max(0, Math.min(1, (radSquared - innerRad * innerRad - margin) * magic));
-                    fade *= Math.max(0, Math.min(1, (outerRad * outerRad - radSquared - margin) * magic));
-                    let at = (Math.atan2(alphaY, alphaX) / 3.141592653589793) * 0.5 + 0.5;
-                    let col = ColorABGR.HSVToRGB(at, 1, 1);
+                if (!innerOnly) {
+                    // Draw the color hue wheel
+                    let radSquared = alphaX * alphaX + alphaY * alphaY;
+                    if (radSquared > innerRad * innerRad && radSquared < outerRad * outerRad) {
+                        let fade = Math.max(0, Math.min(1, (radSquared - innerRad * innerRad - margin) * magic));
+                        fade *= Math.max(0, Math.min(1, (outerRad * outerRad - radSquared - margin) * magic));
+                        let at = (Math.atan2(alphaY, alphaX) / 3.141592653589793) * 0.5 + 0.5;
+                        let col = ColorABGR.HSVToRGB(at, 1, 1);
 
-                    let dist = at - selectedHue;
-
-                    if (dist > 0.5) {
-                        dist -= 1;
+                        bmp.data2[pixIndex] = ColorABGR.withAlpha(col, (fade * 255) | 0);
                     }
-
-                    if (dist < -0.5) {
-                        dist += 1;
-                    }
-
-                    dist = Math.abs(dist);
-
-                    // if (Math.abs(dist) < notchSize) {
-                    //     let intensity = Math.max(0, Math.min(1, (notchSize - dist) * 512));
-                    //     col = ColorABGR.lerp(col, ColorABGR.WHITE, (intensity * 255) | 0);
-                    //     fade = Math.max(fade, intensity);
-                    // }
-
-                    pix = ColorABGR.withAlpha(col, (fade * 255) | 0);
                 }
 
+                // Draw the color saturation/luminance box
                 if (alphaX >= -boxExt && alphaX <= boxExt && alphaY >= -boxExt && alphaY <= boxExt) {
-                    let sat = (alphaX + boxExt) / (boxExt * 2);
-                    let lum = (-alphaY + boxExt) / (boxExt * 2);
-                    pix = ColorABGR.HSVToRGB(selectedHue, sat, lum);
+                    let inv = 1.0 / (boxExt * 2);
+                    let sat = (alphaX + boxExt) * inv;
+                    let lum = (-alphaY + boxExt) * inv;
+                    bmp.data2[pixIndex] = ColorABGR.HSVToRGB(selectedHue, sat, lum);
                 }
 
                 // bmp.SetPixelAlpha(x, y, pix);
                 // this.dirty = true;
-                bmp.data2[pixIndex++] = pix;
+                // bmp.data2[pixIndex++] = pix;
+                pixIndex++;
             }
         }
         bmp.dirty = true;
 
-        // Selection circle
-        // let xp = selectedSat * boxExt * 2 - boxExt;
-        // let yp = selectedLum * boxExt * 2 - boxExt;
-        // xp = (xp * 0.5 + 0.5) * bmp.width;
-        // yp = (-yp * 0.5 + 0.5) * bmp.height;
-        // bmp.DrawCircle(xp | 0, yp | 0, thumb ? 6 : 16, ColorABGR.WHITE);
         //   this.dirty = true;
         bmp.DrawImage(0, 0);
     }
@@ -175,8 +156,8 @@
 
     function finalizeColor() {
         selectedColor = ColorABGR.HSVToRGB(selectedHue, selectedSat, selectedLum);
-        // draw();
         //   document.getElementById('currentColor').style.background = ColorABGR.toRGBString(selectedColor);
+        if (lastHue != selectedHue) draw(true);
         if (lastSelectedColor != selectedColor || lastHue != selectedHue) {
             colorStr = ColorABGR.toRGBString(selectedColor);
             dispatch("change", {
