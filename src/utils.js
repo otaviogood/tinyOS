@@ -1,4 +1,6 @@
 import { Howl, Howler } from "howler";
+import { writable, get } from "svelte/store";
+import { casing } from "./stores";
 
 // Special case for ipad pro acting like MacOS: https://stackoverflow.com/questions/57776001/how-to-detect-ipad-pro-as-ipad-using-javascript
 function isIpadOS() {
@@ -239,4 +241,12 @@ export async function speechPlay() {
         }
         await sleep(dur * 1000 * 0.7); // hacky 0.7 - speech synth pads with too much silence
     }
+}
+
+export function caseMe(s) {
+    const c = get(casing);
+    if (c === 0) return s.toLowerCase();
+    if (c === 1) return s.toUpperCase();
+    if (c === 2) return s;
+    return s;
 }

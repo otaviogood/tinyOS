@@ -64,13 +64,13 @@
     // WARNING. don't change this next line. It gets parsed by genSpeech.cjs.
     let allStoryImages = [
         [
-            "stories/unicorn_dragon/otavio_watercolors_cute._A_white_unicorn_in_a_forest_filled_wit_6e238095-b0a3-4c1d-b09e-85b686347736.png",
-            "stories/unicorn_dragon/otavio_Watercolor_cute._Dragon_with_red_scales_in_a_forest._88b49a90-1471-471e-8e75-4b9197f7c3fa.png",
-            "stories/unicorn_dragon/otaviogood_Watercolor_cute._A_waterfall_in_a_forest._8b3ea5c2-ff5b-4b9f-b77c-51e20ed8657f.png",
-            "stories/unicorn_dragon/otavio_Watercolor_cute._Bigger_dragons_laughing_and_mocking_a_s_1761f4c3-137c-4b05-9808-2d0c4b1b7c03.png",
-            "stories/unicorn_dragon/otavio_Watercolor_cute._Picnic_blankey_by_a_waterfall_in_a_fore_16d8e241-8ceb-4bb4-81e5-d57d6e32874a.png",
-            "stories/unicorn_dragon/otaviogood_watercolor_cute._A_bored_unicorn._0a926017-08ff-4411-a140-29608309a3f0.png",
-            "stories/unicorn_dragon/otaviogood_watercolor_cute._Dragon_running_and_jumping_and_havi_3a6ca3ce-abb4-41ff-a1b1-9720af112375.png",
+            "stories/unicorn_dragon/A_white_unicorn_in_a_forest_filled_wit.webp",
+            "stories/unicorn_dragon/Dragon_with_red_scales_in_a_forest.webp",
+            "stories/unicorn_dragon/A_waterfall_in_a_forest.webp",
+            "stories/unicorn_dragon/Bigger_dragons_laughing_and_mocking_a_s.webp",
+            "stories/unicorn_dragon/Picnic_blankey_by_a_waterfall_in_a_fore.webp",
+            "stories/unicorn_dragon/A_bored_unicorn.webp",
+            "stories/unicorn_dragon/Dragon_running_and_jumping_and_havi.webp",
             "stories/unicorn_dragon/dragon_unicorn_party.webp",
         ],
     ];

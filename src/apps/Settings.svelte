@@ -15,6 +15,7 @@
     import { openDB, deleteDB, wrap, unwrap } from "idb";
     import { Howl, Howler } from "howler";
     import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
+    import { casing } from "../stores";
 
     handleResize();
 
@@ -55,8 +56,10 @@
     <br />
     <br />
     <p>
-        This is a series of games and apps I made for a 3 year old and some other kids too. Some were designed partially by kids,
-        some were experiments by me. There's more info at otaviogood.com and github.com/otaviogood/tinyOS.
+        This is a series of games and apps I made for small kids less than 5 years old. There's more info at otaviogood.com and github.com/otaviogood/tinyOS.
+    </p>
+    <p>
+        This works best if you "install" it by (for iOS) clicking the share button and then "Add to Home Screen".
     </p>
     <hr />
 
@@ -67,6 +70,12 @@
                 window.location.reload();
             }}><i class="fa-solid fa-rotate-right"></i> Reload browser</button
         ><br /><br />
+        <button
+            class="bg-blue-500 text-white text-3xl rounded p-4 m-2"
+            on:pointerup={() => {
+                $casing = ($casing + 1) % 2;
+            }}>Upper / Lower Case</button
+        > {["lower", "UPPER", "Mixed", "Strict Mixed"][$casing]}<br /><br />
         <button
             class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
             on:pointerdown={() => {

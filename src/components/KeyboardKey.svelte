@@ -1,6 +1,7 @@
 <script>
     import { preventZoom } from "../utils";
     import { createEventDispatcher } from "svelte";
+    import { caseMe } from "../utils";
 
     const dispatch = createEventDispatcher();
 
@@ -50,5 +51,5 @@
         <div class="w-1 h-4 top-0 bg-pink-400 absolute"></div>
         <div class="w-1 h-4 bottom-0 bg-pink-400 absolute"></div>
     {/if}
-    <slot>{keyLetter}</slot>
+    <slot>{caseMe(keyLetter)}</slot>
 </div>

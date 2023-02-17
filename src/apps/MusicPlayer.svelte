@@ -6,7 +6,7 @@
     import { pop } from "svelte-spa-router";
     // import { allTowns, currentTownIndex, earnedStar } from "./stores";
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../screen";
-    import { sleep, getRandomInt, shuffleArray, preventZoom } from "../utils";
+    import { sleep, getRandomInt, shuffleArray, preventZoom, caseMe } from "../utils";
     import { tweened } from "svelte/motion";
     import { cubicInOut } from "svelte/easing";
     import { Animator, frameCount, animateCount } from "../animator";
@@ -218,7 +218,7 @@
                             </div>
                         {/each}
                     </div>
-                    <pre class="border border-pink-500 bg-pink-900 text-white text-7xl p-2 my-2 rounded-2xl">{typed}{sinTime > 0.5 ? '_' : ''}&nbsp;</pre>
+                    <pre class="border border-pink-500 bg-pink-900 text-white text-7xl p-2 my-2 rounded-2xl">{caseMe(typed)}{sinTime > 0.5 ? '_' : ''}&nbsp;</pre>
                     <Keyboard on:pressed={keyPressed} enterEnabled={matchedMedia(typed)?.length > 0} extraKeys={["numbers", "backspace", "music"]} />
                 </div>
                 <div class="cursor-pointer select-none absolute right-4" style="bottom:31rem; padding:0 0.75rem;border-radius:0.75rem;backXXXground-color:#486870" on:pointerup|preventDefault|stopPropagation={resetToSplashScreen} on:touchstart={preventZoom}>

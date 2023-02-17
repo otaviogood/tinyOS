@@ -13,3 +13,9 @@ export const firebaseApp = writable(null);
 
 // For Fast2d
 export const timer = writable(new Map());
+
+// 0 - force lower case
+// 1 - force upper case
+// 2 - not strict mixed case
+// 3 - strict mixed case
+export const casing = writable(0);
