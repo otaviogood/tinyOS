@@ -37,6 +37,13 @@ const allVids = {
     "mahna remix": "rxsI6YHRmfU",
     "sweet dreams": "eRhg7qPLeN8",
     "stick em": "zUWwglLXV8g",
+    "peanut butter jelly": "s8MDNFaGfT4",
+    "very noise": "Osqf4oIK0E8",
+    "googly eyes": "wjFJCZCHzNY",
+    "low rider": "qMkwuz0iXQg",
+    "fantastic voyage": "zMJFJ73VyT8",
+    "bird is the word": "IvF98Zeumes",
+    "c is for cookie": "Ye8mB6VsUHw",
 };
 
 async function sleep(ms) {

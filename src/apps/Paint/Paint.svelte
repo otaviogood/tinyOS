@@ -22,6 +22,7 @@
     import ColorWheel from "./ColorWheel.svelte";
     import BrushPicker from "./BrushPicker.svelte";
     import ImageBrowser from "./ImageBrowser.svelte";
+    import CloseButton from "../../components/CloseButton.svelte";
     import { openDB, deleteDB, wrap, unwrap } from "idb";
 
     handleResize();
@@ -474,13 +475,14 @@
                 </div>
             </div>
         </div>
-        <div
+        <CloseButton confirm></CloseButton>
+        <!-- <div
             class="absolute top-1 right-1 cursor-pointer select-none rounded-full text-gray-500"
             style="font-size:4.5rem;line-height:1"
             on:pointerup={pop}
         >
             <i class="fas fa-times-circle" />
-        </div>
+        </div> -->
     </div>
 </div>
 

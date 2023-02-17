@@ -1,7 +1,19 @@
 <script>
     import { pop } from "svelte-spa-router";
-    import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../screen";
+    import {
+        invAspectRatio,
+        fullWidth,
+        fullHeight,
+        landscape,
+        bigWidth,
+        bigHeight,
+        bigScale,
+        bigPadX,
+        bigPadY,
+        handleResize,
+    } from "../screen";
     import { sleep, getRandomInt, shuffleArray, preventZoom } from "../utils";
+    import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
 
     const temp = [
         "fa-cloud-sun",
@@ -14,7 +26,6 @@
     ];
     const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     const d = new Date();
-    let day = d.getDay();
 
     let weatherData;
     let cleanData = {};
@@ -357,33 +368,30 @@
     handleResize();
 </script>
 
-<div class="fit-full-space select-none overflow-hidden" style="backgXXXround-color:black" on:touchstart={preventZoom}>
-    <div
-        class="relative overflow-hidden select-none"
-        style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px;tranXXXsform:scale(0.4)"
-    >
-        <div class="flex-center-all h-full w-full flex-col">
-            <div class="w-full text-center text-6xl mb-12 text-gray-200">PALO ALTO, CA</div>
-            <div class="flex flex-row w-full h-4/6">
-                {#if weatherData}
-                    {#each Object.values(cleanData) as weather, i}
-                        <div
-                            class="flex-center-all flex-col w-full h-1/12 rounded-full {i === 0
-                                ? 'border-blue-200'
-                                : 'border-gray-800'} bg-blue-900 text-4xl"
-                            style="border-width:.25rem;"
-                        >
-                            <div class="pt-2 text-6xl my-2" style="color:{colorize(weather.tempHigh)}">{weather.tempHigh}</div>
-                            <img src={weather["iconDay"]} alt="icon" width="160rem" class="my-1" />
-                            <img src={weather["iconNight"]} alt="icon" width="160rem" class="my-1" />
-                            <div class="pt-2 text-6xl my-2" style="color:{colorize(weather.tempLow)}">{weather.tempLow}</div>
-                            <div class="mt-2 text-4xl">{weather.dayLong}</div>
-                            <!-- <div class="mt-2">{weather.debug}</div> -->
-                        </div>
-                    {/each}
-                {/if}
-            </div>
+<FourByThreeScreen bg="black">
+    <div class="flex-center-all h-full w-full flex-col">
+        <div class="w-full text-center text-6xl mb-12 text-gray-200">PALO ALTO, CA</div>
+        <div class="flex flex-row w-full h-4/6">
+            {#if weatherData}
+                {#each Object.values(cleanData) as weather, i}
+                    <div
+                        class="flex-center-all flex-col w-full h-1/12 rounded-full {i === 0
+                            ? 'border-blue-200'
+                            : 'border-gray-800'} bg-blue-900 text-4xl"
+                        style="border-width:.25rem;"
+                    >
+                        <div class="pt-2 text-6xl my-2" style="color:{colorize(weather.tempHigh)}">{weather.tempHigh}</div>
+                        <img src={weather["iconDay"]} alt="icon" width="160rem" class="my-1" />
+                        <img src={weather["iconNight"]} alt="icon" width="160rem" class="my-1" />
+                        <div class="pt-2 text-6xl my-2" style="color:{colorize(weather.tempLow)}">{weather.tempLow}</div>
+                        <div class="mt-2 text-4xl">{weather.dayLong}</div>
+                        <!-- <div class="mt-2">{weather.debug}</div> -->
+                    </div>
+                {/each}
+            {/if}
         </div>
-        <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" on:pointerup={pop}><i class="fas fa-times-circle"></i></div>
     </div>
-</div>
+    <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" on:pointerup={pop}>
+        <i class="fas fa-times-circle" />
+    </div>
+</FourByThreeScreen>

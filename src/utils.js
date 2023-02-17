@@ -225,6 +225,7 @@ export async function speechPlay() {
     for (var i = 0; i < arguments.length; i++) {
         // console.log(arguments[i]);
         let words = arguments[i];
+        words = words.toLowerCase();
         var sound = new Howl({
             src: ["speech/" + words.replace(/[^a-zA-Z0-9]/g, "_") + '.mp3']
         });

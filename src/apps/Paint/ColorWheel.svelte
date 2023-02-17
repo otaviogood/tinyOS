@@ -17,7 +17,7 @@
     let canvas;
     let bmp;
 
-    let innerRad = 0.75;
+    let innerRad = 0.8;
     let outerRad = 1.0;
     let boxExt = 0.5;
     let hslTemp = ColorABGR.RGBToHSV(ColorABGR.fromRGBInt(Color(colorStr).rgbNumber()));
@@ -222,7 +222,7 @@
             <div class="relative" style="transform:rotate({selectedHue * 360}deg);transform-origin:0px 0px;">
                 <div
                     class="absolute bg-white"
-                    style="right:{size * 0.37}px;top:{-size * 0.005}px;width:{size * 0.135}px; height:{size * 0.01}px"
+                    style="right:{size * 0.39}px;top:{-size * 0.005}px;width:{size * 0.115}px; height:{size * 0.01}px"
                 />
             </div>
         </div>

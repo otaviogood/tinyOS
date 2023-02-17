@@ -49,7 +49,7 @@
     }
 </script>
 
-<FourByThreeScreen>
+<FourByThreeScreen class="bg-[#001838]">
     <br />
     <br />
     <br />
@@ -62,17 +62,11 @@
 
     <div class="text-4xl m-4">
         <button
-            class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
-            on:pointerdown={() => {
-                hold = true;
-                setTimeout(() => {
-                    if (hold) window.location.reload();
-                }, 2000);
-            }}
+            class="bg-green-600 text-white text-3xl rounded p-4 m-2"
             on:pointerup={() => {
-                hold = false;
-            }}>reload (hold for 2 seconds)</button
-        ><br />
+                window.location.reload();
+            }}><i class="fa-solid fa-rotate-right"></i> Reload browser</button
+        ><br /><br />
         <button
             class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
             on:pointerdown={() => {
@@ -88,11 +82,11 @@
                         });
                         window.location.reload();
                     }
-                }, 4000);
+                }, 5000);
             }}
             on:pointerup={() => {
                 hold = false;
-            }}>clear all local storage (paintings, photos) (hold for 4 seconds)</button
+            }}>clear all local storage (paintings, photos) (hold for 5 seconds)</button
         ><br />
         <button
             class="bg-gray-600 text-white text-3xl rounded p-4 m-2"

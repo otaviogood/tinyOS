@@ -67,7 +67,7 @@
     </div>
     <!-- Brush size visualizer -->
     <div style="position:absolute;bottom:{.6*scale}rem;left:{4.25*scale}rem; background-color:#80808080;display:inline-block;width:{2.8*scale}rem;height:{2.8*scale}rem;border-radius:{.6*scale}rem">
-        <div style="position:absolute;bottom:calc({-brushSize}px + {1.4*scale}rem);left:calc({-brushSize}px + {1.4*scale}rem); background-color:white;display:inline-block;width:{brushSize*2}px;height:{brushSize*2}px;border-radius:{brushSize*2}px"></div>
+        <div style="position:absolute;bottom:calc({-brushSize}px + {1.4*scale}rem);left:calc({-brushSize}px + {1.4*scale}rem); background-color:{colorStr};display:inline-block;width:{brushSize*2}px;height:{brushSize*2}px;border-radius:{brushSize*2}px"></div>
     </div>
     <!-- Current color example -->
     <div style="position:absolute;top:{.6*scale}rem;left:{4.25*scale}rem; background-color:{originalColorStr};display:inline-block;width:{2.8*scale}rem;height:{2.8*scale}rem;border-radius:{.6*scale}rem"></div>

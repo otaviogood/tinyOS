@@ -42,42 +42,47 @@
 
             resolve({ start, stop });
         });
+
+        async function recordButton() {
+            recorder = await recordAudio();
+            recorder.start();
+        }
 </script>
 
 <div class="flex">
     <div>
         {#if !recorder}
-        <button
-            class="{recorder ? 'bg-indigo-600' : 'bg-red-600'} text-white text-9xl m-2 p-10 {audio
-                ? 'rounded-l-full'
-                : 'rounded-full'}"
-            style="{recorder ? 'box-shadow: 0px 0px 2rem 2rem #38f;' : ''}"
-            on:pointerdown={async () => {
-                recorder = await recordAudio();
-                recorder.start();
-            }}>REC</button
-        >
+            <button
+                class="{recorder ? 'bg-indigo-600' : 'bg-red-600'} text-white text-9xl m-2 p-10 {audio
+                    ? 'rounded-l-full'
+                    : 'rounded-full'}"
+                style={recorder ? "box-shadow: 0px 0px 2rem 2rem #38f;" : ""}
+                on:pointerdown={recordButton}>REC</button
+            >
         {:else}
-        <button
-            class="fit-full-space bg-purple-600 text-white text-9xl"
-            on:pointerdown={async () => {
-                audio = await recorder.stop();
-                recorder = null;
-            }}>DONE</button
-        >
+            <button
+                class="fit-full-space bg-purple-600 text-white text-9xl"
+                on:pointerdown={async () => {
+                    audio = await recorder.stop();
+                    recorder = null;
+                }}>DONE</button
+            >
         {/if}
     </div>
     {#if audio}
         <div>
-            <button class="bg-green-600 active:bg-green-800 text-white text-9xl m-2 p-10 rounded-r-full" style="width:26rem" on:pointerdown={() => audio.play()}
-                >PLAY</button
+            <button
+                class="bg-green-600 active:bg-green-800 text-white text-9xl m-2 p-10 rounded-r-full"
+                style="width:26rem"
+                on:pointerdown={() => audio.play()}>PLAY</button
             >
         </div>
     {:else}
         <div>
-            <button class="text-white text-9xl m-2 p-10 rounded-r-full" style="width:26rem;background-color:#90909020">&nbsp;</button>
+            <button class="text-white text-9xl m-2 p-10 rounded-r-full" style="width:26rem;background-color:#90909020"
+                >&nbsp;</button
+            >
         </div>
     {/if}
     <div class="text-3xl">{debugStr}</div>
 </div>
-

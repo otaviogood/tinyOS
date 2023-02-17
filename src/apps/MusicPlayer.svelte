@@ -30,14 +30,13 @@
     let finalGraphic = false;
 
     let minimal = {
-        "hat": ["8_UnANdDqJc", "Franzl Lang Yodeling", "webm"],
-        "auto": ["rfoKnb-Tj1M", "Franzl Lang - Auto Jodler", "webm"],
-        "komm mit": ["SmGUmVPRMCA", "Franzl Lang - Komm mit in die Berge - 1976", "webm"],
+        "hat": ["8_UnANdDqJc", "Franzl Lang Yodeling", "mp4"],
+        "auto": ["rfoKnb-Tj1M", "Franzl Lang - Auto Jodler", "mp4"],
+        "komm mit": ["SmGUmVPRMCA", "Franzl Lang - Komm mit in die Berge - 1976", "mp4"],
     }
 
-    let allMedia;
-    if (!localStorage.getItem("unlockmusic")) allMedia = minimal;
-    else allMedia = allMediaAll;
+    let allMedia = allMediaAll;
+    // if (!localStorage.getItem("unlockmusic")) allMedia = minimal;
     let typed = "";
     let playing = null;
     let playbackElement = null;
@@ -49,13 +48,15 @@
 
     onMount(() => {
         return () => {
+            snd_current?.stop();
+            snd_current = null;
             animator.stop();
         };
     });
 
     function tick() {
         sinTime = Math.sin(Date.now() / 1000.0 * 3.14159 * 2) * 0.5 + 0.5;
-        if (startTime) {
+        if (startTime && snd_current) {
             let now = Date.now();
             let elapsed = (now - startTime) / 1000;
             percentComplete = snd_current.seek() / duration;
@@ -65,7 +66,7 @@
             //     playing = null;
             //     playbackElement = null;
             // }
-        }
+        } else percentComplete = 0;
     }
 
     function matchedMedia(typed) {
@@ -81,9 +82,9 @@
         let key = e.detail.key;
         if (key == "backspace") {
             typed = typed.slice(0, -1);
-        } else if (key == "music") {
+        } else if (key == "enter") {
             let media = matchedMedia(typed);
-            console.log("media", media, typed);
+            // console.log("media", media, typed);
             if (media) {
                 playing = media;
                 await speechPlay(Object.keys(allMedia).find((m) => m.toLowerCase() == typed.toLowerCase()))
@@ -92,17 +93,21 @@
 
                 snd_current = new Howl({
                     src: ["youtube/_" + playing[0] + "." + playing[2]],
-                    html5: true
+                    autoplay: true,
+                    // html5: true // This streams, but makes certain codecs fail on ipad. Big mess. :/
                 });
-                snd_current.once('load', function(){
+                // console.log('sndcurrent created!', snd_current);
+                snd_current.on('play', function(){
+                    // console.log('sndcurrent LOAD!');
                     duration = snd_current.duration();
-                    snd_current.play();
+                    // snd_current.play();
                     startTime = Date.now();
                 });
                 snd_current.on('end', function(){
-                    console.log('Finished!');
+                    // console.log('Finished!');
                     playing = null;
                     startTime = null;
+                    snd_current = null;
                 });
             } else {
                 if (typed.toLowerCase() === 'unlock') {
@@ -117,14 +122,15 @@
         let media = matchedMedia(typed);
         // console.log("typed", typed);
         if (media) {
-            console.log("matched", media);
+            // console.log("matched", media);
             snd_good.play();
         }
     }
 
     async function startGame() {
         snd_button.play();
-        if (snd_current) snd_current.stop();
+        snd_current?.stop();
+        snd_current = null;
         finalGraphic = false;
         started = true;
 
@@ -139,7 +145,8 @@
     }
 
     function resetToSplashScreen() {
-        if (snd_current) snd_current.stop();
+        snd_current?.stop();
+        snd_current = null;
         started = false;
         pop();
     }
@@ -212,7 +219,7 @@
                         {/each}
                     </div>
                     <pre class="border border-pink-500 bg-pink-900 text-white text-7xl p-2 my-2 rounded-2xl">{typed}{sinTime > 0.5 ? '_' : ''}&nbsp;</pre>
-                    <Keyboard on:pressed={keyPressed} enterEnabled={matchedMedia(typed)?.length > 0} />
+                    <Keyboard on:pressed={keyPressed} enterEnabled={matchedMedia(typed)?.length > 0} extraKeys={["numbers", "backspace", "music"]} />
                 </div>
                 <div class="cursor-pointer select-none absolute right-4" style="bottom:31rem; padding:0 0.75rem;border-radius:0.75rem;backXXXground-color:#486870" on:pointerup|preventDefault|stopPropagation={resetToSplashScreen} on:touchstart={preventZoom}>
                     <!-- <IconsMisc icon="treasure-map" size="7.5rem" style="" /> -->
@@ -238,9 +245,9 @@
                     <SVGArcDeg class="absolute" color="#0000ff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={65} />
                     <SVGArcDeg class="absolute" color="#8000ff" startAngle={-90} endAngle={-90 + percentComplete*180} radius={62} />
                     {/if}
-                    <img src={"youtube/_" + playing[0] + "_thumb.jpg"} alt="" class="flex-center-all max-h-96 w-96 hXXX-96 mt-32 text-center rounded-xl bg-transparent"/>
+                    <img src={"youtube/_" + playing[0] + "_thumb.jpg"} alt="" class="flex-center-all max-h-96 w-96 hXXX-96 mt-32 text-center rounded-xl bg-transparent pointer-events-none"/>
                     <div class="text-6xl m-2 p-2 w-full flex-center-all text-white" style="filter: drop-shadow(0 0 0.75rem #105080);">{playing[1]}</div>
-                    <button class="bg-red-500 text-white text-9xl rounded-3xl px-8 mt-4 z-10 h-32" on:pointerup|preventDefault|stopPropagation={() => {snd_current.stop(); startGame()}}>STOP</button>
+                    <button class="bg-red-500 text-white text-9xl rounded-3xl px-8 mt-4 z-10 h-32" on:pointerup|preventDefault|stopPropagation={() => {startGame()}}>STOP</button>
                 </div>
             {/if}
 

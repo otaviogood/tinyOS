@@ -29,6 +29,7 @@ let allTexts = [];
 (async () => {
     for await (const f of getFiles("../src")) {
         let data = fs.readFileSync(f, "utf8");
+        // Find all /*!speech ... */ comments and extract the array into allTexts, which is an array of words
         let startIndex = 0;
         do {
             startIndex = data.indexOf("/*!speech", startIndex);
@@ -40,6 +41,42 @@ let allTexts = [];
                     let arr = data.substring(startIndex, endIndex);
                     // console.log(arr); //Do Things
                     allTexts.push.apply(allTexts, eval(arr)); // append array to array
+                }
+                startIndex = endIndex;
+            }
+        } while (startIndex >= 0);
+
+        // find all words from the phonemes list.
+        startIndex = 0;
+        do {
+            startIndex = data.indexOf("var wordPhonemeAllParts =", startIndex);
+            if (startIndex >= 0) {
+                startIndex += "var wordPhonemeAllParts =".length;
+                let endIndex = data.indexOf("};", startIndex);
+                if (endIndex >= 0) {
+                    // console.log(f);
+                    let dict = data.substring(startIndex, endIndex + 1); // +1 to include the }
+                    dict = "(" + dict + ")"; // wrap in parens so it can be eval'd
+                    allTexts.push.apply(allTexts, Object.keys(eval(dict))); // append array to array
+                }
+                startIndex = endIndex;
+            }
+        } while (startIndex >= 0);
+
+        // find all lines from the stories
+        startIndex = 0;
+        do {
+            startIndex = data.indexOf("let allStorySentences =", startIndex);
+            if (startIndex >= 0) {
+                startIndex += "let allStorySentences =".length;
+                let endIndex = data.indexOf("];", startIndex);
+                if (endIndex >= 0) {
+                    // console.log(f);
+                    let arr = data.substring(startIndex, endIndex + 1); // +1 to include the ]
+                    arr = eval(arr); // convert to 2d array
+                    for (let i = 0; i < arr.length; i++) {
+                        allTexts.push.apply(allTexts, arr[i]); // append array to array
+                    }
                 }
                 startIndex = endIndex;
             }
@@ -58,7 +95,7 @@ let allTexts = [];
     const client = new textToSpeech.TextToSpeechClient();
     // Call Google speech API for each string in allTexts array
     for (let i = 0; i < allTexts.length; i++) {
-        let outFile = "../public/speech/" + allTextsClean[i] + ".mp3";
+        let outFile = "../public/speech/" + allTextsClean[i].toLowerCase() + ".mp3";
         if (fs.existsSync(outFile)) continue;
         const text = allTexts[i];
         console.log(text);

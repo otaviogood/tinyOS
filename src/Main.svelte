@@ -24,6 +24,8 @@
         // {name: "Maps", icon: "fa-map-marker", bgcolor: "bg-orange-500", link: "maps"},
         // {name: "Photos", icon: "fa-images", bgcolor: "bg-green-500", link: "photos"},
         {name: "Weather", icon: "fa-cloud-sun-rain", bgcolor: "bg-blue-500", link: "weather"},
+        {name: "Stories", icon: "fa-book-open", bgcolor: "bg-yellow-500", link: "stories"},
+        {name: "Timer", icon: "fa-clock-rotate-left", bgcolor: "bg-purple-500", link: "timer"},
         {name: "Settings", icon: "fa-cog", bgcolor: "bg-gray-500", link: "settings"},
     ];
 

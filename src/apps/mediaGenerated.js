@@ -39,6 +39,13 @@ export let allMediaAll = {
 "mahna remix": ["rxsI6YHRmfU", "Muppet Show - Mahna Mahna (HARDCORE/UPTEMPO REMIX by High Level & 2Facez )", "mp4"],
 "sweet dreams": ["eRhg7qPLeN8", "Sweet Dreams (Are Made of This) (Remastered)", "mp4"],
 "stick em": ["zUWwglLXV8g", "Stick 'Em", "mp4"],
+"peanut butter jelly": ["s8MDNFaGfT4", "It's Peanut Butter Jelly Time!!!", "mp4"],
+"very noise": ["Osqf4oIK0E8", "IGORRR - VERY NOISE", "mp4"],
+"googly eyes": ["wjFJCZCHzNY", "googly eyes", "mp4"],
+"low rider": ["qMkwuz0iXQg", "Low Rider", "mp4"],
+"fantastic voyage": ["zMJFJ73VyT8", "Lakeside - Fantastic Voyage", "mp4"],
+"bird is the word": ["IvF98Zeumes", "Surfin' Bird", "mp4"],
+"c is for cookie": ["Ye8mB6VsUHw", "Sesame Street: Cookie Monster Sings C is for Cookie", "mp4"],
 };
 // This weird string will be parsed by genSpeech.cjs to generate the speech synthesis files.
 
@@ -82,6 +89,13 @@ export let allMediaAll = {
 "mahna remix",
 "sweet dreams",
 "stick em",
+"peanut butter jelly",
+"very noise",
+"googly eyes",
+"low rider",
+"fantastic voyage",
+"bird is the word",
+"c is for cookie",
 
 ]
     */

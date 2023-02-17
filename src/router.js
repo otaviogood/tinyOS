@@ -7,6 +7,8 @@ import Photos from "./apps/Photos.svelte";
 import Weather from "./apps/Weather.svelte";
 import MusicPlayer from "./apps/MusicPlayer.svelte";
 import Microphone from "./apps/Microphone.svelte";
+import Stories from "./apps/Stories.svelte";
+import Timer from "./apps/Timer.svelte";
 import Paint from "./apps/Paint/Paint.svelte";
 import Settings from "./apps/Settings.svelte";
 
@@ -63,6 +65,16 @@ export const routes = {
     "/paint/": Paint,
     "/#/paint": Paint,
     "/#/paint/": Paint,
+
+    "/stories": Stories,
+    "/stories/": Stories,
+    "/#/stories": Stories,
+    "/#/stories/": Stories,
+
+    "/timer": Timer,
+    "/timer/": Timer,
+    "/#/timer": Timer,
+    "/#/timer/": Timer,
 
     "/settings": Settings,
     "/settings/": Settings,

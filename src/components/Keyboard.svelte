@@ -8,18 +8,27 @@
     const dispatch = createEventDispatcher();
 
     export let enterEnabled = false;
-
-    let audioOn = true;
+    export let extraKeys = [];
+    export let audioOn = true;
 
     /*!speech
 [
         "space",
         "back",
+        "comma",
+        "period",
+        "apostrophe",
 ]
     */
 
     let keyLetters = [
         ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+        ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+        ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+        ["Z", "X", "C", "V", "B", "N", "M"],
+    ];
+    if (!extraKeys.includes("numbers")) keyLetters = [
+        [],
         ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
         ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
         ["Z", "X", "C", "V", "B", "N", "M"],
@@ -71,6 +80,7 @@
     };
 
     function pressed(key) {
+        // console.log("pressed", key);
         let i = key.detail.key.toLowerCase();
         if (i === "audioon" || i === "audiooff") {
             audioOn = !audioOn;
@@ -90,6 +100,12 @@
                 speechPlay("back");
             } else if (i === " ") {
                 speechPlay("space");
+            } else if (i === ",") {
+                speechPlay("comma");
+            } else if (i === ".") {
+                speechPlay("period");
+            } else if (i === "'") {
+                speechPlay("apostrophe");
             }
         }
         dispatch('pressed', {
@@ -98,28 +114,61 @@
             xy: key.detail.xy
 		})
     }
+
+    function keyDown(e) {
+        if (!e) return;
+        if (!e.key) return;
+        // console.log(e.key);
+        let key = {
+            detail: {key:e.key,
+            side:0,
+            xy: [0,0]}}
+        pressed(key);
+    }
 </script>
 
-<div class="flex flex-col hXXX-full w-full absolute" style="bottom:1rem;left:0rem">
+<svelte:window on:keydown={keyDown} />
+
+<div class="flex flex-col hXXX-full w-full absolute" style="bottom:1rem;left:4rem">
     {#each keyLetters as keyRow, i}
         <div class="flex flex-row text-red-500" style="margin-left:{i * 4.25}rem">
             {#each keyRow as keyLetter}
-                <KeyboardKey {keyLetter} split={Array.isArray(phoneme_defaults?.[keyLetter.toLowerCase()])} on:pressed={pressed} />
+                <KeyboardKey {keyLetter} split={Array.isArray(phoneme_defaults?.[keyLetter.toLowerCase()]) && audioOn} on:pressed={pressed} />
             {/each}
             {#if i == 0}
-                <KeyboardKey keyLetter="backspace" width="14.8rem" on:pressed={pressed}><i class="fas fa-arrow-left"></i></KeyboardKey>
+                {#if extraKeys.includes("backspace")}
+                    <KeyboardKey keyLetter="backspace" width="14.8rem" on:pressed={pressed}><i class="fas fa-arrow-left"></i></KeyboardKey>
+                {/if}
             {/if}
             {#if i == 1}
-                <KeyboardKey keyLetter={audioOn ? "audioOn" : "audioOff"} width="10.5rem" on:pressed={pressed} >
-                    {#if audioOn}
-                        <i class="fas fa-volume-up"></i>
-                    {:else}
-                        <i class="fas fa-volume-mute"></i>
-                    {/if}
-                </KeyboardKey>
+                {#if extraKeys.includes("audio")}
+                    <KeyboardKey keyLetter={audioOn ? "audioOn" : "audioOff"} width="10.5rem" on:pressed={pressed} >
+                        {#if audioOn}
+                            <i class="fas fa-volume-up"></i>
+                        {:else}
+                            <i class="fas fa-volume-mute"></i>
+                        {/if}
+                    </KeyboardKey>
+                {/if}
             {/if}
             {#if i == 2}
-                <KeyboardKey keyLetter="music" width="13.5rem" active={enterEnabled} on:pressed={pressed} ><i class="fas fa-music text-green-500"></i></KeyboardKey>
+                {#if extraKeys.includes("'")}
+                    <KeyboardKey keyLetter="'" on:pressed={pressed} >'</KeyboardKey>
+                {/if}
+                {#if extraKeys.includes("music")}
+                    <KeyboardKey keyLetter="enter" width="13.5rem" active={enterEnabled} on:pressed={pressed} ><i class="fas fa-music text-green-500"></i></KeyboardKey>
+                {/if}
+                {#if extraKeys.includes("paint")}
+                    <KeyboardKey keyLetter="enter" width="13.5rem" active={enterEnabled} on:pressed={pressed} ><i class="fas fa-book-open text-green-500"></i></KeyboardKey>
+                {/if}
+            {/if}
+            {#if i == 3}
+                {#if extraKeys.includes(",")}
+                    <KeyboardKey keyLetter="," on:pressed={pressed} >,</KeyboardKey>
+                {/if}
+                {#if extraKeys.includes(".")}
+                    <KeyboardKey keyLetter="." on:pressed={pressed} >.</KeyboardKey>
+                {/if}
             {/if}
         </div>
     {/each}
