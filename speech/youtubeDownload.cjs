@@ -44,6 +44,7 @@ const allVids = {
     "fantastic voyage": "zMJFJ73VyT8",
     "bird is the word": "IvF98Zeumes",
     "c is for cookie": "Ye8mB6VsUHw",
+    "baby bumblebee": "krjBYu80f-c",
 };
 
 async function sleep(ms) {

@@ -18,13 +18,14 @@
     } from "../screen";
     import { sleep, getRandomInt, preventZoom } from "../utils";
     import { tweened } from "svelte/motion";
-    import { cubicInOut } from "svelte/easing";
+    import { elasticOut, cubicInOut, cubicOut } from "svelte/easing";
     import { Animator, frameCount, animateCount } from "../animator";
     import { snd_phonemes } from "./TinyQuest/voiceSynth";
     import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
     import Keyboard from "../components/Keyboard.svelte";
     import { speechPlay } from "../utils";
-    import ImageReveal from "../components/ImageReveal.svelte";
+    import ImageRevealGrid from "../components/ImageRevealGrid.svelte";
+    import CloseButton from "../components/CloseButton.svelte";
 
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
@@ -37,15 +38,17 @@
     let started = false;
     let stage = 0; // which sentence are we reading?
     let storyIndex = 0; // which story are we reading?
-    let state = 0; // 0 = reading / typing, 1 = done paragraph, drawing image and waiting.
+    let state = 0; // 0 = reading / typing, 1 = extra reveal time, 2 = done paragraph + reveal, speak entire paragraph and waiting.
 
     let progressCharIndex = 0;
     let progressPhonemeIndex = 0;
     let nextChars = "";
     let enterEnabled = false;
     let wordAccumulator = "";
-    let maxReveal = 20;
+    let maxReveal = 16;
     let imageReveal = 0;
+    let numStars = 0;
+    let remainingReveals = 16;
 
     // WARNING. don't change this next line. It gets parsed by genSpeech.cjs.
     let allStorySentences = [
@@ -86,7 +89,7 @@
         and: "a|n|d",
         andel: "a|n|d|e|l",
         at: "a|t",
-        away: "a@u0|w|a@a1|y@e1",
+        away: "a@u0|w|ay@a1",
         bag: "b|a|g",
         ball: "b|a@o0|l|l@silent",
         be: "b|e@e1",
@@ -116,7 +119,7 @@
         cup: "c|u|p",
         cups: "c|u|p|s",
         dad: "d|a|d",
-        day: "d|a@a1|y@e1",
+        day: "d|ay@a1",
         despite: "d|e@e1|s|p|i@i1|t|e@silent",
         did: "d|i|d",
         "didn't": "d|i|d|n|'@silent|t",
@@ -178,7 +181,7 @@
         man: "m|a|n",
         many: "m|a@e0|n|y@e1",
         mat: "m|a|t",
-        may: "m|a@a1|y@silent",
+        may: "m|ay@a1",
         me: "m|e@e1",
         meet: "m|e@e1|e@silent|t",
         met: "m|e|t",
@@ -203,7 +206,7 @@
         pig: "p|i|g",
         pink: "p|i|n|k",
         planned: "p|l|a|n|n|e@silent|d",
-        play: "p|l|a@a1|y@silent",
+        play: "p|l|ay@a1",
         poop: "p|oo@oo1|p",
         ran: "r|a|n",
         rat: "r|a|t",
@@ -233,7 +236,7 @@
         the: "th|e@u0", // two options: th|e@e1
         their: "th|eir@air2",
         there: "th|ere@air2",
-        they: "th|e@a1|y@e1",
+        they: "th|e|y@e1",
         this: "th|i|s",
         though: "th|ough@o1",
         time: "t|i@i1|m|e@silent",
@@ -374,10 +377,10 @@
 
     var phoneme_colors = {
         default: "#000000",
-        silent: "#808080",
-        long: "#802080", //"#2020a0",
+        silent: "#909090",
+        long: "#402040", //"#2020a0",
         combo: "#000000",
-        weird: "#0040a0", //"#904010",
+        weird: "#002040", //"#904010",
     };
 
     var phoneme_defaults = {
@@ -564,17 +567,15 @@
             if (current === key) {
                 if (key === "\n") {
                     imageReveal++;
+                    let numLines = allStorySentences[storyIndex][stage].split("\n").length;
+                    numStars+= Math.floor(maxReveal / numLines);
                 }
                 playPhoneme(getPhonemeAndIndexAndLine(progressCharIndex)[1]);
                 progressCharIndex++;
                 if (progressCharIndex >= allStorySentences[storyIndex][stage].length) {
+                    numStars = remainingReveals;
                     imageReveal = maxReveal;
                     state = 1;
-                    let paragraph = allStorySentences[storyIndex][stage];
-                    paragraph = paragraph.replace(/[^a-zA-Z0-9]/g, "_");
-                    setTimeout(() => {
-                        speechPlay(paragraph);
-                    }, 1000);
 
                     return;
                     // await sleep(15000);
@@ -659,13 +660,28 @@
         nextChars = "";
         getNextChar();
         linesOfPhonemes = formatSentence(allStorySentences[storyIndex][stage]);
-        maxReveal = linesOfPhonemes.length;
+        // maxReveal = linesOfPhonemes.length;
         imageReveal = 0;
 
         // console.log("LOF2", linesOfPhonemes);
         rateDifficulty(allStorySentences[storyIndex][stage]);
         linesOfPhonemes = linesOfPhonemes;
         allStorySentences = allStorySentences;
+    }
+
+    function scalePulse(node, { delay, duration }) {
+        return {
+            delay,
+            duration,
+            css: (t) => {
+                const eased = cubicOut(t);
+
+                return `
+                        transform: scale(${1.0 + Math.sin(eased * Math.PI) * 0.8});
+                        will-change: transform;
+                        `;
+            },
+        };
     }
 
     handleResize();
@@ -699,17 +715,19 @@
                 </div> -->
                 <div class="flex-grow flex-col">
                     {#each linesOfPhonemes as line, li}
+                        {@const lineOn = li == getPhonemeAndIndexAndLine(progressCharIndex)[2] || state !== 0}
                         {#if li <= getPhonemeAndIndexAndLine(progressCharIndex)[2] || state !== 0}
-                            <div class="flex flex-row bg-graXXy-100 rounded-xl m-6 px-4 w-max" style="">
+                            <div class="flex flex-row bg-graXXy-100 rounded-xl m-6 px-4 w-max" style="opacity:{lineOn ? "1.0" : "0.5"}">
                                 {#each line as character, ci}
+                                    {@const letterOn = colorProgress(li, ci, progressPhonemeIndex) === "#00ff00"}
                                     <span
-                                        class="text-6xl bordXXXer-2 flex flex-col justify-end items-center active:scale-125 transform transition-all duration-75"
+                                        class="text-6xl flex flex-col justify-end items-center active:scale-125 transform transition-all duration-75"
                                         style="min-width:1.5rem;padding-right:0.1rem;color:{getCharColor(
                                             character
                                         )};text-decoration: {getCharUnderline(character) ? 'underline' : 'initial'};"
                                         on:pointerup|preventDefault|stopPropagation={() => playPhoneme(character)}
                                     >
-                                        <pre class="p-0 m-0">{getCharVisual(character).replaceAll("&nbsp;", " ")}</pre>
+                                        <pre class="p-0 m-0" style="background-color:{letterOn ? "#c0ffc0" : "white"}">{getCharVisual(character).replaceAll("&nbsp;", " ")}</pre>
                                         <!-- <div class="bXXorder border-red-600 wXX-12">{@html getCharVisual(character)}</div> -->
                                         <div
                                             class="rounded-full"
@@ -726,38 +744,56 @@
                     {/each}
                 </div>
                 <div class="absolute right-0 top-0 m-4">
-                    <ImageReveal
+                    <ImageRevealGrid
                         src={allStoryImages[storyIndex][stage]}
                         stage={imageReveal}
                         maxStages={maxReveal}
+                        active={numStars > 0}
                         class="w-[42rem] h-[42rem] bXXorder-4 border-black"
+                        bind:remainingReveals={remainingReveals}
+                        on:pressed={() => {
+                            snd_good.play();
+                            numStars--;
+                            if (numStars < 0) numStars = 0;
+                            if (remainingReveals === 0) {
+                                let paragraph = allStorySentences[storyIndex][stage];
+                                paragraph = paragraph.replace(/[^a-zA-Z0-9]/g, "_");
+                                setTimeout(() => {
+                                    speechPlay(paragraph);
+                                }, 200);
+                                state = 2;
+                            }
+                        }}
                     />
                 </div>
+                {#key numStars}
+                    <div in:scalePulse|local={{ delay: 0, duration: 1200 }} class="absolute left-24 bottom-24 flex-center-all">
+                        <i class="absolute fa-solid fa-star text-orange-400 text-[8.75rem]"></i>
+                        <i class="absolute fa-solid fa-star text-yellow-200 text-9xl"></i>
+                        <div class="absolute text-orange-500 font-bold text-7xl">{numStars}</div>
+                    </div>
+                {/key}
                 {#if state === 0}
                     <Keyboard on:pressed={keyPressed} {enterEnabled} extraKeys={[",", ".", "'", "paint"]} audioOn={false} />
-                {:else if stage === allStorySentences[storyIndex].length - 1}
-                    <button
-                        class="self-center absolute bottom-64 z-10 w-[28rem] h-48 bg-green-400 rounded-full text-8xl"
-                        on:pointerup={() => {
-                            pop();
-                        }}>the end</button
-                    >
-                {:else}
-                    <button
-                        class="self-center mb-64 z-10 w-48 h-48 bg-green-400 rounded-full text-8xl"
-                        on:pointerup={() => {
-                            changeSentence(stage + 1);
-                        }}>GO</button
-                    >
+                {:else if state === 2}
+                    {#if stage === allStorySentences[storyIndex].length - 1}
+                        <button
+                            class="self-center absolute bottom-64 z-10 w-[28rem] h-48 bg-green-400 rounded-full text-8xl"
+                            on:pointerup={() => {
+                                pop();
+                            }}>the end</button
+                        >
+                    {:else}
+                        <button
+                            class="self-center mb-64 z-10 w-48 h-48 bg-green-400 rounded-full text-8xl"
+                            on:pointerup={() => {
+                                changeSentence(stage + 1);
+                            }}>GO</button
+                        >
+                    {/if}
                 {/if}
                 <!-- <button class="self-cenXXter mb-64 z-10 w-48 h-48 bg-red-600 text-4xl" on:pointerup={() => {changeSentence(stage+1)}}>skip</button> -->
-                <div
-                    class="absolute right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl"
-                    style="bottom:25rem"
-                    on:pointerup={pop}
-                >
-                    <i class="fas fa-times-circle" />
-                </div>
+                <CloseButton confirm topRem={45} rightRem={1}></CloseButton>
             </div>
         {/key}
     {/if}
