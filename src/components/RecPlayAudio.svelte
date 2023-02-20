@@ -1,59 +1,90 @@
 <script>
+    import { onMount } from "svelte";
     import { sleep, getRandomInt, shuffleArray, preventZoom } from "../utils";
+    import * as Tone from "tone";
 
     let recorder = null;
-    let audio;
+    let mic = null;
+    let recording;
+    let player;
     let debugStr = "";
+    let level = 0;
+    let playing = false;
 
-    const recordAudio = () =>
-        new Promise(async (resolve) => {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
-            const audioChunks = [];
+    onMount(() => {
+        return () => {
+            player?.stop();
+            player?.dispose();
+            recorder?.stop();
+            recorder?.dispose();
+            mic?.close();
+            mic?.dispose();
+        };
+    });
 
-            mediaRecorder.addEventListener("dataavailable", (event) => {
-                audioChunks.push(event.data);
+    async function recordButton() {
+        player?.stop();
+        playing = false;
+        const meter = new Tone.Meter();
+        mic = new Tone.UserMedia();
+        recorder = new Tone.Recorder();
+        mic.connect(meter);
+        mic.connect(recorder);
+
+        mic.open()
+            .then(() => {
+                // promise resolves when input is available
+                // console.log("mic open");
+                // print the incoming mic levels in decibels
+                setInterval(() => {
+                    level = meter.getValue() + 80;
+                    level = level < 0 ? 0 : level;
+                    level = level > 100 ? 100 : level;
+                    // console.log(level);
+                }, 16.6);
+                recorder.start();
+            })
+            .catch((e) => {
+                // promise is rejected when the user doesn't have or allow mic access
+                console.log("mic not open");
             });
+    }
 
-            const start = () => mediaRecorder.start();
+    async function playButton() {
+        player?.stop();
+        playing = false;
 
-            const stop = () =>
-                new Promise((resolve) => {
-                    mediaRecorder.addEventListener("stop", async () => {
-                        // const devices = await navigator.mediaDevices.enumerateDevices();
-                        // let allAudio = devices.filter((device) => device.kind === 'audiooutput');
-                        // // console.log(allAudio);
-                        // // const audioDevice = devices.find((device) => device.kind === 'audiooutput');
+        // start playing the recorded audio
+        player.start();
+        playing = true;
+    }
+    async function stopButton() {
+        // the recorded audio is returned as a blob
+        recording = await recorder.stop();
+        // console.log("recording stopped", recording);
+        recorder?.dispose();
+        mic?.close();
+        mic?.dispose();
+        recorder = null;
 
-                        const audioBlob = new Blob(audioChunks);
-                        const audioUrl = URL.createObjectURL(audioBlob);
-                        const audio2 = new Audio(audioUrl);
-                        // await audio2.setSinkId(allAudio[allAudio.length - 1].deviceId);
-                        // debugStr = allAudio[allAudio.length - 1].label;
-                        const play = () => {
-                            audio2.currentTime = 0;
-                            audio2.play();
-                        };
-                        resolve({ audioBlob, audioUrl, play });
-                    });
+        player?.stop();
+        player?.dispose();
+        // create a player and load the recorded blob
+        player = new Tone.Player().toDestination();
+        player.onstop = () => {
+            playing = false;
+        };
+        const url = URL.createObjectURL(recording);
+        await player.load(url);
 
-                    mediaRecorder.stop();
-                });
-
-            resolve({ start, stop });
-        });
-
-        async function recordButton() {
-            recorder = await recordAudio();
-            recorder.start();
-        }
+    }
 </script>
 
 <div class="flex">
     <div>
         {#if !recorder}
             <button
-                class="{recorder ? 'bg-indigo-600' : 'bg-red-600'} text-white text-9xl m-2 p-10 {audio
+                class="{recorder ? 'bg-indigo-600' : 'bg-red-600'} text-white text-9xl m-2 p-10 {recording
                     ? 'rounded-l-full'
                     : 'rounded-full'}"
                 style={recorder ? "box-shadow: 0px 0px 2rem 2rem #38f;" : ""}
@@ -62,19 +93,16 @@
         {:else}
             <button
                 class="fit-full-space bg-purple-600 text-white text-9xl"
-                on:pointerdown={async () => {
-                    audio = await recorder.stop();
-                    recorder = null;
-                }}>DONE</button
+                on:pointerdown={stopButton}>STOP</button
             >
         {/if}
     </div>
-    {#if audio}
+    {#if recording}
         <div>
             <button
-                class="bg-green-600 active:bg-green-800 text-white text-9xl m-2 p-10 rounded-r-full"
+                class="{playing ? 'bg-emerald-400' : 'bg-green-600'} active:bg-green-800 text-white text-9xl m-2 p-10 rounded-r-full"
                 style="width:26rem"
-                on:pointerdown={() => audio.play()}>PLAY</button
+                on:pointerdown={playButton}>PLAY</button
             >
         </div>
     {:else}
@@ -84,5 +112,12 @@
             >
         </div>
     {/if}
-    <div class="text-3xl">{debugStr}</div>
+    <!-- <div class="text-3xl">{debugStr}</div> -->
+    <div class="flex flex-row absolute top-1 left-1">
+        {#if level}
+            {#each Array(Math.abs(Math.trunc(level)) + 1) as _, i}
+                <div class="text-3xl w-2 h-8 bg-pink-500 m-1" />
+            {/each}
+        {/if}
+    </div>
 </div>

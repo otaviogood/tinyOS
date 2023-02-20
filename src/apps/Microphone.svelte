@@ -20,7 +20,8 @@
 
     async function getDevices() {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        let allAudio = devices.filter((device) => device.kind === 'audiooutput');
+        console.log(devices);
+        let allAudio =devices;// devices.filter((device) => device.kind === 'audiooutput');
         console.log(allAudio);
         const audioDevice = devices.find((device) => device.kind === 'audiooutput');
         for (let i = 0; i < allAudio.length; i++) {
@@ -32,7 +33,7 @@
         // console.log(`Audio is being played on ${audio.sinkId}`);
     }
 
-    getDevices();
+    // getDevices();
 
     handleResize();
 </script>
@@ -43,7 +44,7 @@
         <RecPlayAudio />
         <RecPlayAudio />
         <RecPlayAudio />
-        <pre class="text-2xl text-gray-500 absolute bottom-2">{debugStr}</pre>
+        <!-- <pre class="text-2xl text-gray-500 absolute bottom-2">{debugStr}</pre> -->
     </div>
     <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" on:pointerup={pop}>
         <i class="fas fa-times-circle" />
