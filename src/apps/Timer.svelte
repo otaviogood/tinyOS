@@ -293,6 +293,8 @@
                 xmlns:xlink="http://www.w3.org/1999/xlink"
                 viewBox="0 0 500 500"
                 style="margin:-8rem"
+                width="2160"
+                height="2160"
             >
                 <defs>
                     <path d="M50,250c0-110.5,89.5-200,200-200s200,89.5,200,200s-89.5,200-200,200S50,360.5,50,250" id="textcircle">
@@ -302,28 +304,28 @@
                 </defs>
                 <text dy="139" textLength="220" style="fill:#feffff;font-size:22px" class="">
                     <!-- textLength (essentially the circumference of the circle) is used as an alternative to letter-spacing for Firefox, which currently doesn't support letter-spacing for SVG -->
-                    <textPath xlink:href="#textcircle">HOURS</textPath>
+                    <textPath textLength="220" xlink:href="#textcircle">HOURS</textPath>
                 </text>
                 <text dy="111" textLength="220" style="fill:#feffff;font-size:22px" class="">
                     <!-- textLength (essentially the circumference of the circle) is used as an alternative to letter-spacing for Firefox, which currently doesn't support letter-spacing for SVG -->
-                    <textPath xlink:href="#textcircle">MINUTES</textPath>
+                    <textPath textLength="220" xlink:href="#textcircle">MINUTES</textPath>
                 </text>
                 <text dy="84" textLength="220" style="fill:#feffff;font-size:22px" class="">
                     <!-- textLength (essentially the circumference of the circle) is used as an alternative to letter-spacing for Firefox, which currently doesn't support letter-spacing for SVG -->
-                    <textPath xlink:href="#textcircle">SECONDS</textPath>
+                    <textPath textLength="220" xlink:href="#textcircle">SECONDS</textPath>
                 </text>
 
-                <text dy="136" dx="326" textLength="48" style="fill:#feffff;font-size:22px" class="">
+                <text dy="136" dx="326" textLength="52" style="fill:#feffff;font-size:22px" class="">
                     <!-- textLength (essentially the circumference of the circle) is used as an alternative to letter-spacing for Firefox, which currently doesn't support letter-spacing for SVG -->
-                    <textPath xlink:href="#textcircle">{Math.trunc(currentHours)}</textPath>
+                    <textPath textLength="52" xlink:href="#textcircle">{Math.trunc(currentHours)}</textPath>
                 </text>
-                <text dy="110" dx="326" textLength="40" style="fill:#feffff;font-size:22px" class="">
+                <text dy="110" dx="326" textLength="44" style="fill:#feffff;font-size:22px" class="">
                     <!-- textLength (essentially the circumference of the circle) is used as an alternative to letter-spacing for Firefox, which currently doesn't support letter-spacing for SVG -->
-                    <textPath xlink:href="#textcircle">{Math.trunc(currentMinutes)}</textPath>
+                    <textPath textLength="44" xlink:href="#textcircle">{Math.trunc(currentMinutes)}</textPath>
                 </text>
-                <text dy="84" dx="326" textLength="32" style="fill:#feffff;font-size:22px" class="">
+                <text dy="84" dx="326" textLength="36" style="fill:#feffff;font-size:22px" class="">
                     <!-- textLength (essentially the circumference of the circle) is used as an alternative to letter-spacing for Firefox, which currently doesn't support letter-spacing for SVG -->
-                    <textPath xlink:href="#textcircle">{Math.trunc(currentSeconds)}</textPath>
+                    <textPath textLength="36" xlink:href="#textcircle">{Math.trunc(currentSeconds)}</textPath>
                 </text>
             </svg>
             {#if state === 0}
