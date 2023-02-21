@@ -657,7 +657,10 @@
         progressCharIndex = 0;
         progressPhonemeIndex = 0;
         stage = i;
-        if (stage > allStorySentences[storyIndex].length - 1) {completed = true;}
+        if (stage > allStorySentences[storyIndex].length - 1) {
+            stage = 0;
+            completed = true;
+        }
         nextChars = "";
         getNextChar();
         linesOfPhonemes = formatSentence(allStorySentences[storyIndex][stage]);
@@ -782,7 +785,9 @@
                                     speechPlay(paragraph);
                                 }, 200);
                                 state = 2;
-                                if (stage >= allStorySentences[storyIndex].length - 1) {completed = true;}
+                                if (stage >= allStorySentences[storyIndex].length - 1) {
+                                    completed = true;
+                                }
                             }
                         }}
                     />
