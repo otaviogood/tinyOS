@@ -17,6 +17,7 @@
     export let maxStages = 2;
     export let active = false;
     export let remainingReveals = 16;
+    export let completed;
 
     let animator = new Animator(60, tick);
 
@@ -65,17 +66,19 @@
     <!-- <div class="absolute bottom-0 right-0 bg-red-800 w-64 h-10 z-50 text-2xl" style="">{currentInterpolation}</div> -->
     <img {src} class="absolute top-0 left-0" style="width:100%;height:100%;" on:touchstart={preventZoom} alt="reveal"/>
     <!-- Make a grid of square divs on top of the img to cover it. -->
-    {#key grid}
-        {#each Array(gridSize) as _, y}
-            {#each Array(gridSize) as _, x}
-                {#if getGrid(x, y) == 1}
-                    <div out:fade class="absolute top-0 left-0 flex-center-all {active ? 'bg-pink-200' : 'bg-pink-100'} border border-pink-300 text-red-400 rounded-3xl text-8xl font-bold active:scale-110 transform transition-all duration-75" style="width:calc(100%/{gridSize});height:calc(100%/{gridSize});top:{y*100/gridSize}%;left:{x*100/gridSize}%;" on:pointerup={() => (onPointerUp(x,y))}>
-                        {#if active}
-                            <div out:fade>?</div>
-                        {/if}
-                    </div>
-                {/if}
+    {#if !completed}
+        {#key grid}
+            {#each Array(gridSize) as _, y}
+                {#each Array(gridSize) as _, x}
+                    {#if getGrid(x, y) == 1}
+                        <div out:fade class="absolute top-0 left-0 flex-center-all {active ? 'bg-pink-200' : 'bg-pink-100'} border border-pink-300 text-red-400 rounded-3xl text-8xl font-bold active:scale-110 transform transition-all duration-75" style="width:calc(100%/{gridSize});height:calc(100%/{gridSize});top:{y*100/gridSize}%;left:{x*100/gridSize}%;" on:pointerup={() => (onPointerUp(x,y))}>
+                            {#if active}
+                                <div out:fade>?</div>
+                            {/if}
+                        </div>
+                    {/if}
+                {/each}
             {/each}
-        {/each}
-    {/key}
+        {/key}
+    {/if}
 </div>

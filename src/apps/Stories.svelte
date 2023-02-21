@@ -49,6 +49,7 @@
     let imageReveal = 0;
     let numStars = 0;
     let remainingReveals = 16;
+    let completed = false;
 
     // WARNING. don't change this next line. It gets parsed by genSpeech.cjs.
     let allStorySentences = [
@@ -568,7 +569,7 @@
                 if (key === "\n") {
                     imageReveal++;
                     let numLines = allStorySentences[storyIndex][stage].split("\n").length;
-                    numStars+= Math.floor(maxReveal / numLines);
+                    numStars += Math.floor(maxReveal / numLines);
                 }
                 playPhoneme(getPhonemeAndIndexAndLine(progressCharIndex)[1]);
                 progressCharIndex++;
@@ -656,7 +657,7 @@
         progressCharIndex = 0;
         progressPhonemeIndex = 0;
         stage = i;
-        if (stage > allStorySentences[storyIndex].length - 1) stage = 0;
+        if (stage > allStorySentences[storyIndex].length - 1) {completed = true;}
         nextChars = "";
         getNextChar();
         linesOfPhonemes = formatSentence(allStorySentences[storyIndex][stage]);
@@ -667,6 +668,15 @@
         rateDifficulty(allStorySentences[storyIndex][stage]);
         linesOfPhonemes = linesOfPhonemes;
         allStorySentences = allStorySentences;
+
+        if (completed) {
+            snd_blip.play();
+            let paragraph = allStorySentences[storyIndex][stage];
+            paragraph = paragraph.replace(/[^a-zA-Z0-9]/g, "_");
+            setTimeout(() => {
+                speechPlay(paragraph);
+            }, 200);
+        }
     }
 
     function scalePulse(node, { delay, duration }) {
@@ -715,9 +725,12 @@
                 </div> -->
                 <div class="flex-grow flex-col">
                     {#each linesOfPhonemes as line, li}
-                        {@const lineOn = li == getPhonemeAndIndexAndLine(progressCharIndex)[2] || state !== 0}
-                        {#if li <= getPhonemeAndIndexAndLine(progressCharIndex)[2] || state !== 0}
-                            <div class="flex flex-row bg-graXXy-100 rounded-xl m-6 px-4 w-max" style="opacity:{lineOn ? "1.0" : "0.5"}">
+                        {@const lineOn = li == getPhonemeAndIndexAndLine(progressCharIndex)[2] || state !== 0 || completed}
+                        {#if li <= getPhonemeAndIndexAndLine(progressCharIndex)[2] || state !== 0 || completed}
+                            <div
+                                class="flex flex-row bg-graXXy-100 rounded-xl m-6 px-4 w-max"
+                                style="opacity:{lineOn ? '1.0' : '0.5'}"
+                            >
                                 {#each line as character, ci}
                                     {@const letterOn = colorProgress(li, ci, progressPhonemeIndex) === "#00ff00"}
                                     <span
@@ -727,7 +740,11 @@
                                         )};text-decoration: {getCharUnderline(character) ? 'underline' : 'initial'};"
                                         on:pointerup|preventDefault|stopPropagation={() => playPhoneme(character)}
                                     >
-                                        <pre class="p-0 m-0" style="background-color:{letterOn ? "#c0ffc0" : "white"}">{getCharVisual(character).replaceAll("&nbsp;", " ")}</pre>
+                                        <pre
+                                            class="p-0 m-0"
+                                            style="background-color:{letterOn && !completed
+                                                ? '#c0ffc0'
+                                                : 'white'}">{getCharVisual(character).replaceAll("&nbsp;", " ")}</pre>
                                         <!-- <div class="bXXorder border-red-600 wXX-12">{@html getCharVisual(character)}</div> -->
                                         <div
                                             class="rounded-full"
@@ -735,7 +752,9 @@
                                                 getCharVisual(character)
                                             )
                                                 ? '1.0'
-                                                : '1'};background-color:{colorProgress(li, ci, progressPhonemeIndex)}"
+                                                : '1'};background-color:{completed
+                                                ? 'white'
+                                                : colorProgress(li, ci, progressPhonemeIndex)}"
                                         />
                                     </span>
                                 {/each}
@@ -749,8 +768,9 @@
                         stage={imageReveal}
                         maxStages={maxReveal}
                         active={numStars > 0}
+                        {completed}
                         class="w-[42rem] h-[42rem] bXXorder-4 border-black"
-                        bind:remainingReveals={remainingReveals}
+                        bind:remainingReveals
                         on:pressed={() => {
                             snd_good.play();
                             numStars--;
@@ -762,27 +782,51 @@
                                     speechPlay(paragraph);
                                 }, 200);
                                 state = 2;
+                                if (stage >= allStorySentences[storyIndex].length - 1) {completed = true;}
                             }
                         }}
                     />
                 </div>
-                {#key numStars}
-                    <div in:scalePulse|local={{ delay: 0, duration: 1200 }} class="absolute left-24 bottom-24 flex-center-all">
-                        <i class="absolute fa-solid fa-star text-orange-400 text-[8.75rem]"></i>
-                        <i class="absolute fa-solid fa-star text-yellow-200 text-9xl"></i>
-                        <div class="absolute text-orange-500 font-bold text-7xl">{numStars}</div>
-                    </div>
-                {/key}
-                {#if state === 0}
+                {#if !completed}
+                    {#key numStars}
+                        <div
+                            in:scalePulse|local={{ delay: 0, duration: 1200 }}
+                            class="absolute left-24 bottom-24 flex-center-all"
+                        >
+                            <i class="absolute fa-solid fa-star text-orange-400 text-[8.75rem]" />
+                            <i class="absolute fa-solid fa-star text-yellow-200 text-9xl" />
+                            <div class="absolute text-orange-500 font-bold text-7xl">{numStars}</div>
+                        </div>
+                    {/key}
+                {/if}
+                {#if state === 0 && !completed}
                     <Keyboard on:pressed={keyPressed} {enterEnabled} extraKeys={[",", ".", "'", "paint"]} audioOn={false} />
-                {:else if state === 2}
-                    {#if stage === allStorySentences[storyIndex].length - 1}
-                        <button
+                {:else if state === 2 || completed}
+                    {#if stage === allStorySentences[storyIndex].length - 1 || completed}
+                        <div
+                            class="flex-center-all flex-row mb-56 border-[0.5rem] border-gray-200 bg-gray-100 rounded-full w-max self-center"
+                        >
+                            {#each Array(allStorySentences[storyIndex].length) as _, i}
+                                <div
+                                    class="w-20 h-20 m-4 z-[1] flex-center-all text-4xl rounded-full {stage === i
+                                        ? 'bg-orange-400'
+                                        : 'bg-green-400'} active:scale-125 transform transition-all duration-75"
+                                    style="left:{i * 6 + 5}rem;"
+                                    on:pointerup={() => {
+                                        changeSentence(i);
+                                    }}
+                                >
+                                    {i}
+                                </div>
+                            {/each}
+                        </div>
+                        <div class="self-center absolute bottom-72 h-48 text-black rounded-full text-8xl">the end</div>
+                        <!-- <button
                             class="self-center absolute bottom-64 z-10 w-[28rem] h-48 bg-green-400 rounded-full text-8xl"
                             on:pointerup={() => {
                                 pop();
                             }}>the end</button
-                        >
+                        > -->
                     {:else}
                         <button
                             class="self-center mb-64 z-10 w-48 h-48 bg-green-400 rounded-full text-8xl"
@@ -793,7 +837,7 @@
                     {/if}
                 {/if}
                 <!-- <button class="self-cenXXter mb-64 z-10 w-48 h-48 bg-red-600 text-4xl" on:pointerup={() => {changeSentence(stage+1)}}>skip</button> -->
-                <CloseButton confirm topRem={45} rightRem={1}></CloseButton>
+                <CloseButton confirm topRem={45} rightRem={1} />
             </div>
         {/key}
     {/if}
