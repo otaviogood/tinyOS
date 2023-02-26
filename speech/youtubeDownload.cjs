@@ -45,6 +45,7 @@ const allVids = {
     "bird is the word": "IvF98Zeumes",
     "c is for cookie": "Ye8mB6VsUHw",
     "baby bumblebee": "krjBYu80f-c",
+    "go for g": "QoLySyi46zw",
 };
 
 async function sleep(ms) {

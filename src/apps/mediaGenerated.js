@@ -47,6 +47,7 @@ export let allMediaAll = {
 "bird is the word": ["IvF98Zeumes", "Surfin' Bird", "mp4"],
 "c is for cookie": ["Ye8mB6VsUHw", "Sesame Street: Cookie Monster Sings C is for Cookie", "mp4"],
 "baby bumblebee": ["krjBYu80f-c", "Baby Bumblebee Song", "mp4"],
+"go for g": ["QoLySyi46zw", "Go for G!", "mp4"],
 };
 // This weird string will be parsed by genSpeech.cjs to generate the speech synthesis files.
 
@@ -98,6 +99,7 @@ export let allMediaAll = {
 "bird is the word",
 "c is for cookie",
 "baby bumblebee",
+"go for g",
 
 ]
     */

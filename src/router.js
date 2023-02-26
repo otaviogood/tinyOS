@@ -9,6 +9,7 @@ import MusicPlayer from "./apps/MusicPlayer.svelte";
 import Microphone from "./apps/Microphone.svelte";
 import Stories from "./apps/Stories.svelte";
 import Timer from "./apps/Timer.svelte";
+import MusicSequencer from "./apps/MusicSequencer.svelte";
 import Paint from "./apps/Paint/Paint.svelte";
 import Settings from "./apps/Settings.svelte";
 
@@ -75,6 +76,11 @@ export const routes = {
     "/timer/": Timer,
     "/#/timer": Timer,
     "/#/timer/": Timer,
+
+    "/musicsequencer": MusicSequencer,
+    "/musicsequencer/": MusicSequencer,
+    "/#/musicsequencer": MusicSequencer,
+    "/#/musicsequencer/": MusicSequencer,
 
     "/settings": Settings,
     "/settings/": Settings,
