@@ -33,7 +33,7 @@
     animator.start();
 
     let height = 6;
-    let width = 32;
+    let width = 16;
     let grid = [];
     for (let y = 0; y < height; y++) {
         grid[y] = [];
@@ -108,7 +108,8 @@
     function resume() {
         Tone.Transport.start();
     }
-    function toggle() {
+    async function toggle() {
+        await Tone.start();
         Tone.Transport.toggle();
     }
 </script>
@@ -136,6 +137,7 @@
     </div>
     <br/>
     <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={toggle}>Play / Pause</button>
+    <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={() => Tone.start()}>START</button>
     <!-- <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={pause}>Pause</button>
     <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={resume}>Resume</button> -->
     <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl z-40" on:pointerup={pop}>
