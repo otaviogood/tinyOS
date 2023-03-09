@@ -48,6 +48,8 @@ export let allMediaAll = {
 "c is for cookie": ["Ye8mB6VsUHw", "Sesame Street: Cookie Monster Sings C is for Cookie", "mp4"],
 "baby bumblebee": ["krjBYu80f-c", "Baby Bumblebee Song", "mp4"],
 "go for g": ["QoLySyi46zw", "Go for G!", "mp4"],
+"feliz navidad": ["N8NcQzMQN_U", "José Feliciano - Feliz Navidad (Official Audio)", "mp4"],
+"banana phone": ["dIiZ3vvZ78s", "Raffi - Bananaphone", "mp4"],
 };
 // This weird string will be parsed by genSpeech.cjs to generate the speech synthesis files.
 
@@ -100,6 +102,8 @@ export let allMediaAll = {
 "c is for cookie",
 "baby bumblebee",
 "go for g",
+"feliz navidad",
+"banana phone",
 
 ]
     */

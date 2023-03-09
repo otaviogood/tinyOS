@@ -46,6 +46,8 @@ const allVids = {
     "c is for cookie": "Ye8mB6VsUHw",
     "baby bumblebee": "krjBYu80f-c",
     "go for g": "QoLySyi46zw",
+    "feliz navidad": "N8NcQzMQN_U",
+    "banana phone": "dIiZ3vvZ78s",
 };
 
 async function sleep(ms) {
