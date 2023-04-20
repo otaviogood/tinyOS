@@ -9,7 +9,7 @@ import MusicPlayer from "./apps/MusicPlayer.svelte";
 import Microphone from "./apps/Microphone.svelte";
 import Stories from "./apps/Stories.svelte";
 import Timer from "./apps/Timer.svelte";
-import MusicSequencer from "./apps/MusicSequencer.svelte";
+import MusicSequencer from "./apps/MusicSequencer/MusicSequencer.svelte";
 import Paint from "./apps/Paint/Paint.svelte";
 import Settings from "./apps/Settings.svelte";
 
@@ -29,6 +29,7 @@ import BusStop from "./apps/TinyQuest/BusStop.svelte";
 import MathGrid from "./apps/TinyQuest/MathGrid.svelte";
 import AirplaneCrash from "./apps/TinyQuest/AirplaneCrash.svelte";
 import BlockDrop from "./apps/TinyQuest/BlockDrop.svelte";
+import Dungeon from "./apps/TinyQuest/dungeon/Dungeon.svelte";
 
 
 export const routes = {
@@ -108,6 +109,7 @@ export const routes = {
     "/tinyquest/mathgrid": MathGrid,
     "/tinyquest/airplanecrash": AirplaneCrash,
     "/tinyquest/blockdrop": BlockDrop,
+    "/tinyquest/dungeon": Dungeon,
 
     // // Wildcard parameter
     // "/go/*": MainGame,

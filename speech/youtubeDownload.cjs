@@ -48,6 +48,10 @@ const allVids = {
     "go for g": "QoLySyi46zw",
     "feliz navidad": "N8NcQzMQN_U",
     "banana phone": "dIiZ3vvZ78s",
+    "kokomo": "0qkSQvx46bA",
+    "hot dog": "NoavHX75s_E",
+    "magic dragon": "s26e_86-K0k",
+    "honk bang": "ZJI875D7AZk",
 };
 
 async function sleep(ms) {

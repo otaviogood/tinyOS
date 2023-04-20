@@ -26,7 +26,7 @@
         {name: "Weather", icon: "fa-cloud-sun-rain", bgcolor: "bg-blue-500", link: "weather"},
         {name: "Stories", icon: "fa-book-open", bgcolor: "bg-yellow-500", link: "stories"},
         {name: "Timer", icon: "fa-clock-rotate-left", bgcolor: "bg-purple-500", link: "timer"},
-        // {name: "Music Maker", icon: "fa-drum", bgcolor: "bg-cyan-500", link: "musicsequencer"},
+        {name: "Music Maker", icon: "fa-drum", bgcolor: "bg-cyan-500", link: "musicsequencer"},
         {name: "Settings", icon: "fa-cog", bgcolor: "bg-gray-500", link: "settings"},
     ];
 
