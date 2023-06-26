@@ -309,9 +309,9 @@
                     {/if}
 
                     {#if explodeAnim > 0.0 && explodeAnim < 1.0}
-                        <div class="absolute left-20 bg-gray-200" style="border-radius:100%;transform:scale({Math.sqrt(explodeAnim)*3}); opacity:{1.0-explodeAnim};width:18rem;height:8rem;bottom:{8 + clickSequence * buildingSegmentSize}rem" ></div>
-                        <div class="absolute left-56 bg-gray-200" style="border-radius:100%;transform:scale({Math.sqrt(explodeAnim)*3}); opacity:{1.0-explodeAnim};width:18rem;height:8rem;bottom:{8 + clickSequence * buildingSegmentSize}rem" ></div>
-                        <div class="absolute left-12 bg-gray-200" style="border-radius:100%;transform:scale({Math.sqrt(explodeAnim)*3}); opacity:{1.0-explodeAnim};width:18rem;height:6rem;bottom:{6 + clickSequence * buildingSegmentSize}rem" ></div>
+                        <div class="absolute left-20 bg-gray-200" style="border-radius:100%;transform:scale({Math.sqrt(explodeAnim)*3}); opacity:{1.0-Math.sqrt(explodeAnim)};width:18rem;height:8rem;bottom:{8 + clickSequence * buildingSegmentSize}rem" ></div>
+                        <div class="absolute left-56 bg-gray-200" style="border-radius:100%;transform:scale({Math.sqrt(explodeAnim)*3}); opacity:{1.0-Math.sqrt(explodeAnim)};width:18rem;height:8rem;bottom:{8 + clickSequence * buildingSegmentSize}rem" ></div>
+                        <div class="absolute left-12 bg-gray-200" style="border-radius:100%;transform:scale({Math.sqrt(explodeAnim)*3}); opacity:{1.0-Math.sqrt(explodeAnim)};width:18rem;height:6rem;bottom:{6 + clickSequence * buildingSegmentSize}rem" ></div>
                     {/if}
 
                     {#if clickSequence === 0}
