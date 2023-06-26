@@ -4,7 +4,6 @@ const allVids = {
     "hat": "8_UnANdDqJc",
     "let it go": "NH15p2dqvJk",
     "mama yoho": "tgbNymZ7vqY",
-    "dancer": "65CNtap6bow",
     "dollars": "DT1NJwEi6nw",
     "manatee": "pd1WGa4JNfE",
     "pig": "4n7bUYBYZPE",
@@ -29,7 +28,7 @@ const allVids = {
     "count": "ZIniljT5lJI",
     "count bones": "LP2rVGbZXrw",
     "batty bat": "N7yAe2MBIpE",
-    "bruno": "EgCofsnrz2I",
+    // "bruno": "EgCofsnrz2I",
     "lava": "uh4dTLJ9q9o",
     "mahna mahna": "QTXyXuqfBLA",
     "choo choo": "3Awey7AbXT0",
@@ -52,6 +51,16 @@ const allVids = {
     "hot dog": "NoavHX75s_E",
     "magic dragon": "s26e_86-K0k",
     "honk bang": "ZJI875D7AZk",
+    "power rangers": "BwbHW8MeHDU",
+    "going to eat pizza": "Z9_sCkuRkog",
+    "flowers": "i9kZZJzSNeo",
+    "hole in the bottom": "oQCzgmO1D1g",
+    "pokemon": "wrCUQuJsDYI",
+    "move it": "hdcTmpvDO0I",
+    "cucumber": "13DvXLdr_H4",
+    "hairbrush": "LtHr7gluh08",
+    "crazy train": "tMDFv5m18Pw",
+    "baby beluga": "mIBY-LQYkVA",
 };
 
 async function sleep(ms) {

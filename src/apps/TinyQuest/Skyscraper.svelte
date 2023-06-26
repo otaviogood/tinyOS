@@ -20,6 +20,7 @@
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
     var snd_error = new Howl({ src: ["/TinyQuest/sfx/sfx_sounds_error10.wav"], volume: 0.25 });
     var snd_button = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double7.wav"], volume: 0.25 });
+    var snd_break = new Howl({ src: ["/TinyQuest/sfx/sfx_exp_various3.wav"], volume: 0.25 });
     /*!speech
         ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30"]
     */
@@ -41,6 +42,8 @@
     const winNumber = 30; // 30
     let clickSequence = 0;
     let craneAnim = 0.0;
+    let explodeY = 0.0;
+    let explodeAnim = 0.0;
 
     const buildingSegmentSize = 6;
 
@@ -106,8 +109,6 @@
                 if (currentNumbers[i].doneAnim > 0.0 && currentNumbers[i].doneAnim < 1.0) {
                     currentNumbers[i].doneAnim += 0.01;
                     currentNumbers[i].doneAnim = Math.min(currentNumbers[i].doneAnim, 1.0);
-                    currentNumbers[i].x0 *= 0.9;
-                    currentNumbers[i].y0 = currentNumbers[i].y0 * 0.9 + 0.6 * 0.1;
                     currentNumbers[i] = currentNumbers[i];
                 }
             }
@@ -115,6 +116,10 @@
         if (craneAnim > 0.0 && craneAnim < 1.0) {
             craneAnim += 0.01;
             craneAnim = Math.min(craneAnim, 1.0);
+        }
+        if (explodeAnim > 0.0 && explodeAnim < 1.0) {
+            explodeAnim += 0.02;
+            explodeAnim = Math.min(explodeAnim, 1.0);
         }
     }
 
@@ -153,7 +158,17 @@
                 }
             }
         } else {
-            snd_error.play();
+            snd_break.play();
+            if (clickSequence > 0) {
+                clickSequence--;
+                clearedNumbers[clickSequence] = false;
+                currentNumbers.pop();
+                clearedNumbers.pop();
+                maxNumbers--;
+                explodeY = clickSequence * buildingSegmentSize;
+                explodeAnim = 0.01;
+            }
+
         }
     }
 
@@ -291,6 +306,12 @@
                         {#if currentNumbers[clickSequence - 1]?.doneAnim > 0.99}
                             <img src="TinyQuest/gamedata/skyscraper/top.png" class="absolute left-12" alt="" style="height:{buildingSegmentSize}rem;bottom:{8 + clickSequence * buildingSegmentSize}rem" />
                         {/if}
+                    {/if}
+
+                    {#if explodeAnim > 0.0 && explodeAnim < 1.0}
+                        <div class="absolute left-20 bg-gray-200" style="border-radius:100%;transform:scale({Math.sqrt(explodeAnim)*3}); opacity:{1.0-explodeAnim};width:18rem;height:8rem;bottom:{8 + clickSequence * buildingSegmentSize}rem" ></div>
+                        <div class="absolute left-56 bg-gray-200" style="border-radius:100%;transform:scale({Math.sqrt(explodeAnim)*3}); opacity:{1.0-explodeAnim};width:18rem;height:8rem;bottom:{8 + clickSequence * buildingSegmentSize}rem" ></div>
+                        <div class="absolute left-12 bg-gray-200" style="border-radius:100%;transform:scale({Math.sqrt(explodeAnim)*3}); opacity:{1.0-explodeAnim};width:18rem;height:6rem;bottom:{6 + clickSequence * buildingSegmentSize}rem" ></div>
                     {/if}
 
                     {#if clickSequence === 0}
