@@ -59,7 +59,8 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
         geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(tempVerts), 3));
         geometry.computeVertexNormals();
         // Make wireframe material.
-        const material = new THREE.MeshStandardMaterial({ color: 0xa0a0a0, side: THREE.DoubleSide, wireframe: false });
+        // const material = new THREE.MeshStandardMaterial({ color: 0xa0a0a0, side: THREE.DoubleSide, wireframe: false });
+        const material = new THREE.MeshStandardMaterial({ color: 0xa0a0a0, wireframe: false });
         const mesh = new THREE.Mesh(geometry, material);
 
         return mesh;
@@ -91,8 +92,9 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
         }
         path.push(new THREE.Vector2(0, bigRad));
 
-        let pathB = JSON.parse(JSON.stringify(path)); // deep copy
-        for (let i = 0; i < pathB.length; i++) {
+        let pathB = [];
+        for (let i = 0; i < path.length; i++) {
+            pathB.push(path[i].clone());
             pathB[i].x = pathB[i].x * tipScale - backwardSweep;
             pathB[i].y = pathB[i].y * tipScale + vSweep;
         }
@@ -100,8 +102,8 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
         let meshR = loft(path, pathB, width);
         meshR.position.z = 0.01; // Make it not touching
         group.add(meshR);
-        let meshL = loft(path, pathB, -width);
-        meshL.position.z = -0.01; // Make it not touching
+        let meshL = loft(pathB, path, width);
+        meshL.position.z = -0.01-width; // Make it not touching
         group.add(meshL);
 
         return group;
@@ -124,8 +126,9 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
         }
         path.push(new THREE.Vector2(0, bigRad));
 
-        let pathB = JSON.parse(JSON.stringify(path)); // deep copy
-        for (let i = 0; i < pathB.length; i++) {
+        let pathB = [];
+        for (let i = 0; i < path.length; i++) {
+            pathB.push(path[i].clone());
             pathB[i].x = pathB[i].x * tipScale - backwardSweep;
             pathB[i].y = pathB[i].y * tipScale;
         }
@@ -194,6 +197,8 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
         pivotGroup.position.set(-com.x, -com.y, -com.z);
         // pivotGroup.updateMatrixWorld();
         planeGroup.position.set(com.x, com.y, com.z);
+
+        // planeGroup.computeBoundingSphere();
 
         scene.add(planeGroup);
         return planeGroup;

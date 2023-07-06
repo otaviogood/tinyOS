@@ -21,6 +21,13 @@
     let designMode = 0; // 0: ?, 1: main wing, 2: rear wing, 3: tail fin, 4: fuselage, 5: fuselage-wing, 6: engine
     let playMode = 0; // 0: design, 1: fly
 
+    let planeFlying = false;
+    let planePos = new THREE.Vector3(0, 0, 0);
+    let planeRot = new THREE.Quaternion(0, 0, 0, 1);
+    let planeVel = new THREE.Vector3(0, 0, 0);
+    let planeRotVel = new THREE.Vector3(0, 0, 0);
+
+
     let planeDef = {
         mainWingSpan: {v:30.0, min:0.0, max:50.0, label:"span"},
         mainWingMiddleLen: {v:8.0, min:2.0, max:30.0, label:"length"},
@@ -123,13 +130,47 @@
 
         planeGroup = regenPlane(planeDef, planeGroup, scene);
 
+        // {
+        //     const geometry = new THREE.SphereGeometry(planeGroup.boundingSphere.radius, 32, 32);
+        //     const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+        //     const sphere = new THREE.Mesh(geometry, material);
+        //     sphere.position.copy(planeGroup.boundingSphere.center);
+        //     scene.add(sphere);
+        // }
+
         clock = new THREE.Clock();
+    }
+
+    function debugSphere(pos, rad = 0.5, color = 0x00ff00) {
+        let old = scene.getObjectByName("debugSphere");
+        if (old) scene.remove(old);
+        const geometry = new THREE.SphereGeometry(rad, 32, 32);
+        const material = new THREE.MeshBasicMaterial({ color: color });
+        const sphere = new THREE.Mesh(geometry, material);
+        sphere.name = "debugSphere";
+        sphere.position.copy(pos);
+        scene.add(sphere);
+    }
+
+    function flyPlane(deltaTime) {
+            // First multiply planeVel by delta time
+            let deltaVel = planeVel.clone().multiplyScalar(deltaTime);
+            // Add planeVel to planePos
+            planePos.add(deltaVel);
+            // console.log("planePos", planePos);
+            // Get normalized velocity vector
+            let velNorm = planeVel.clone().normalize();
+            velNorm.multiplyScalar(50);
+            let inFront = planePos.clone().add(velNorm);
+            debugSphere(inFront);
     }
 
     function animate() {
         if (!renderer) return;
         requestAnimationFrame(animate);
-        let time = clock.getElapsedTime();
+        // let time = clock.getElapsedTime();
+        let delta = clock.getDelta();
+        // console.log("time", delta);
 
         if (dirty) {
             dirty = false;
@@ -137,6 +178,13 @@
         }
         // planeGroup.rotation.y = time * 7.93;
         camera.updateProjectionMatrix(); // Not needed?
+
+        if (planeFlying) {
+            flyPlane(delta);
+            planeGroup.position.copy(planePos);
+        } else {
+            // planeGroup.position.set(0, 0, 0);
+        }
 
         controls?.update();
         renderer.render(scene, camera);
@@ -213,6 +261,28 @@
         dragging = false;
         draggingIndex = -1;
     }
+
+    function resetPlanePhysics(flying = false) {
+        planePos = new THREE.Vector3(0, 0, 0);
+        planeRot = new THREE.Quaternion(0, 0, 0, 1);
+        planeVel = new THREE.Vector3(0, 0, 0);
+        planeRotVel = new THREE.Vector3(0, 0, 0);
+        planeFlying = flying;
+    }
+    function throwPlane() {
+        resetPlanePhysics(true);
+        planeVel.x = 1*100; // 1m/s
+    }
+    function setPlayMode(mode) {
+        playMode = mode;
+        resetPlanePhysics(false);
+        if (mode === 0) {
+            camera.position.set(4, 8, 25);
+            dirty = true;
+        } else if (mode === 1) {
+            camera.position.set(-40, 38, 35);
+        }
+    }
 </script>
 
 <svelte:window on:keydown={keyDown} />
@@ -226,7 +296,7 @@
         on:pointerup={(e) => pointerUp(-1)}
         on:pointerleave={(e) => pointerUp(-1)}
     />
-    <button class="absolute top-[2rem] left-[2rem] coolbutton" style="background-color:{playMode === 1?'#ff2080b0':''}" on:pointerup={() => (playMode = 1-playMode)} ><i class="fas fa-plane-departure"/></button>
+    <button class="absolute top-[2rem] left-[2rem] coolbutton" style="background-color:{playMode === 1?'#ff2080b0':''}" on:pointerup={() => (setPlayMode(1-playMode))} ><i class="fas fa-plane-departure"/></button>
     <button class="absolute top-[2rem] left-[8rem] coolbutton" on:pointerup={() => (saveToSTL(planeGroup, planeDef))} ><i class="fas fa-download"/></button>
     {#if playMode === 0}
         <div class="absolute top-4 right-4 w-96 h-96 bg-pink-500/40">
@@ -268,6 +338,8 @@
                 {/each}
             </div>
         {/if}
+    {:else if playMode === 1}
+        <button class="absolute top-[16rem] left-[2rem] coolbutton" style="background-color:#20a060b0" on:pointerup={throwPlane} >GO</button>
     {/if}
     <CloseButton confirm></CloseButton>
 </FourByThreeScreen>
