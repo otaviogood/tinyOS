@@ -5,8 +5,8 @@
 
     // export let delay = 2;
     export let confirm = false;
-    export let topRem;
-    export let rightRem;
+    export let topRem = 0.5;
+    export let rightRem = 0.5;
 
     let mousePressed = false;
     let pressedTime = 0;
