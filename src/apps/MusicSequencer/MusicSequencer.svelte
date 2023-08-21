@@ -15,41 +15,49 @@
         handleResize,
     } from "../../screen";
     import FourByThreeScreen from "../../components/FourByThreeScreen.svelte";
-    import { Animator, frameCount, animateCount } from "../../animator";
     import * as Tone from "tone";
     import Sampler from "./Sampler.svelte";
 
-    let animator = new Animator(60, tick);
+    let bpm = 80;
     let started = false;
-
     let samplerOn = false;
+    let height = 6;
+    let width = 16;
+    let grid = [];
+    for (let y = 0; y < height; y++) {
+            grid[y] = [];
+            for (let x = 0; x < width; x++) {
+                grid[y][x] = false;
+            }
+        }
+        console.log("MusicSequencer onMount2");
+
     onMount(() => {
+        console.log("MusicSequencer onMount");
+        height = 6;
+        width = 16;
+        grid = [];
+        for (let y = 0; y < height; y++) {
+            grid[y] = [];
+            for (let x = 0; x < width; x++) {
+                grid[y][x] = false;
+            }
+        }
+        grid = grid;
+
         return () => {
             Tone.Transport.stop();
             players?.stopAll();
-            animator.stop();
         };
     });
 
     function tick() {}
 
     handleResize();
-    animator.start();
-
-    let height = 6;
-    let width = 16;
-    let grid = [];
-    for (let y = 0; y < height; y++) {
-        grid[y] = [];
-        for (let x = 0; x < width; x++) {
-            grid[y][x] = false;
-        }
-    }
-    // grid[0][4] = true;
 
     // // create two monophonic synths
-    const synthA = new Tone.FMSynth().toDestination();
-    const synthB = new Tone.AMSynth().toDestination();
+    // const synthA = new Tone.FMSynth().toDestination();
+    // const synthB = new Tone.AMSynth().toDestination();
     // //play a note every quarter-note
     // const loopA = new Tone.Loop((time) => {
     //     synthA.triggerAttackRelease("C2", "8n", time);
@@ -99,7 +107,7 @@
             },
             width === 32 ? "32n" : "16n"
         ).start(0);
-        Tone.Transport.bpm.value = 80;
+        Tone.Transport.bpm.value = bpm;
         Tone.Transport.timeSignature = 4;
         Tone.Transport.start();
         // Tone.Transport.schedule((time) => {
@@ -212,6 +220,9 @@
             }}>+</button
         > -->
         <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={toggle}>Play / Pause</button>
+        <button class="text-4xl bg-gray-800 p-4 rounded-lg ml-4 w-16" on:pointerup={() => {bpm--;Tone.Transport.bpm.value = bpm;}}>-</button>
+        <span class="text-4xl bg-gray-900 p-4 rounded-lg">{bpm}</span>
+        <button class="text-4xl bg-gray-800 p-4 rounded-lg mr-4 w-16" on:pointerup={() => {bpm++;Tone.Transport.bpm.value = bpm;}}>+</button>
         <!-- <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={() => Tone.start()}>START</button> -->
         <!-- <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={pause}>Pause</button>
             <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={resume}>Resume</button> -->

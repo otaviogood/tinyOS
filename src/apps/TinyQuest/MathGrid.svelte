@@ -330,8 +330,8 @@
                             {/if}
                             {#each Array(gridSize) as _, i}
                                 <div
-                                    class="cell {gridCells[i][j] !== 0 && !heatmap ? (addition ? 'reveal2' : 'reveal') : ''} flex-center-all text-2xl text-white"
-                                    style="{heatmap ? 'background-color:' + getHeatMap(i, j) : ''};"
+                                    class="cell reveal-base flex-center-all text-2xl text-white"
+                                    style="{heatmap ? 'background-color:' + getHeatMap(i, j) : ''};{gridCells[i][j] !== 0 && !heatmap ? (addition ? 'background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal2.jpg")' : 'background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal.jpg")') : 'background-image:none'}"
                                     on:pointerup|preventDefault|stopPropagation={() => clickedCell(i + 1, j + 1)}
                                 >
                                     {#if (gridCells[i][j] !== 0 && (numSuccess < gridSize * gridSize || heatmap))}
@@ -394,14 +394,7 @@
         background-color: #00000020;
         aspect-ratio: 1 / 1;
     }
-    .reveal {
-        background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal.jpg");
-        background-attachment: fixed;
-        background-position: var(--bigpadx) var(--bigpady);
-        background-size: 100rem 75rem;
-    }
-    .reveal2 {
-        background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal2.jpg");
+    .reveal-base {
         background-attachment: fixed;
         background-position: var(--bigpadx) var(--bigpady);
         background-size: 100rem 75rem;
