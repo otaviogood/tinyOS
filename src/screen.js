@@ -1,6 +1,7 @@
 import { get } from "svelte/store";
 import { writable } from "svelte/store";
 
+
 export const invAspectRatio = 0.75; // mapHeight / mapWidth; // Height divided by width is a nice number like .75, but the inverse is not happy like 1.33333333333333
 
 export const fullWidth = writable(1024);
@@ -14,7 +15,17 @@ export const bigScale = writable();
 export const bigPadX = writable();
 export const bigPadY = writable();
 
+export function pxToRem(px) {
+    return (px / get(bigScale)) * 100;
+}
+
+export function remToPx(rem, bsTemp) {
+    // console.log("remToPx", rem, bsTemp);
+    return (rem * get(bigScale)) / 100;
+}
+
 export function handleResize() {
+
     let fw = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
     let fh = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
     fullWidth.set(fw);
