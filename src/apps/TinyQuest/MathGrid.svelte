@@ -10,7 +10,7 @@
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";
     import { sleep, getRandomInt, shuffleArray, preventZoom, HSVToRGB } from "./util";
     import { Animator, frameCount, animateCount } from "../../animator";
-
+    
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
     var snd_error = new Howl({ src: ["/TinyQuest/sfx/sfx_sounds_error10.wav"], volume: 0.25 });
@@ -42,6 +42,19 @@
     let addition = false;
     let gridSize = 4;
 
+    // A little bug that flies around the screen. You will only be able to tap on a spot that the bug is on.
+    let bugX = 0.0,
+        bugY = 0.0;
+    let bugVX = 0.0005,
+        bugVY = 0.0005;
+    let bugTime = 0.0;
+    let bugScale = 1.0;
+    let bugFlap = 0.0;
+    let bugDest = [0, 0];
+    let hopSpan = 2.0;
+    let bugFacingX = 0.0;
+    let bugFacingY = 1.0;
+
     onMount(() => {
         town = $allTowns[$currentTownIndex];
         gameType = town?.options?.game;
@@ -65,9 +78,63 @@
             dead: false,
         });
     }
+    function lerp(a, b, t) {
+        return a * (1.0 - t) + b * t;
+    }
+    function chooseLandingSpot() {
+        bugTime = 0.0;
+        bugX = (bugDest[0] + 0.5)/gridSize;
+        bugY = (bugDest[1] + 0.5)/gridSize;
+        bugDest = getRandomUnplayedCell();
+        let dx = (bugDest[0]+0.5)/gridSize - bugX;
+        let dy = (bugDest[1]+0.5)/gridSize - bugY;
+        bugVX = dx/(hopSpan/0.016);
+        bugVY = dy/(hopSpan/0.016);
+    }
     function tick() {
         if (numSuccess >= gridSize * gridSize) {
             if (Math.random() < 0.03) makeFirework();
+        }
+        {
+            if (bugScale > 1.0 && gridOpacity === 1.0) {
+                bugX += bugVX;
+                bugY += bugVY;
+                bugFacingX = lerp(bugFacingX, bugVX, 0.1);
+                bugFacingY = lerp(bugFacingY, bugVY, 0.1);
+            }
+            // if (bugX < 0.0) {
+            //     bugX = 0.0;
+            //     bugVX = (Math.random() - 0.5) * 0.01;
+            //     bugVY = (Math.random() - 0.5) * 0.01;
+            // }
+            // if (bugX > 1.0) {
+            //     bugX = 1.0;
+            //     bugVX = (Math.random() - 0.5) * 0.01;
+            //     bugVY = (Math.random() - 0.5) * 0.01;
+            // }
+            // if (bugY < 0.0) {
+            //     bugY = 0.0;
+            //     bugVX = (Math.random() - 0.5) * 0.01;
+            //     bugVY = (Math.random() - 0.5) * 0.01;
+            // }
+            // if (bugY > 1.0) {
+            //     bugY = 1.0;
+            //     bugVX = (Math.random() - 0.5) * 0.01;
+            //     bugVY = (Math.random() - 0.5) * 0.01;
+            // }
+            // Normalize bug velocity
+            // let len = 1.0 / Math.sqrt(bugVX * bugVX + bugVY * bugVY);
+            // if (len > 0.0000001) {
+            //     bugVX *= len * 0.01;
+            //     bugVY *= len * 0.01;
+            // }
+            if (gridOpacity === 1.0) bugTime += 0.016;
+            bugScale = 1.0 + Math.abs(Math.sin(bugTime * Math.PI/hopSpan)) * 2.5;
+            if (bugTime > hopSpan) bugScale = 1.0;
+            if (bugTime > hopSpan * 2.0) {
+                chooseLandingSpot();
+            }
+            bugFlap = lerp((1.0-Math.pow(Math.abs(Math.sin($frameCount*0.1)),4.0))*0.8+0.2, 1.0, -Math.sin(bugTime * Math.PI/hopSpan)*0.5 + 0.5);
         }
         for (let i = 0; i < fireworks.length; i++) {
             const f = fireworks[i];
@@ -123,7 +190,7 @@
             }
         }
         // gridCells[0][0] = 0;
-        // gridCells[1][0] = 0;
+        // numSuccess = gridSize*gridSize - 1;
     }
 
     async function clickedCell(i, j) {
@@ -139,6 +206,9 @@
         }
         gridOpacity = 0;
         secondsToAnswer = Date.now();
+    }
+    function clickedBug() {
+        clickedCell(bugDest[0] + 1, bugDest[1] + 1);
     }
 
     function val() {
@@ -188,6 +258,7 @@
     }
 
     async function fadeToGrid() {
+        chooseLandingSpot();
         for (let i = 0; i < 15; i++) {
             gridOpacity += 1.0 / 15;
             await sleep(16);
@@ -215,6 +286,36 @@
         valA === null ? (valA = i) : valB === null ? (valB = i) : (valC = i);
     }
 
+    // Figure out which grid cell the bug is currently in
+    function getBugGrid(bX, bY) {
+        let i = Math.floor(bX *gridSize);
+        let j = Math.floor(bY *gridSize);
+        return [i, j];
+    }
+
+    function isOnBugGrid(bX, bY, x, y) {
+        let [i, j] = getBugGrid(bX, bY);
+        if (Math.random() < 0.01) console.log("ASD", bX, bY, i, j, x, y)
+        return x === i && y === j;
+    }
+
+    function getRandomUnplayedCell() {
+        // Loop until we have a winner
+        for (let i = 0; i < 1000; i++) {
+            let i = Math.floor(Math.random() * gridSize);
+            let j = Math.floor(Math.random() * gridSize);
+            if (gridCells[i][j] === 0) return [i, j];
+        }
+        // exhaustive search since random failed.
+        for (let j = 0; j < gridSize; j++) {
+            for (let i = 0; i < gridSize; i++) {
+                if (gridCells[i][j] === 0) return [i, j];
+            }
+        }
+        // For end game, just go offscreen.
+        return [-6, -6];
+    }
+
     async function startGame() {
         snd_button.play();
         finalGraphic = false;
@@ -224,6 +325,7 @@
 
         animator.start();
         resetGameVars();
+        chooseLandingSpot();
     }
 
     function resetToSplashScreen() {
@@ -313,7 +415,7 @@
                                 {/if}
                             </div>
                             {#each Array(gridSize) as _, i}
-                                <div class="cell flex-center-all" style="border-bottom:0.2rem solid #a0a0f0;{gridSize === 4 ? 'aspect-ratio: 2;':''}">{i + 1}</div>
+                                <div class="cell flex-center-all" style="border-bottom:0.2rem solid #a0a0f0;{gridSize === 4 ? 'aspect-ratio: 2;':''};background-color:{bugDest[0]===i?'#ff208070':''}">{i + 1}</div>
                             {/each}
                         {:else}
                             <div class="cell flex-center-all" style="background-color: #00000000;">
@@ -324,15 +426,14 @@
                         {/if}
                         {#each Array(gridSize) as _, j}
                             {#if numSuccess < gridSize * gridSize || heatmap}
-                                <div class="cell flex-center-all" style="border-right:0.2rem solid #a0a0f0;{gridSize === 4 ? 'aspect-ratio: 0.5;':''}">{j + 1}</div>
+                                <div class="cell flex-center-all" style="border-right:0.2rem solid #a0a0f0;{gridSize === 4 ? 'aspect-ratio: 0.5;':''};background-color:{bugDest[1]===j?'#ff208070':''}">{j + 1}</div>
                             {:else}
                                 <div />
                             {/if}
                             {#each Array(gridSize) as _, i}
                                 <div
-                                    class="cell reveal-base flex-center-all text-2xl text-white"
+                                    class="cell reveal-base flex-center-all text-2xl text-white/[0.8]"
                                     style="{heatmap ? 'background-color:' + getHeatMap(i, j) : ''};{gridCells[i][j] !== 0 && !heatmap ? (addition ? 'background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal2.jpg")' : 'background-image: url("TinyQuest/gamedata/mathgrid/beach_reveal.jpg")') : 'background-image:none'}"
-                                    on:pointerup|preventDefault|stopPropagation={() => clickedCell(i + 1, j + 1)}
                                 >
                                     {#if (gridCells[i][j] !== 0 && (numSuccess < gridSize * gridSize || heatmap))}
                                         {addition ? (i + 1) + (j + 1) : (i + 1) * (j + 1)}
@@ -340,6 +441,14 @@
                                 </div>
                             {/each}
                         {/each}
+                        <div class="absolute borXXXder-2 border-red-600 w-full pointer-evenXts-none" style="left:{(addition?55.0:100.0)/(gridSize+1)}%; top:{(addition?55.0:100.0)/(gridSize+1)}%; width:{(addition?111.0:100.0)*gridSize/(gridSize+1)}%; height:{(addition?111.0:100.0)*gridSize/(gridSize+1)}%">
+                            {#key bugDest}
+                                <div in:fade={{ duration: 1000 }} out:fade class="absolute bg-pink-400/[0.25] border-2 border-pink-500 pointer-events-none" style="width:{100.0/gridSize}%;height:{100.0/gridSize}%;left:{100.0*bugDest[0]/gridSize}%;top:{100.0*bugDest[1]/gridSize}%"></div>
+                            {/key}
+                            <div class="absolute top-full left-0 w-32 h-32" style="left:calc({bugX*100 + Math.sin($frameCount*0.0735)*1*bugScale*(1.0-bugFlap)}% - 4rem); top:calc({bugY*100 + Math.cos($frameCount*0.0635)*1*bugScale*(1.0-bugFlap)}% - 4rem);">
+                                <img src="TinyQuest/gamedata/mathgrid/butterfly.webp" style="width:100%;height:100%;object-fit:contain;transform:rotate({Math.atan2(bugFacingY, bugFacingX)+Math.PI*0.5}rad) scale({bugFlap * bugScale}, {bugScale})" on:pointerup|preventDefault|stopPropagation={() => clickedBug()}/>
+                            </div>
+                        </div>
                     </div>
                 {/if}
 
@@ -357,13 +466,13 @@
 
                 <div class="absolute right-0 top-0 bottom-0 flex flex-row">
                     <StarBar {maxStars} {starCount} bg="#00000080" on:pointerup={resetToSplashScreen}>
-                        <button
+                        <!-- <button
                             class="text-5xl text-white {heatmap ? 'bg-red-400' : 'bg-yellow-400'} active:scale-105 transform transition-all duration-75"
                             style="border-radius:1rem;margin:auto;margin-top:auto;margin-bottom:5rem;padding:1rem 0.5rem"
                             on:pointerup|preventDefault|stopPropagation={() => {
                                 heatmap = !heatmap;
                             }}>{heatmap ? "Color" : "Color"}</button
-                        >
+                        > -->
                     </StarBar>
                 </div>
                 <WinScreen

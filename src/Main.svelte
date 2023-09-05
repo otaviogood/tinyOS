@@ -27,6 +27,8 @@
         {name: "Stories", icon: "fa-book-open", bgcolor: "bg-yellow-500", link: "stories"},
         {name: "Timer", icon: "fa-clock-rotate-left", bgcolor: "bg-purple-500", link: "timer"},
         {name: "Music Maker", icon: "fa-drum", bgcolor: "bg-cyan-500", link: "musicsequencer"},
+        // {name: "Construct", icon: "fa-building", bgcolor: "bg-amber-500", link: "construct"},
+        {name: "Plane Design", icon: "fa-plane-departure", bgcolor: "bg-rose-500", link: "airplanedesigner"},
         {name: "Settings", icon: "fa-cog", bgcolor: "bg-gray-500", link: "settings"},
     ];
 

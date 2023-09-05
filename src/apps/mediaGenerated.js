@@ -62,6 +62,17 @@ export let allMediaAll = {
 "hairbrush": ["LtHr7gluh08", "VeggieTales: The Hairbrush Song - Silly Song", "mp4"],
 "crazy train": ["tMDFv5m18Pw", "Ozzy Osbourne - Crazy Train (Official Animated Video)", "mp4"],
 "baby beluga": ["mIBY-LQYkVA", "Raffi - Baby Beluga (Official Animated Video)", "mp4"],
+"taco taco": ["eP82CCW-hSA", "Taco Taco Tacos", "mp4"],
+"addams family": ["X6QzbvH-ZNo", "The Addams Family Theme song", "mp4"],
+"raining pouring": ["avurCRJiUj0", "It's Raining It's Pouring | Nursery Rhyme | HooplaKidz", "mp4"],
+"yellow submarine": ["j_JaDDcyIIU", "Yellow Submarine", "mp4"],
+"tarantula": ["3ZR2p-DhSX4", "Pendulum - Tarantula [HD]", "mp4"],
+"aiken drum": ["koA9DXAnSN8", "Aikendrum", "mp4"],
+"blackbird": ["Man4Xw8Xypo", "Blackbird (Remastered 2009)", "mp4"],
+"ghost riders": ["3LtmZM0OWO8", "[Ghost] Riders in the Sky", "mp4"],
+"surfin safari": ["KrPDLxmfWPM", "Surfin' Safari", "mp4"],
+"surfin usa": ["H0bhSGfKTs4", "Surfin' U.S.A. (Remastered 2001)", "mp4"],
+"believer": ["o0LydWpBQts", "Imagine Dragons - Believer (Lyrics)", "mp4"],
 };
 // This weird string will be parsed by genSpeech.cjs to generate the speech synthesis files.
 
@@ -128,6 +139,17 @@ export let allMediaAll = {
 "hairbrush",
 "crazy train",
 "baby beluga",
+"taco taco",
+"addams family",
+"raining pouring",
+"yellow submarine",
+"tarantula",
+"aiken drum",
+"blackbird",
+"ghost riders",
+"surfin safari",
+"surfin usa",
+"believer",
 
 ]
     */

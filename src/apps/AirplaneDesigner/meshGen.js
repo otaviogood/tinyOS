@@ -59,8 +59,8 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
         geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(tempVerts), 3));
         geometry.computeVertexNormals();
         // Make wireframe material.
-        // const material = new THREE.MeshStandardMaterial({ color: 0xa0a0a0, side: THREE.DoubleSide, wireframe: false });
-        const material = new THREE.MeshStandardMaterial({ color: 0xa0a0a0, wireframe: false });
+        const material = new THREE.MeshStandardMaterial({ color: 0xc8c8c8, side: THREE.DoubleSide, wireframe: false });  // NEED Doublesided for ray tracing for center of mass.
+        // const material = new THREE.MeshStandardMaterial({ color: 0xc8c8c8, wireframe: false });
         const mesh = new THREE.Mesh(geometry, material);
 
         return mesh;
@@ -156,7 +156,7 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
             planeDef.mainWingVSweep.v
         );
         wingMesh.rotateZ((planeDef.mainWingAngle.v * Math.PI) / 180.0);
-        wingMesh.position.set(6 + planeDef.mainWingForward.v, 1 + planeDef.mainWingUp.v * planeDef.fuselageRad.v, 0);
+        wingMesh.position.set(planeDef.mainWingForward.v * planeDef.fuselageLength.v, 1 + planeDef.mainWingUp.v * planeDef.fuselageRad.v, 0);
         pivotGroup.add(wingMesh);
 
         let backWingMesh = makeWingMeshes(
@@ -169,7 +169,7 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
             planeDef.backWingVSweep.v
         );
         backWingMesh.rotateZ((planeDef.backWingAngle.v * Math.PI) / 180.0);
-        backWingMesh.position.set(-9 + planeDef.backWingForward.v, 1 + planeDef.backWingUp.v * planeDef.fuselageRad.v, 0);
+        backWingMesh.position.set(-11 + planeDef.backWingForward.v * planeDef.fuselageLength.v, 1 + planeDef.backWingUp.v * planeDef.fuselageRad.v, 0);
         pivotGroup.add(backWingMesh);
 
         let tailFinMesh = makeTailFinMesh(
@@ -181,27 +181,49 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
             planeDef.tailFinSweep.v
         );
         tailFinMesh.geometry.rotateX(-Math.PI / 2);
-        tailFinMesh.position.set(-16 + planeDef.tailFinMiddleLen.v + planeDef.tailFinForward.v, 1, 0);
+        tailFinMesh.position.set(-15 + planeDef.tailFinMiddleLen.v + planeDef.tailFinForward.v * planeDef.fuselageLength.v, 1, 0);
         pivotGroup.add(tailFinMesh);
 
         const geometry = new THREE.CapsuleGeometry(planeDef.fuselageRad.v, planeDef.fuselageLength.v, 4, 32);
         geometry.rotateZ(Math.PI / 2);
-        const material = new THREE.MeshStandardMaterial({ color: 0xa0a0a0, side: THREE.DoubleSide, wireframe: false });
+        const material = new THREE.MeshStandardMaterial({ color: 0xc8c8c8, side: THREE.DoubleSide, wireframe: false });
         const capsule = new THREE.Mesh(geometry, material);
         capsule.position.set(planeDef.fuselageLength.v * 0.5 - 15, 1, 0);
         pivotGroup.add(capsule);
 
         // pivotGroup.position.set(0, 1, 0);
 
-        let com = CalcCOM(planeGroup, scene);
+        const [com, massGrams] = CalcCOM(planeGroup, scene);
         pivotGroup.position.set(-com.x, -com.y, -com.z);
         // pivotGroup.updateMatrixWorld();
         planeGroup.position.set(com.x, com.y, com.z);
 
+        // Zero transforms on planeGroup, including all children. First, apply the transforms to the children's vertices.
+        // planeGroup.updateMatrixWorld();
+        // planeGroup.traverse(function (child) {
+        //     if (child instanceof THREE.Mesh) {
+        //         let mat = child.matrixWorld.clone();
+        //         child.position.set(0, 0, 0);
+        //         child.rotation.set(0, 0, 0);
+        //         child.scale.set(1, 1, 1);
+        //         child.geometry.applyMatrix4(mat);
+        //     }
+        // });
+
+        // Then, zero out the transforms on the planeGroup.
+        // planeGroup.updateMatrixWorld();
+        // planeGroup.position.set(0, 0, 0);
+        // planeGroup.rotation.set(0, 0, 0);
+        // planeGroup.scale.set(1, 1, 1);
+
+
+
+        
+
         // planeGroup.computeBoundingSphere();
 
         scene.add(planeGroup);
-        return planeGroup;
+        return [planeGroup, massGrams];
     }
 
     function CalcCOM(tempPlaneGroup, scene) {
@@ -219,8 +241,8 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
             for (let z2 = 0; z2 <= numSamples; z2++) {
                 // let x = THREE.MathUtils.randFloat(bbox.min.x, bbox.max.x);
                 // let z = THREE.MathUtils.randFloat(bbox.min.z, bbox.max.z);
-                let x = THREE.MathUtils.lerp(bbox.min.x, bbox.max.x, x2 / numSamples);
-                let z = THREE.MathUtils.lerp(bbox.min.z, bbox.max.z, z2 / numSamples);
+                let x = THREE.MathUtils.lerp(bbox.min.x, bbox.max.x, x2 / numSamples);// + Math.random() * (bbox.max.x - bbox.min.x) / numSamples;
+                let z = THREE.MathUtils.lerp(bbox.min.z, bbox.max.z, z2 / numSamples);// + Math.random() * (bbox.max.x - bbox.min.x) / numSamples;
                 let pos = new THREE.Vector3(x, bbox.max.y + 1.0, z);
                 let dir = new THREE.Vector3(0, -1, 0);
                 let raycaster = new THREE.Raycaster(pos, dir, 0, 1000);
@@ -241,9 +263,15 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
                 // const sphere = new THREE.Mesh(geometry, material);
                 // sphere.position.copy(firstPos);
                 // scene.add(sphere);
-                // const sphere2 = new THREE.Mesh(geometry, material);
+                // const material2 = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                // const sphere2 = new THREE.Mesh(geometry, material2);
                 // sphere2.position.copy(lastPos);
                 // scene.add(sphere2);
+
+                // The 3d printed part is in-filled, so let's adjust the mass of the part
+                let wallThickness = 0.2; // assume 1mm wall thickness - measured to be around .85mm - THIS IS SO WRONG because we are not measuring perpendicular to the surface, so it approximates by *a lot*.
+                let infillDensity = 0.1; // assume 10% infill
+                if (dist > wallThickness) dist = (dist - wallThickness) * infillDensity + wallThickness;
 
                 totalMass += dist;
                 totalX += midPos.x * dist;
@@ -254,17 +282,26 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
         let avgX = totalX / totalMass;
         let avgY = totalY / totalMass;
         let avgZ = totalZ / totalMass;
+        let area = (bbox.max.x - bbox.min.x) * (bbox.max.z - bbox.min.z);
+        totalMass *= area;
+        totalMass /= (numSamples + 1) * (numSamples + 1);  // Assuming solid, not infilled, PLA plastic
+        totalMass *= 1.25;  // Assume 1.25g/cm^3 density
+        // console.log("totalMass", totalMass);
         let avgPos = new THREE.Vector3(avgX, avgY, avgZ);
         const geometry = new THREE.CylinderGeometry(0.05, 0.05, 6, 32);
         const material = new THREE.MeshBasicMaterial({ color: 0xe01f80 });
         let old = scene.getObjectByName("COM");
-        if (old) scene.remove(old);
+        if (old) {
+            old.geometry.dispose();
+            old.material.dispose();
+            scene.remove(old);
+        }
         let sphereCOM = new THREE.Mesh(geometry, material);
         sphereCOM.name = "COM";
         sphereCOM.position.copy(avgPos);
         scene.add(sphereCOM);
         // console.log("avgPos", Date.now() - start, avgPos);
-        return avgPos;
+        return [avgPos, totalMass];
     }
 
     export function saveToSTL(planeGroup, planeDef) {
@@ -289,4 +326,13 @@ import { STLExporter } from "three/addons/exporters/STLExporter.js";
         function saveString(text, filename) {
             save(new Blob([text], { type: "text/plain" }), filename);
         }
+    }
+
+    export function freeMemory(planeGroup) {
+        planeGroup.traverse(function (child) {
+            if (child instanceof THREE.Mesh) {
+                child.geometry.dispose();
+                child.material.dispose();
+            }
+        });
     }

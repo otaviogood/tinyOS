@@ -3,7 +3,7 @@
     const dispatch = createEventDispatcher();
 
     export let label = "POSITION";
-    export let units = "meters";
+    export let units = "";
     export let min = 0;
     export let max = 100;
     export let digits = 1; // Digits after decimal point that are displayed
@@ -74,8 +74,8 @@
     // Double click resets to 0.
     function dblclick(e) {
         if (readonly || !selected) return;
-        setVal[0] = 0.0;
-        dispatch("change", {v:setVal[0]});
+        // setVal[0] = 0.0;
+        // dispatch("change", {v:setVal[0]});
     }
 </script>
 

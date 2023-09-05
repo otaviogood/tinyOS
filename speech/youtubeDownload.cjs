@@ -61,6 +61,17 @@ const allVids = {
     "hairbrush": "LtHr7gluh08",
     "crazy train": "tMDFv5m18Pw",
     "baby beluga": "mIBY-LQYkVA",
+    "taco taco": "eP82CCW-hSA",
+    "addams family": "X6QzbvH-ZNo",
+    "raining pouring": "avurCRJiUj0",
+    "yellow submarine": "j_JaDDcyIIU",
+    "tarantula": "3ZR2p-DhSX4",
+    "aiken drum": "koA9DXAnSN8",
+    "blackbird": "Man4Xw8Xypo",
+    "ghost riders": "3LtmZM0OWO8",
+    "surfin safari": "KrPDLxmfWPM",
+    "surfin usa": "H0bhSGfKTs4",
+    "believer": "o0LydWpBQts",
 };
 
 async function sleep(ms) {

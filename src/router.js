@@ -11,6 +11,7 @@ import Stories from "./apps/Stories.svelte";
 import Timer from "./apps/Timer.svelte";
 import MusicSequencer from "./apps/MusicSequencer/MusicSequencer.svelte";
 import Paint from "./apps/Paint/Paint.svelte";
+import AirplaneDesigner from "./apps/AirplaneDesigner/AirplaneDesigner.svelte";
 import Settings from "./apps/Settings.svelte";
 
 // import TinyQuest from "./apps/TinyQuest.svelte";
@@ -67,6 +68,11 @@ export const routes = {
     "/paint/": Paint,
     "/#/paint": Paint,
     "/#/paint/": Paint,
+
+    "/airplanedesigner": AirplaneDesigner,
+    "/airplanedesigner/": AirplaneDesigner,
+    "/#/airplanedesigner": AirplaneDesigner,
+    "/#/airplanedesigner/": AirplaneDesigner,
 
     "/stories": Stories,
     "/stories/": Stories,
