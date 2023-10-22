@@ -146,8 +146,8 @@
     />
     <!-- Make a fullscreen image preview of the key that was returned from the ImageBrowser. -->
     {#if previewImage}
-        <div class="absolute top-0 left-0 w-full h-full p-2 bg-black z-10">
-            <img src={previewImage} class="w-full h-full object-contain" alt="camera" on:pointerup={() => (previewImage = null)} />
+        <div class="fit-full-space p-2 bg-black z-10">
+            <img src={previewImage} class="fit-full-space max-w-full max-h-full m-auto overflow-auto object-contain" alt="camera" on:pointerup={() => (previewImage = null)} />
             <!-- <div
                 class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl"
                 on:pointerup={() => (previewImage = null)}

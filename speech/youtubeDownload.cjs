@@ -72,6 +72,8 @@ const allVids = {
     "surfin safari": "KrPDLxmfWPM",
     "surfin usa": "H0bhSGfKTs4",
     "believer": "o0LydWpBQts",
+    "how many mics": "-UyapAppSMQ",
+    "people are strange": "j0Mz_IqpZX8",
 };
 
 async function sleep(ms) {

@@ -10,12 +10,17 @@
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";
     import { sleep, getRandomInt, shuffleArray, preventZoom, HSVToRGB } from "./util";
     import { Animator, frameCount, animateCount } from "../../animator";
+    import { speechPlay } from "../../utils";
+    import Line from "../../components/Line.svelte";
     
     var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
     var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
     var snd_error = new Howl({ src: ["/TinyQuest/sfx/sfx_sounds_error10.wav"], volume: 0.25 });
     var snd_button = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double7.wav"], volume: 0.25 });
     var snd_explode = new Howl({ src: ["/TinyQuest/gamedata/mathgrid/sfx_exp_short_soft9.wav"], volume: 0.25 });
+    /*!speech
+        ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "times", "plus"]
+    */
 
     let animator = new Animator(60, tick);
 
@@ -204,6 +209,11 @@
             gridOpacity -= 1.0 / 15;
             await sleep(16);
         }
+        await speechPlay(sourceA.toString());
+        if (addition) await speechPlay("plus");
+        else await speechPlay("times");
+        await speechPlay(sourceB.toString());
+
         gridOpacity = 0;
         secondsToAnswer = Date.now();
     }
@@ -228,6 +238,7 @@
             let seconds = Math.max(1, Date.now() - secondsToAnswer) | 0;
             console.log(seconds);
             snd_good.play();
+            // await speechPlay(val().toString());
             gridCells[sourceA - 1][sourceB - 1] = seconds;
             if (!alreadySolved) numSuccess++;
             averageSecondsToAnswer = 0.0;
@@ -365,11 +376,25 @@
                         {#each Array(sourceB) as _, i}
                             <div class="absolute bg-purple-400 w-14 h-14 rounded-full text-4xl text-white flex-center-all" style="left:{48 + i * 3.75}rem;top:{(i&1)*1 + 2}rem"><i class="fas fa-fish"></i></div>
                         {/each}
+                    {:else}
+                        {#each Array(sourceA) as _, i}
+                            <div class="absolute bg-blue-400 w-14 h-14 rounded-full text-4xl text-white flex-center-all" style="left:{4 + (i+1) * 3.75}rem;top:{24}rem"><i class="fas fa-anchor"></i></div>
+                            <Line class="" color="#00000040" x0={4 + (i+1) * 3.75 + 1.75} y0={24+3.75} y1={24+1.75+(sourceB+1)*3.5} thick={0.25} />
+                        {/each}
+                        {#each Array(sourceB) as _, i}
+                            <div class="absolute bg-purple-400 w-14 h-14 rounded-full text-4xl text-white flex-center-all" style="left:{4}rem;top:{24 + (i+1) * 3.75}rem"><i class="fas fa-fish"></i></div>
+                            <Line class="" color="#00000040" x0={4+3.75} x1={4+1.75+(sourceA+1)*3.5} y0={24 + (i+1) * 3.75 + 1.75} thick={0.25} />
+                        {/each}
+                        {#each Array(sourceA) as _, i}
+                            {#each Array(sourceB) as _, j}
+                                <div class="absolute bg-red-500 w-4 h-4 rounded-full text-4xl text-white flex-center-all" style="left:{4+1.75-0.5+(i+1)*3.75}rem;top:{24+1.75-0.5+(j+1)*3.75}rem">&nbsp;</div>
+                            {/each}
+                        {/each}
                     {/if}
 
                     <div
                         class="absolute text-8xl text-white rounded-full p-8 px-12 flex-center-all"
-                        style="left:23rem;top:8rem;border:2px solid white;opacity:{1.0 - gridOpacity};background-color:#201040"
+                        style="left:{addition?23:45}rem;top:8rem;border:2px solid white;opacity:{1.0 - gridOpacity};background-color:#201040"
                     >
                         {sourceA}
                         {#if addition}
@@ -386,13 +411,13 @@
                     <div class="absolute" style="opacity:{1.0 - gridOpacity}">
                         <span
                             class="absolute text-8xl text-white inline-block rounded-full p-20 ml-10 flex-center-all active:scale-110 transform transition-all duration-75"
-                            style="left:38.5rem;top:39rem;width:6rem;height:6rem;background-color:#10a010;border:0.2rem solid white;"
+                            style="left:{addition?38.5:60.5}rem;top:39rem;width:6rem;height:6rem;background-color:#10a010;border:0.2rem solid white;"
                             on:pointerup|preventDefault|stopPropagation={goButton}>GO</span
                         >
                         {#each Array(10) as _, i}
                             <div
                                 class="absolute rounded-full flex-center-all text-8xl text-white active:scale-110 transform transition-all duration-75"
-                                style="left:{Math.sin(i * 0.628318) * 16 + 42}rem;top:{-Math.cos(i * 0.628318) * 16 +
+                                style="left:{Math.sin(i * 0.628318) * 16 + (addition?42:64)}rem;top:{-Math.cos(i * 0.628318) * 16 +
                                     40}rem;width:8rem;height:8rem;background-color:#502060;border:0.2rem solid #ffffff"
                                 on:pointerup|preventDefault|stopPropagation={() => {
                                     setVals(i);

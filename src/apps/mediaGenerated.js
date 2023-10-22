@@ -73,6 +73,8 @@ export let allMediaAll = {
 "surfin safari": ["KrPDLxmfWPM", "Surfin' Safari", "mp4"],
 "surfin usa": ["H0bhSGfKTs4", "Surfin' U.S.A. (Remastered 2001)", "mp4"],
 "believer": ["o0LydWpBQts", "Imagine Dragons - Believer (Lyrics)", "mp4"],
+"how many mics": ["-UyapAppSMQ", "How Many Mics Clean Radio Fugees 1996", "mp4"],
+"people are strange": ["j0Mz_IqpZX8", "The Doors - People Are Strange", "mp4"],
 };
 // This weird string will be parsed by genSpeech.cjs to generate the speech synthesis files.
 
@@ -150,6 +152,8 @@ export let allMediaAll = {
 "surfin safari",
 "surfin usa",
 "believer",
+"how many mics",
+"people are strange",
 
 ]
     */
