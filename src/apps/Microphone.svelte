@@ -39,7 +39,7 @@
 </script>
 
 <FourByThreeScreen bg="black">
-    <div class="flex-center-all flex-col h-full w-full">
+    <div class="flex-center-all flex-col h-full w-full select-none">
         <RecPlayAudio />
         <RecPlayAudio />
         <RecPlayAudio />

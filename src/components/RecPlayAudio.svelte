@@ -80,7 +80,7 @@
     }
 </script>
 
-<div class="flex">
+<div class="flex select-none">
     <div>
         {#if !recorder}
             <button
@@ -100,7 +100,7 @@
     {#if recording}
         <div>
             <button
-                class="{playing ? 'bg-emerald-400' : 'bg-green-600'} active:bg-green-800 text-white text-9xl m-2 p-10 rounded-r-full"
+                class="{playing ? 'bg-green-950 text-green-950' : 'bg-green-600 text-white'} active:bg-green-800 text-9xl m-2 p-10 rounded-r-full select-none"
                 style="width:26rem"
                 on:pointerdown={playButton}>PLAY</button
             >
