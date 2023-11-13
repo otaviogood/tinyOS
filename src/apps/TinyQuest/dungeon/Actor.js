@@ -1,11 +1,25 @@
 export class Actor {
-    constructor(x, y) {
+    constructor(x, y, monsterType) {
         this.x = x;
         this.y = y;
         this.isDead = false;
         // Additional variables for turn-based roguelike (e.g., health, attack power, etc.)
-        this.health = 100;
-        this.attackPower = 10;
+        this.health = 8;
+        this.maxHealth = 8;
+        this.mana = 1;
+        this.maxMana = 1;
+        this.attackPower = 1;
+        this.experience = 0;
+        this.attackingTrigger = 0; // For animation triggers
+        this.monsterType = monsterType;
+        if (monsterType === 'greenSlime') {
+            this.health = 4;
+            this.maxHealth = 4;
+            this.mana = 0;
+            this.maxMana = 0;
+            this.attackPower = 1;
+            this.experience = 1;
+        }
     }
 
     // Get the actor's current position

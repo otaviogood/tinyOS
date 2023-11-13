@@ -37,6 +37,14 @@ export class BitmapInt32 {
         return this.data2[(x + Math.imul(y, this.width)) | 0];
     }
 
+    GetPixelSafeEdge(x, y, edge) {
+        if (!this.InRange(x, y)) {
+            return edge;
+        }
+
+        return this.data2[(x + Math.imul(y, this.width)) | 0];
+    }
+
     GetPixelIndex(x, y) {
         return (x + Math.imul(y, this.width)) | 0;
     }
