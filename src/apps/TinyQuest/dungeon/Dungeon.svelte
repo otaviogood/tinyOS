@@ -225,7 +225,7 @@
 <FourByThreeScreen bg="#000000">
     {#if !started}
         <div class="flex-center-all h-full w-full flex flex-col bg-black">
-            <img
+            <img draggable="false"
                 src="TinyQuest/gamedata/dungeon/otaviogood_cute_dungeon_adventure_with_monster_with_magic_staff_757b74db-26ff-4c1e-9924-55c245d07e1a.png"
                 class="absolute"
                 alt="skyscraper"
@@ -248,7 +248,7 @@
     {:else}
         {#if opponent}
             <div in:fade={{ duration: 500 }} class="flex-center-all h-full w-full flex flex-col bg-black z-20">
-                <img
+                <img draggable="false"
                     src="TinyQuest/gamedata/dungeon/arena.webp"
                     class="absolute"
                     alt="skyscraper"
@@ -259,28 +259,32 @@
                     on:pointerup|preventDefault|stopPropagation={()=>(opponent=null)}><i class="fa-solid fa-person-running"></i></button
                 >
                 {#key characters[0].attackingTrigger}
-                    <img in:slideHit|local={{ delay: 0, duration: 1000 }} class="absolute w-[16rem] transform -scale-x-100" style="left:20rem;bottom:8rem;" src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" />
+                    <img in:slideHit|local={{ delay: 0, duration: 1000, dir:-1 }} draggable="false" class="absolute w-[16rem]" style="right:20rem;bottom:8rem;" src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" />
                 {/key}
                 {#key characters[0].attackingTrigger}
-                    <img in:slideHit|local={{ delay: 0, duration: 1000, dir:-1 }} class="absolute w-[16rem]" style="right:20rem;bottom:8rem;opacity:{$monsterAlive}" src="TinyQuest/gamedata/dungeon/green_slime_trans.webp" on:pointerup|preventDefault|stopPropagation={attack} />
+                    <img in:slideHit|local={{ delay: 0, duration: 1000 }} draggable="false" class="absolute w-[16rem] transform -scale-x-100" style="left:20rem;bottom:8rem;opacity:{$monsterAlive}" src="TinyQuest/gamedata/dungeon/green_slime_trans.webp" on:pointerup|preventDefault|stopPropagation={attack} />
                 {/key}
-                <div class="absolute w-[25rem] h-[32rem] top-0 left-0 bg-gray-900/80">
-                    {#key characters[0].health}
-                        <img in:shake|local={{ delay: 250, duration: 700, flip:-1 }} class="w-3/4 transform -scale-x-100" src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" />
-                    {/key}
-                    <div class="relative text-6xl h-16 mx-4 my-1"><i class="fa-solid fa-wand-sparkles"></i> {characters[0]?.attackPower}</div>
-                    <HealthBar health={characters[0].mana} maxHealth={characters[0].maxMana} r={29} g={78} b={216} />
-                    <HealthBar health={characters[0].health} maxHealth={characters[0].maxHealth} />
-                </div>
                 <div class="absolute w-[25rem] h-[32rem] top-0 right-0 bg-gray-900/80">
-                    {#key opponent.health}
-                        <img in:shake|local={{ delay: 250, duration: 700 }} class="w-3/4 mr-0 ml-auto" src="TinyQuest/gamedata/dungeon/green_slime_trans.webp" />
+                    {#key characters[0].health}
+                        <img in:shake|local={{ delay: 250, duration: 700 }} draggable="false" class="w-3/4 mr-0 ml-auto" src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" />
                     {/key}
-                    <div class="relative w-full h-16 my-1">
-                        <div class="absolute right-0 text-6xl h-16 mx-4"><i class="fa-solid fa-wand-sparkles"></i> {opponent.attackPower}</div>
+                    <div class="relative flex flex-row-reverse text-4xl h-16 my-1">
+                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{characters[0]?.attackPower}</div>
+                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{characters[0]?.experience}</div>
                     </div>
-                    <HealthBar health={opponent.mana} maxHealth={opponent.maxMana} left={false} r={29} g={78} b={216} />
-                    <HealthBar health={opponent.health} maxHealth={opponent.maxHealth} left={false} />
+                    <HealthBar health={characters[0].mana} maxHealth={characters[0].maxMana} r={29} g={78} b={216} left={false} />
+                    <HealthBar health={characters[0].health} maxHealth={characters[0].maxHealth} left={false} />
+                </div>
+                <div class="absolute w-[25rem] h-[32rem] top-0 left-0 bg-gray-900/80">
+                    {#key opponent.health}
+                        <img in:shake|local={{ delay: 250, duration: 700, flip:-1 }} draggable="false" class="w-3/4 transform -scale-x-100" src="TinyQuest/gamedata/dungeon/green_slime_trans.webp" />
+                    {/key}
+                    <div class="relative flex flex-row text-4xl text-right h-16 my-1">
+                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{opponent?.attackPower}</div>
+                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{opponent?.experience}</div>
+                    </div>
+                    <HealthBar health={opponent.mana} maxHealth={opponent.maxMana} r={29} g={78} b={216} />
+                    <HealthBar health={opponent.health} maxHealth={opponent.maxHealth} />
                 </div>
             </div>
         {:else}
@@ -300,15 +304,15 @@
                                 <div class="absolute w-full h-full bg-black"></div>
                             {:else}
                                 {#if map.GetPixel(x, y) === 1}
-                                <img src="TinyQuest/gamedata/dungeon/wall01.jpg" class="w-full h-full"/>
+                                <img src="TinyQuest/gamedata/dungeon/wall01.jpg" draggable="false" class="w-full h-full"/>
                                 <!-- <div style="background: url(TinyQuest/gamedata/dungeon/tiles.webp) 64 0;width:64px;height:64px;"></div> -->
                                 <!-- <div style="background-image: url(TinyQuest/gamedata/dungeon/tiles.webp);background-size: 512px 512px;widXth:4.4rem;heigXht:4.4rem;background-position:-128px 0px;tranXXsform: scale(0.5);tranXXsform-origin: top left;"></div> -->
                                 <!-- <img src="TinyQuest/gamedata/dungeon/tiles.webp" style="width:400%;height:400%; clip-path: inset(63px 1px);"/> -->
                                 <!-- <img src="TinyQuest/gamedata/dungeon/tiles.webp" style="objeXXct-fit: none;margin-left:-20px; oXXbject-position: -128px 0;object-sXXize:0.5; width:512px;height:512px;transfXXorm: scale(0.85,0.5);tranXXsform-origin: top left;"/> -->
                                 {:else if map.GetPixel(x, y) === 2}
-                                <img src="TinyQuest/gamedata/dungeon/stairs01.jpg" class="w-full h-full" />
+                                <img src="TinyQuest/gamedata/dungeon/stairs01.jpg" draggable="false" class="w-full h-full" />
                                 {:else}
-                                <img src="TinyQuest/gamedata/dungeon/floor01.jpg" class="w-full h-full" />
+                                <img src="TinyQuest/gamedata/dungeon/floor01.jpg" draggable="false" class="w-full h-full" />
                                 {/if}
                             {/if}
                             </div>
@@ -324,9 +328,9 @@
                                     : ''};"
                             >
                             {#if i === 0}
-                                <img src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" />
+                                <img src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" draggable="false" />
                             {:else}
-                                <img src="TinyQuest/gamedata/dungeon/green_slime_trans.webp" />
+                                <img src="TinyQuest/gamedata/dungeon/green_slime_trans.webp" draggable="false" />
                             {/if}
                             </div>
                         {/if}
@@ -335,12 +339,12 @@
             </div>
 
             <div
-                class="absolute right-0 top-32 bottom-0 left-[75rem] select-none boXXrder borXXder-green-700"
+                class="absolute w-[25rem] h-[32rem] top-0 right-0 bg-gray-900/80 select-none"
                 style=""
                 on:touchstart={preventZoom}
             >
-                <img class="" src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" />
-                <div class="relative flex flex-row text-4xl text-right h-16 my-1">
+                <img draggable="false" class="w-3/4 mr-0 ml-auto pointer-events-none" src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" />
+                <div class="relative flex flex-row-reverse text-4xl h-16 my-1">
                     <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{characters[0]?.attackPower}</div>
                     <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{characters[0]?.experience}</div>
                 </div>
@@ -348,8 +352,8 @@
                 <HealthBar health={characters[0].health} maxHealth={characters[0].maxHealth} left={false} />
             </div>
             <div
-                class="absolute right-0 top-0 cursor-pointer select-none m-1"
-                style="padding:0 0.75rem;border-radius:0.75rem;"
+                class="absolute right-0 top-0 cursor-pointer select-none m-1 opacity-80"
+                style=""
                 on:pointerup|preventDefault|stopPropagation={resetToSplashScreen}
                 on:touchstart={preventZoom}
             >
