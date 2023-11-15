@@ -1,5 +1,6 @@
-export class BitmapInt32 {
+import RandomFast from "../../../random-fast";
 
+export class BitmapInt32 {
     constructor(w, h) {
         this._imageData = null;
         this.data2 = null;
@@ -80,11 +81,16 @@ export class MazeGenerator3 {
 
     getUnvisitedNeighbors(x, y) {
         const neighbors = [];
-        const directions = [[0, -2], [2, 0], [0, 2], [-2, 0]]; // Up, Right, Down, Left
+        const directions = [
+            [0, -2],
+            [2, 0],
+            [0, 2],
+            [-2, 0],
+        ]; // Up, Right, Down, Left
         for (const [dx, dy] of directions) {
             const nx = x + dx;
             const ny = y + dy;
-            if (this.bitmap.InRange(nx, ny) && !this.visited.GetPixel(nx,ny)) {
+            if (this.bitmap.InRange(nx, ny) && !this.visited.GetPixel(nx, ny)) {
                 neighbors.push([nx, ny]);
             }
         }
@@ -132,7 +138,12 @@ export class MazeGenerator2 {
 
     getUnvisitedNeighbors(x, y) {
         const neighbors = [];
-        const directions = [[0, -2], [2, 0], [0, 2], [-2, 0]]; // Up, Right, Down, Left
+        const directions = [
+            [0, -2],
+            [2, 0],
+            [0, 2],
+            [-2, 0],
+        ]; // Up, Right, Down, Left
         for (const [dx, dy] of directions) {
             const nx = x + dx;
             const ny = y + dy;
@@ -175,8 +186,9 @@ export class MazeGenerator2 {
 
 // Recursive division method
 export class MazeGenerator {
-    constructor(bitmap) {
+    constructor(bitmap, seed = 123456789) {
         this.bitmap = bitmap;
+        this.random = new RandomFast(seed);
     }
 
     divide(x, y, width, height) {
@@ -185,15 +197,15 @@ export class MazeGenerator {
             return;
         }
 
-        let divideHorizontally = Math.random() < 0.5;
-        let sparsity = 0.6; // randomly fill in connections
+        let divideHorizontally = this.random.RandFloat() < 0.5;
+        let sparsity = 0.96; // randomly fill in connections
 
         if (divideHorizontally) {
             // Horizontal division
-            const wallY = y + 1 + 2 * Math.floor(Math.random() * ((height - 2) / 2));
-            const gapX = x + 2 * Math.floor(Math.random() * (width / 2));
+            const wallY = y + 1 + 2 * Math.floor(this.random.RandFloat() * ((height - 2) / 2));
+            const gapX = x + 2 * Math.floor(this.random.RandFloat() * (width / 2));
             for (let i = x; i < x + width; i++) {
-                if (i !== gapX && Math.random() < sparsity) {
+                if (i !== gapX && this.random.RandFloat() < sparsity) {
                     this.bitmap.SetPixelSafe(i, wallY, 1);
                 }
             }
@@ -202,10 +214,10 @@ export class MazeGenerator {
             this.divide(x, wallY + 1, width, y + height - wallY - 1);
         } else {
             // Vertical division
-            const wallX = x + 1 + 2 * Math.floor(Math.random() * ((width - 2) / 2));
-            const gapY = y + 2 * Math.floor(Math.random() * (height / 2));
+            const wallX = x + 1 + 2 * Math.floor(this.random.RandFloat() * ((width - 2) / 2));
+            const gapY = y + 2 * Math.floor(this.random.RandFloat() * (height / 2));
             for (let i = y; i < y + height; i++) {
-                if (i !== gapY && Math.random() < sparsity) {
+                if (i !== gapY && this.random.RandFloat() < sparsity) {
                     this.bitmap.SetPixelSafe(wallX, i, 1);
                 }
             }
@@ -215,8 +227,19 @@ export class MazeGenerator {
         }
     }
 
+    getRandomOpenPosition() {
+        let x = Math.floor(this.random.RandFloat() * this.bitmap.width);
+        let y = Math.floor(this.random.RandFloat() * this.bitmap.height);
+        while (this.bitmap.GetPixel(x, y) === 1) {
+            x = Math.floor(this.random.RandFloat() * this.bitmap.width);
+            y = Math.floor(this.random.RandFloat() * this.bitmap.height);
+        }
+        return [x, y];
+    }
+
     generate() {
         this.bitmap.Clear(0); // Set all cells as halls
         this.divide(0, 0, this.bitmap.width, this.bitmap.height);
+        return this;
     }
 }

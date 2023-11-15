@@ -12,13 +12,23 @@ export class Actor {
         this.experience = 0;
         this.attackingTrigger = 0; // For animation triggers
         this.monsterType = monsterType;
+        this.img = "heroic_knight_trans.webp";
         if (monsterType === 'greenSlime') {
+            this.health = 1;
+            this.maxHealth = 1;
+            this.mana = 0;
+            this.maxMana = 0;
+            this.attackPower = 1;
+            this.experience = 1;
+            this.img = "green_slime_trans.webp";
+        } else if (monsterType === 'tweeger') {
             this.health = 4;
             this.maxHealth = 4;
             this.mana = 0;
             this.maxMana = 0;
             this.attackPower = 1;
             this.experience = 1;
+            this.img = "tweeger_trans.webp";
         }
     }
 

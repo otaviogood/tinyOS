@@ -17,6 +17,7 @@
     import { BitmapInt32, MazeGenerator } from "./BitmapInt32";
     import { Actor } from "./Actor";
     import HealthBar from "./HealthBar.svelte";
+    import RandomFast from "../../../random-fast";
 
     let animator = new Animator(60, tick);
 
@@ -130,25 +131,43 @@
         opponent = opponent;
     }
 
+    function getRandomOpenPosition(mazeGen) {
+        let xy = mazeGen.getRandomOpenPosition();
+        // Check for collision with all characters in characters array. Use while loop, not recursion.
+        while (characters.some((character) => character.x === xy[0] && character.y === xy[1])) {
+            xy = mazeGen.getRandomOpenPosition();
+        }
+        return xy;
+    }
+
     function resetGame() {
         map = new BitmapInt32(mapW, mapH);
         fogOfWar = new BitmapInt32(mapW, mapH);
-        new MazeGenerator(map).generate();
+        // fogOfWar.Clear(1);  // HACK DELETEME
+        let mazeGen = new MazeGenerator(map).generate();
         map.SetPixel(15, 15, 2);
         map = map;
         characters = [];
         // Create the player character
-        const playerCharacter = new Actor(1, 1);
+        let xy = mazeGen.getRandomOpenPosition();
+        const playerCharacter = new Actor(xy[0], xy[1]);
         characters.push(playerCharacter);
         moveTo(characters[0].x, characters[0].y);
         updateFog();
 
         // Create some NPCs
-        const npc1 = new Actor(5, 5, "greenSlime");
-        map.SetPixel(npc1.x, npc1.y, 0);
-        const npc2 = new Actor(9, 9, "greenSlime");
-        map.SetPixel(npc2.x, npc2.y, 0);
-        characters.push(npc1, npc2);
+        for (let i = 0; i < 10; i++) {
+            let xy = getRandomOpenPosition(mazeGen);
+            const npc = new Actor(xy[0], xy[1], ["greenSlime", "tweeger"][mazeGen.random.RandIntApprox(0, 2)]);
+            // map.SetPixel(npc.x, npc.y, 0);
+            characters.push(npc);
+        }
+        // const npc1 = new Actor(5, 5, "greenSlime");
+        // map.SetPixel(npc1.x, npc1.y, 0);
+        // const npc2 = new Actor(9, 9, "greenSlime");
+        // map.SetPixel(npc2.x, npc2.y, 0);
+        // characters.push(npc1, npc2);
+
         // opponent = characters[1];
     }
 
@@ -259,14 +278,14 @@
                     on:pointerup|preventDefault|stopPropagation={()=>(opponent=null)}><i class="fa-solid fa-person-running"></i></button
                 >
                 {#key characters[0].attackingTrigger}
-                    <img in:slideHit|local={{ delay: 0, duration: 1000, dir:-1 }} draggable="false" class="absolute w-[16rem]" style="right:20rem;bottom:8rem;" src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" />
+                    <img in:slideHit|local={{ delay: 0, duration: 1000, dir:-1 }} draggable="false" class="absolute w-[16rem]" style="right:20rem;bottom:8rem;" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
                 {/key}
                 {#key characters[0].attackingTrigger}
-                    <img in:slideHit|local={{ delay: 0, duration: 1000 }} draggable="false" class="absolute w-[16rem] transform -scale-x-100" style="left:20rem;bottom:8rem;opacity:{$monsterAlive}" src="TinyQuest/gamedata/dungeon/green_slime_trans.webp" on:pointerup|preventDefault|stopPropagation={attack} />
+                    <img in:slideHit|local={{ delay: 0, duration: 1000 }} draggable="false" class="absolute w-[16rem] transform -scale-x-100" style="left:20rem;bottom:8rem;opacity:{$monsterAlive}" src="TinyQuest/gamedata/dungeon/{opponent.img}" on:pointerup|preventDefault|stopPropagation={attack} />
                 {/key}
                 <div class="absolute w-[25rem] h-[32rem] top-0 right-0 bg-gray-900/80">
                     {#key characters[0].health}
-                        <img in:shake|local={{ delay: 250, duration: 700 }} draggable="false" class="w-3/4 mr-0 ml-auto" src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" />
+                        <img in:shake|local={{ delay: 250, duration: 700 }} draggable="false" class="w-3/4 mr-0 ml-auto" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
                     {/key}
                     <div class="relative flex flex-row-reverse text-4xl h-16 my-1">
                         <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{characters[0]?.attackPower}</div>
@@ -277,7 +296,7 @@
                 </div>
                 <div class="absolute w-[25rem] h-[32rem] top-0 left-0 bg-gray-900/80">
                     {#key opponent.health}
-                        <img in:shake|local={{ delay: 250, duration: 700, flip:-1 }} draggable="false" class="w-3/4 transform -scale-x-100" src="TinyQuest/gamedata/dungeon/green_slime_trans.webp" />
+                        <img in:shake|local={{ delay: 250, duration: 700, flip:-1 }} draggable="false" class="w-3/4 transform -scale-x-100" src="TinyQuest/gamedata/dungeon/{opponent.img}" />
                     {/key}
                     <div class="relative flex flex-row text-4xl text-right h-16 my-1">
                         <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{opponent?.attackPower}</div>
@@ -327,11 +346,7 @@
                                     ? '#ff0000'
                                     : ''};"
                             >
-                            {#if i === 0}
-                                <img src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" draggable="false" />
-                            {:else}
-                                <img src="TinyQuest/gamedata/dungeon/green_slime_trans.webp" draggable="false" />
-                            {/if}
+                                <img src="TinyQuest/gamedata/dungeon/{character.img}" draggable="false" />
                             </div>
                         {/if}
                     {/each}
@@ -343,7 +358,7 @@
                 style=""
                 on:touchstart={preventZoom}
             >
-                <img draggable="false" class="w-3/4 mr-0 ml-auto pointer-events-none" src="TinyQuest/gamedata/dungeon/heroic_knight_trans.webp" />
+                <img draggable="false" class="w-3/4 mr-0 ml-auto pointer-events-none" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
                 <div class="relative flex flex-row-reverse text-4xl h-16 my-1">
                     <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{characters[0]?.attackPower}</div>
                     <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{characters[0]?.experience}</div>
@@ -353,7 +368,6 @@
             </div>
             <div
                 class="absolute right-0 top-0 cursor-pointer select-none m-1 opacity-80"
-                style=""
                 on:pointerup|preventDefault|stopPropagation={resetToSplashScreen}
                 on:touchstart={preventZoom}
             >
