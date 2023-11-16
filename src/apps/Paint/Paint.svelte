@@ -268,7 +268,7 @@
         // canvas.width = camWidth;
         // canvas.height = camHeight;
         // canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-        // const img = canvasThumb.toDataURL("image/jpg");
+        // const img = canvasThumb.toDataURL("image/jpeg");
         // make a circular buffer of 3 images
         // if (photos.length >= 3) photos.shift();
         // photos.push(img);
