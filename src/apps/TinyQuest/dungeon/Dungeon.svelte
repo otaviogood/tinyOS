@@ -2,6 +2,9 @@
     import "../TailwindStyles.svelte";
     import { onMount } from "svelte";
     import { slide, fade } from "svelte/transition";
+	import { tweened } from 'svelte/motion';
+    import { elasticOut, cubicInOut, cubicOut } from "svelte/easing";
+
     import { Howl, Howler } from "howler";
     import WinScreen from "../WinScreen.svelte";
     import { pop } from "svelte-spa-router";
@@ -13,6 +16,8 @@
     import FourByThreeScreen from "../../../components/FourByThreeScreen.svelte";
     import { BitmapInt32, MazeGenerator } from "./BitmapInt32";
     import { Actor } from "./Actor";
+    import HealthBar from "./HealthBar.svelte";
+    import RandomFast from "../../../random-fast";
 
     let animator = new Animator(60, tick);
 
@@ -23,7 +28,9 @@
     let mapW = 17;
     let mapH = 17;
     let map = new BitmapInt32(mapW, mapH);
+    let fogOfWar = new BitmapInt32(mapW, mapH);
     let characters = [];
+    let opponent = null;
 
     // let imageCache=[];
     onMount(() => {
@@ -35,6 +42,21 @@
     });
 
     function tick() {}
+
+    function updateFog() {
+        let xy = characters[0].getPosition();
+        // Update the fog of war
+        fogOfWar.SetPixelSafe(xy.x, xy.y, 1);
+        fogOfWar.SetPixelSafe(xy.x + 1, xy.y, 1);
+        fogOfWar.SetPixelSafe(xy.x - 1, xy.y, 1);
+        fogOfWar.SetPixelSafe(xy.x, xy.y + 1, 1);
+        fogOfWar.SetPixelSafe(xy.x, xy.y - 1, 1);
+        fogOfWar.SetPixelSafe(xy.x + 1, xy.y + 1, 1);
+        fogOfWar.SetPixelSafe(xy.x - 1, xy.y - 1, 1);
+        fogOfWar.SetPixelSafe(xy.x + 1, xy.y - 1, 1);
+        fogOfWar.SetPixelSafe(xy.x - 1, xy.y + 1, 1);
+        fogOfWar = fogOfWar;
+    }
 
     function moveTo(x, y) {
         const playerCharacter = characters[0];
@@ -48,9 +70,26 @@
         const dominantAxis = absDx > absDy ? "x" : "y";
         const unitVector = dominantAxis === "x" ? { x: Math.sign(dx), y: 0 } : { x: 0, y: Math.sign(dy) };
         // Move the player character in the direction of the dominant axis
-        if (map.GetPixel(xy.x + unitVector.x, xy.y + unitVector.y) !== 0) return;
+        // Check for collision with all the bad guys in characters array, skipping the first one because that's the player character
+        opponent = null;
+        for (let i = 1; i < characters.length; i++) {
+            const character = characters[i];
+            if (character.isActorDead()) continue;
+            console.log("Checking collision with bad guy", character, xy.x + unitVector.x, xy.y + unitVector.y);
+            if (character.x === xy.x + unitVector.x && character.y === xy.y + unitVector.y) {
+                console.log("Collision with bad guy");
+                startFightScreen(character);
+                return;
+            }
+        }
+        // Check collision with walls
+        if (map.GetPixelSafeEdge(xy.x + unitVector.x, xy.y + unitVector.y, 1) !== 0) return;
+
         playerCharacter.setPosition(xy.x + unitVector.x, xy.y + unitVector.y);
         characters = characters;
+
+        updateFog();
+
         // removeDeadCharacters();
     }
 
@@ -59,17 +98,77 @@
         characters = characters.filter((character) => !character.isActorDead());
     }
 
+    function startFightScreen(opp) {
+        opponent = opp;
+        $monsterAlive = 1.0;
+    }
+
+    function attack() {
+        const playerCharacter = characters[0];
+        const opponentCharacter = opponent;
+        if (playerCharacter.isDead) return;
+        if (opponentCharacter.isDead) return;
+        playerCharacter.health -= opponentCharacter.attackPower;
+        opponentCharacter.health -= playerCharacter.attackPower;
+        playerCharacter.attackingTrigger++;
+        if (playerCharacter.health <= 0) {
+            playerCharacter.health = 0;
+            playerCharacter.isDead = true;
+            setTimeout(() => {
+                opponent = null;
+            }, 2000);
+        }
+        if (opponentCharacter.health <= 0) {
+            opponentCharacter.health = 0;
+            opponentCharacter.isDead = true;
+            $monsterAlive = 0.0;
+            playerCharacter.experience += opponentCharacter.experience;
+            setTimeout(() => {
+                opponent = null;
+            }, 2000);
+        }
+        removeDeadCharacters();
+        opponent = opponent;
+    }
+
+    function getRandomOpenPosition(mazeGen) {
+        let xy = mazeGen.getRandomOpenPosition();
+        // Check for collision with all characters in characters array. Use while loop, not recursion.
+        while (characters.some((character) => character.x === xy[0] && character.y === xy[1])) {
+            xy = mazeGen.getRandomOpenPosition();
+        }
+        return xy;
+    }
+
     function resetGame() {
-        new MazeGenerator(map).generate();
+        map = new BitmapInt32(mapW, mapH);
+        fogOfWar = new BitmapInt32(mapW, mapH);
+        // fogOfWar.Clear(1);  // HACK DELETEME
+        let mazeGen = new MazeGenerator(map).generate();
+        map.SetPixel(15, 15, 2);
+        map = map;
         characters = [];
         // Create the player character
-        const playerCharacter = new Actor(1, 1);
+        let xy = mazeGen.getRandomOpenPosition();
+        const playerCharacter = new Actor(xy[0], xy[1]);
         characters.push(playerCharacter);
+        moveTo(characters[0].x, characters[0].y);
+        updateFog();
 
         // Create some NPCs
-        const npc1 = new Actor(5, 5);
-        const npc2 = new Actor(9, 9);
-        characters.push(npc1, npc2);
+        for (let i = 0; i < 10; i++) {
+            let xy = getRandomOpenPosition(mazeGen);
+            const npc = new Actor(xy[0], xy[1], ["greenSlime", "tweeger"][mazeGen.random.RandIntApprox(0, 2)]);
+            // map.SetPixel(npc.x, npc.y, 0);
+            characters.push(npc);
+        }
+        // const npc1 = new Actor(5, 5, "greenSlime");
+        // map.SetPixel(npc1.x, npc1.y, 0);
+        // const npc2 = new Actor(9, 9, "greenSlime");
+        // map.SetPixel(npc2.x, npc2.y, 0);
+        // characters.push(npc1, npc2);
+
+        // opponent = characters[1];
     }
 
     function keyDown(e) {
@@ -99,16 +198,53 @@
         pop();
     }
 
+    const monsterAlive = tweened(1, {
+        delay: 100,
+		duration: 1500,
+		easing: cubicOut
+	});
+
+    function shake(node, { delay, duration, flip=1 }) {
+        return {
+            delay,
+            duration,
+            css: (t) => {
+                const eased = cubicOut(t);
+
+                return `
+                        transform: scale(${(1.0 + Math.sin(eased * Math.PI) * 0.05)*flip}, ${1.0 + Math.sin(eased * Math.PI) * 0.05}) rotate(${Math.sin(eased * Math.PI * 3) * 0.2}rad);
+                        will-change: transform;
+                        filter: drop-shadow(0 0 ${4.75*(1.0-eased)}rem #ff3020);
+                        `;
+            },
+        };
+    }
+
+    function slideHit(node, { delay, duration, dir=1 }) {
+        return {
+            delay,
+            duration,
+            css: (t) => {
+                const eased = cubicOut(t);
+
+                return `
+                        transform: translate(${Math.sin(eased * Math.PI) * 16.0 * dir}rem, var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+                        will-change: transform;
+                        `;
+            },
+        };
+    }
+
     handleResize();
     startGame();
 </script>
 
 <svelte:window on:keydown={keyDown} />
 
-<FourByThreeScreen>
+<FourByThreeScreen bg="#000000">
     {#if !started}
         <div class="flex-center-all h-full w-full flex flex-col bg-black">
-            <img
+            <img draggable="false"
                 src="TinyQuest/gamedata/dungeon/otaviogood_cute_dungeon_adventure_with_monster_with_magic_staff_757b74db-26ff-4c1e-9924-55c245d07e1a.png"
                 class="absolute"
                 alt="skyscraper"
@@ -129,82 +265,116 @@
             >
         </div>
     {:else}
+        {#if opponent}
+            <div in:fade={{ duration: 500 }} class="flex-center-all h-full w-full flex flex-col bg-black z-20">
+                <img draggable="false"
+                    src="TinyQuest/gamedata/dungeon/arena.webp"
+                    class="absolute"
+                    alt="skyscraper"
+                    style="height:74rem"
+                />
+                <button
+                    class="absolute top-4 bg-gray-900/80 border border-gray-600 text-white text-6xl rounded-3xl px-8 py-1"
+                    on:pointerup|preventDefault|stopPropagation={()=>(opponent=null)}><i class="fa-solid fa-person-running"></i></button
+                >
+                {#key characters[0].attackingTrigger}
+                    <img in:slideHit|local={{ delay: 0, duration: 1000, dir:-1 }} draggable="false" class="absolute w-[16rem]" style="right:20rem;bottom:8rem;" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
+                {/key}
+                {#key characters[0].attackingTrigger}
+                    <img in:slideHit|local={{ delay: 0, duration: 1000 }} draggable="false" class="absolute w-[16rem] transform -scale-x-100" style="left:20rem;bottom:8rem;opacity:{$monsterAlive}" src="TinyQuest/gamedata/dungeon/{opponent.img}" on:pointerup|preventDefault|stopPropagation={attack} />
+                {/key}
+                <div class="absolute w-[25rem] h-[32rem] top-0 right-0 bg-gray-900/80">
+                    {#key characters[0].health}
+                        <img in:shake|local={{ delay: 250, duration: 700 }} draggable="false" class="w-3/4 mr-0 ml-auto" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
+                    {/key}
+                    <div class="relative flex flex-row-reverse text-4xl h-16 my-1">
+                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{characters[0]?.attackPower}</div>
+                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{characters[0]?.experience}</div>
+                    </div>
+                    <HealthBar health={characters[0].mana} maxHealth={characters[0].maxMana} r={29} g={78} b={216} left={false} />
+                    <HealthBar health={characters[0].health} maxHealth={characters[0].maxHealth} left={false} />
+                </div>
+                <div class="absolute w-[25rem] h-[32rem] top-0 left-0 bg-gray-900/80">
+                    {#key opponent.health}
+                        <img in:shake|local={{ delay: 250, duration: 700, flip:-1 }} draggable="false" class="w-3/4 transform -scale-x-100" src="TinyQuest/gamedata/dungeon/{opponent.img}" />
+                    {/key}
+                    <div class="relative flex flex-row text-4xl text-right h-16 my-1">
+                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{opponent?.attackPower}</div>
+                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{opponent?.experience}</div>
+                    </div>
+                    <HealthBar health={opponent.mana} maxHealth={opponent.maxMana} r={29} g={78} b={216} />
+                    <HealthBar health={opponent.health} maxHealth={opponent.maxHealth} />
+                </div>
+            </div>
+        {:else}
         <div class="flex flex-row h-full w-full">
             <div class="fit-full-space" style="">
-                <div class="absolute" style="left:0rem;right:0rem;top:0rem;bottom:0rem;width:160rem;;">
+                <div class="absolute" style="left:0rem;right:0rem;top:0rem;bottom:0rem;width:160rem;">
                     {#each Array(mapH) as _, y}
                         {#each Array(mapW) as _, x}
                             <div
-                                class="absolute"
+                                class="absolute overflow-hidden"
                                 style="left:{x * 4.4}rem;top:{y *
-                                    4.4}rem;width:4.4rem;height:4.4rem;background-color:{map.GetPixel(x, y) === 1
-                                    ? '#303038'
-                                    : '#6f6060'}; bordXXer:1px solid #000000" on:pointerup={() => {
+                                    4.4}rem;width:4.4rem;height:4.4rem;" on:pointerup={() => {
                                         moveTo(x, y);
                                     }}
                             >
-                            {#if map.GetPixel(x, y) === 1}
-                            <img src="TinyQuest/gamedata/dungeon/wall01.jpg" />
+                            {#if fogOfWar.GetPixel(x, y) === 0}
+                                <div class="absolute w-full h-full bg-black"></div>
                             {:else}
-                            <img src="TinyQuest/gamedata/dungeon/floor01.jpg" />
+                                {#if map.GetPixel(x, y) === 1}
+                                <img src="TinyQuest/gamedata/dungeon/wall01.jpg" draggable="false" class="w-full h-full"/>
+                                <!-- <div style="background: url(TinyQuest/gamedata/dungeon/tiles.webp) 64 0;width:64px;height:64px;"></div> -->
+                                <!-- <div style="background-image: url(TinyQuest/gamedata/dungeon/tiles.webp);background-size: 512px 512px;widXth:4.4rem;heigXht:4.4rem;background-position:-128px 0px;tranXXsform: scale(0.5);tranXXsform-origin: top left;"></div> -->
+                                <!-- <img src="TinyQuest/gamedata/dungeon/tiles.webp" style="width:400%;height:400%; clip-path: inset(63px 1px);"/> -->
+                                <!-- <img src="TinyQuest/gamedata/dungeon/tiles.webp" style="objeXXct-fit: none;margin-left:-20px; oXXbject-position: -128px 0;object-sXXize:0.5; width:512px;height:512px;transfXXorm: scale(0.85,0.5);tranXXsform-origin: top left;"/> -->
+                                {:else if map.GetPixel(x, y) === 2}
+                                <img src="TinyQuest/gamedata/dungeon/stairs01.jpg" draggable="false" class="w-full h-full" />
+                                {:else}
+                                <img src="TinyQuest/gamedata/dungeon/floor01.jpg" draggable="false" class="w-full h-full" />
+                                {/if}
                             {/if}
                             </div>
                         {/each}
                     {/each}
                     {#each characters as character, i}
-                        <div
-                            class="absolute"
-                            style="left:{character.x * 4.4}rem;top:{character.y *
-                                4.4}rem;width:4.4rem;height:4.4rem;background-color:{character.isActorDead()
-                                ? '#ff0000'
-                                : '#00ff00'}; border:1px solid #000000"
-                        >
-                        {#if i === 0}
-                            <img src="TinyQuest/gamedata/dungeon/otaviogood_cute_video_game_character._A_heroic_knight_with_a_sw_0c3b4b09-fe0b-4b05-9c40-bcdfe839dd23.png" />
-                        {:else}
-                            <img src="TinyQuest/gamedata/dungeon/otaviogood_cute_video_game_character._A_green_slime_monster._is_dd4ba597-2f75-48c2-b120-95a2a7447ab5.png" />
+                        {#if fogOfWar.GetPixel(character.x, character.y) !== 0}
+                            <div
+                                class="absolute pointer-events-none"
+                                style="left:{character.x * 4.4}rem;top:{character.y *
+                                    4.4}rem;width:4.4rem;height:4.4rem;background-color:{character.isActorDead()
+                                    ? '#ff0000'
+                                    : ''};"
+                            >
+                                <img src="TinyQuest/gamedata/dungeon/{character.img}" draggable="false" />
+                            </div>
                         {/if}
-                        <!-- <img src="TinyQuest/gamedata/dungeon/otaviogood_cute_video_game_character._A_heroic_knight_with_a_sw_0c3b4b09-fe0b-4b05-9c40-bcdfe839dd23.png" /> -->
-                        </div>
                     {/each}
                 </div>
             </div>
 
             <div
-                class="absolute right-0 top-32 bottom-0 left-[75rem] select-none border border-green-700"
+                class="absolute w-[25rem] h-[32rem] top-0 right-0 bg-gray-900/80 select-none"
                 style=""
                 on:touchstart={preventZoom}
             >
-                <img class="w-3/4" src="TinyQuest/gamedata/dungeon/otaviogood_cute_video_game_character._A_heroic_knight_with_a_sw_0c3b4b09-fe0b-4b05-9c40-bcdfe839dd23.png" />
-                <div class="relative w-full h-16">
-                    <div class="absolute text-6xl w-1/2 h-16">H: 5</div>
+                <img draggable="false" class="w-3/4 mr-0 ml-auto pointer-events-none" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
+                <div class="relative flex flex-row-reverse text-4xl h-16 my-1">
+                    <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{characters[0]?.attackPower}</div>
+                    <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{characters[0]?.experience}</div>
                 </div>
-                <div class="relative w-full h-16">
-                    <div class="absolute bg-red-900 w-full h-16"></div>
-                    <div class="absolute bg-red-700 w-1/2 h-16"></div>
-                    <div class="absolute text-6xl w-1/2 h-16">4/8</div>
-                </div>
-                <div class="relative w-full h-16">
-                    <div class="absolute bg-blue-900 w-full h-16"></div>
-                    <div class="absolute bg-blue-700 w-5/12 h-16"></div>
-                    <div class="absolute text-6xl w-5/12 h-16">3/8</div>
-                </div>
-                <div class="absolute w-full h-16 bottom-[19rem]">
-                    <div class="absolute bg-red-900 w-full h-16"></div>
-                    <div class="absolute bg-red-700 w-3/4 h-16"></div>
-                    <div class="absolute text-6xl w-3/4 h-16">3/4</div>
-                </div>
-                <img class="absolute bottom-0 w-3/4" src="TinyQuest/gamedata/dungeon/otaviogood_cute_video_game_character._A_green_slime_monster._is_dd4ba597-2f75-48c2-b120-95a2a7447ab5.png" />
+                <HealthBar health={characters[0].mana} maxHealth={characters[0].maxMana} left={false} r={29} g={78} b={216} />
+                <HealthBar health={characters[0].health} maxHealth={characters[0].maxHealth} left={false} />
             </div>
             <div
-                class="absolute right-0 top-0 cursor-pointer select-none m-1"
-                style="padding:0 0.75rem;border-radius:0.75rem;"
+                class="absolute right-0 top-0 cursor-pointer select-none m-1 opacity-80"
                 on:pointerup|preventDefault|stopPropagation={resetToSplashScreen}
                 on:touchstart={preventZoom}
             >
-                <IconsMisc icon="treasure-map" size="7.5rem" style="" />
+                <IconsMisc icon="treasure-map" size="5rem" style="" />
             </div>
         </div>
+        {/if}
     {/if}
 </FourByThreeScreen>
 
