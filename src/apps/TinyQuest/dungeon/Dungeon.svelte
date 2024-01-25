@@ -4,6 +4,7 @@
     import { slide, fade } from "svelte/transition";
 	import { tweened } from 'svelte/motion';
     import { elasticOut, cubicInOut, cubicOut } from "svelte/easing";
+    import { shake, slideHit, scalePulse2 } from "./AnimSvelte.js";
 
     import { Howl, Howler } from "howler";
     import WinScreen from "../WinScreen.svelte";
@@ -17,6 +18,7 @@
     import { BitmapInt32, MazeGenerator } from "./BitmapInt32";
     import { Actor } from "./Actor";
     import HealthBar from "./HealthBar.svelte";
+    import CharacterStats from "./CharacterStats.svelte";
     import RandomFast from "../../../random-fast";
 
     let animator = new Animator(60, tick);
@@ -31,6 +33,9 @@
     let fogOfWar = new BitmapInt32(mapW, mapH);
     let characters = [];
     let opponent = null;
+    let dungeonLevel = 0;
+    let prompt = null;
+    let collectedMonsters = new Set();
 
     // let imageCache=[];
     onMount(() => {
@@ -46,15 +51,14 @@
     function updateFog() {
         let xy = characters[0].getPosition();
         // Update the fog of war
-        fogOfWar.SetPixelSafe(xy.x, xy.y, 1);
-        fogOfWar.SetPixelSafe(xy.x + 1, xy.y, 1);
-        fogOfWar.SetPixelSafe(xy.x - 1, xy.y, 1);
-        fogOfWar.SetPixelSafe(xy.x, xy.y + 1, 1);
-        fogOfWar.SetPixelSafe(xy.x, xy.y - 1, 1);
-        fogOfWar.SetPixelSafe(xy.x + 1, xy.y + 1, 1);
-        fogOfWar.SetPixelSafe(xy.x - 1, xy.y - 1, 1);
-        fogOfWar.SetPixelSafe(xy.x + 1, xy.y - 1, 1);
-        fogOfWar.SetPixelSafe(xy.x - 1, xy.y + 1, 1);
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx=-1; dx <= 1; dx++) {
+                let unexplored = fogOfWar.GetPixelSafeEdge(xy.x + dx, xy.y + dy, 1);
+                if (unexplored === 0) characters[0].addXP(1);
+                fogOfWar.SetPixelSafe(xy.x + dx, xy.y + dy, 1);
+
+            }
+        }
         fogOfWar = fogOfWar;
     }
 
@@ -75,11 +79,16 @@
         for (let i = 1; i < characters.length; i++) {
             const character = characters[i];
             if (character.isActorDead()) continue;
-            console.log("Checking collision with bad guy", character, xy.x + unitVector.x, xy.y + unitVector.y);
+            // console.log("Checking collision with bad guy", character, xy.x + unitVector.x, xy.y + unitVector.y);
             if (character.x === xy.x + unitVector.x && character.y === xy.y + unitVector.y) {
-                console.log("Collision with bad guy");
-                startFightScreen(character);
-                return;
+                // console.log("Collision with bad guy");
+                if (character.stairs) {
+                    prompt = { msg:"You got to level " + (dungeonLevel + 2), btn:"Go", fn:()=>{prompt=null; resetGame(dungeonLevel + 1)}, btn2:"No", fn2:()=>{prompt=null}};
+                    return;
+                } else {
+                    startFightScreen(character);
+                    return;
+                }
             }
         }
         // Check collision with walls
@@ -95,7 +104,8 @@
 
     // Function to remove dead characters from the characters array
     function removeDeadCharacters() {
-        characters = characters.filter((character) => !character.isActorDead());
+        // Don't remove hero though.
+        characters = characters.filter((character) => !character.isActorDead() || character.monsterType==='hero' );
     }
 
     function startFightScreen(opp) {
@@ -111,18 +121,20 @@
         playerCharacter.health -= opponentCharacter.attackPower;
         opponentCharacter.health -= playerCharacter.attackPower;
         playerCharacter.attackingTrigger++;
-        if (playerCharacter.health <= 0) {
-            playerCharacter.health = 0;
-            playerCharacter.isDead = true;
-            setTimeout(() => {
-                opponent = null;
-            }, 2000);
-        }
         if (opponentCharacter.health <= 0) {
             opponentCharacter.health = 0;
             opponentCharacter.isDead = true;
             $monsterAlive = 0.0;
-            playerCharacter.experience += opponentCharacter.experience;
+            playerCharacter.addXP(opponentCharacter.experience);
+            collectedMonsters.add(opponentCharacter.monsterType);
+            setTimeout(() => {
+                opponent = null;
+            }, 2000);
+        }
+        if (playerCharacter.health <= 0) {
+            playerCharacter.health = 0;
+            playerCharacter.isDead = true;
+            prompt = { msg:"Fail at level " + (dungeonLevel + 1), btn:"Try again", fn:()=>{prompt=null; resetGame(0)}};
             setTimeout(() => {
                 opponent = null;
             }, 2000);
@@ -140,41 +152,71 @@
         return xy;
     }
 
-    function resetGame() {
+    function resetGame(lvl = 0) {
+        dungeonLevel = lvl;
         map = new BitmapInt32(mapW, mapH);
         fogOfWar = new BitmapInt32(mapW, mapH);
         // fogOfWar.Clear(1);  // HACK DELETEME
-        let mazeGen = new MazeGenerator(map).generate();
-        map.SetPixel(15, 15, 2);
-        map = map;
-        characters = [];
-        // Create the player character
+        let mazeGen = new MazeGenerator(map, dungeonLevel).generate();
+        // map.SetPixel(15, 15, 2);
         let xy = mazeGen.getRandomOpenPosition();
-        const playerCharacter = new Actor(xy[0], xy[1]);
-        characters.push(playerCharacter);
+        if (lvl === 0) {
+            characters = []; //MAKE THIS KEEP THE PLAYER CHARACTER1
+            // Create the player character
+            const playerCharacter = new Actor(xy[0], xy[1], "hero");
+            characters.push(playerCharacter);
+        }
+        // keep only the first in the array
+        else {
+            characters = characters.slice(0,1);
+            characters[0].x = xy[0];
+            characters[0].y = xy[1];
+        }
         moveTo(characters[0].x, characters[0].y);
         updateFog();
+        if (lvl === 0) characters[0].experience = 0; // Reset because fog gave us XP.
 
         // Create some NPCs
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 4 + dungeonLevel * 4; i++) {
             let xy = getRandomOpenPosition(mazeGen);
-            const npc = new Actor(xy[0], xy[1], ["greenSlime", "tweeger"][mazeGen.random.RandIntApprox(0, 2)]);
+            // Get random monster from the stats lookup dictionary.
+            let k = Object.keys(Actor.statsLookup);
+            let monsterType = k[mazeGen.random.RandIntApprox(0, k.length)];
+            let monster = Actor.statsLookup[monsterType];
+            while (monster.level === undefined || monster.level > dungeonLevel) {
+                monsterType = k[mazeGen.random.RandIntApprox(0, k.length)];
+                monster = Actor.statsLookup[monsterType];
+            }
+            // console.log("Adding monster", monsterType, monster.level);
+            const npc = new Actor(xy[0], xy[1], monsterType);
             // map.SetPixel(npc.x, npc.y, 0);
             characters.push(npc);
         }
-        // const npc1 = new Actor(5, 5, "greenSlime");
-        // map.SetPixel(npc1.x, npc1.y, 0);
         // const npc2 = new Actor(9, 9, "greenSlime");
         // map.SetPixel(npc2.x, npc2.y, 0);
         // characters.push(npc1, npc2);
 
+        // make exit stairs as an actor
+        let stairsPos = mazeGen.getRandomOpenPosition(1);
+        map.SetPixel(stairsPos[0], stairsPos[1], 0);
+        const npc1 = new Actor(stairsPos[0], stairsPos[1], "stairs");
+        characters.push(npc1);
+
+        // collectedMonsters.add("greenSlime");
+        // collectedMonsters.add("tweeger");
+        // collectedMonsters.add("hairMonster");
+        // collectedMonsters.add("grouch");
+        // collectedMonsters.add("pumpkin");
+
         // opponent = characters[1];
+        map = map;
     }
 
     function keyDown(e) {
         if (!e || !e.key) return;
         // console.log(e.key);
         // Directional movement
+        if (prompt) return;
         if (e.key === "ArrowUp") {
             moveTo(characters[0].x, characters[0].y - 1);
         } else if (e.key === "ArrowDown") {
@@ -183,6 +225,8 @@
             moveTo(characters[0].x - 1, characters[0].y);
         } else if (e.key === "ArrowRight") {
             moveTo(characters[0].x + 1, characters[0].y);
+        } else if (e.key === " ") {
+            if (opponent) attack();
         }
     }
 
@@ -204,44 +248,13 @@
 		easing: cubicOut
 	});
 
-    function shake(node, { delay, duration, flip=1 }) {
-        return {
-            delay,
-            duration,
-            css: (t) => {
-                const eased = cubicOut(t);
-
-                return `
-                        transform: scale(${(1.0 + Math.sin(eased * Math.PI) * 0.05)*flip}, ${1.0 + Math.sin(eased * Math.PI) * 0.05}) rotate(${Math.sin(eased * Math.PI * 3) * 0.2}rad);
-                        will-change: transform;
-                        filter: drop-shadow(0 0 ${4.75*(1.0-eased)}rem #ff3020);
-                        `;
-            },
-        };
-    }
-
-    function slideHit(node, { delay, duration, dir=1 }) {
-        return {
-            delay,
-            duration,
-            css: (t) => {
-                const eased = cubicOut(t);
-
-                return `
-                        transform: translate(${Math.sin(eased * Math.PI) * 16.0 * dir}rem, var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
-                        will-change: transform;
-                        `;
-            },
-        };
-    }
-
     handleResize();
     startGame();
 </script>
 
 <svelte:window on:keydown={keyDown} />
 
-<FourByThreeScreen bg="#000000">
+<FourByThreeScreen bg="#0a0a14" class="{characters[0].isDead ? 'filter sepia':''}">
     {#if !started}
         <div class="flex-center-all h-full w-full flex flex-col bg-black">
             <img draggable="false"
@@ -287,10 +300,7 @@
                     {#key characters[0].health}
                         <img in:shake|local={{ delay: 250, duration: 700 }} draggable="false" class="w-3/4 mr-0 ml-auto" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
                     {/key}
-                    <div class="relative flex flex-row-reverse text-4xl h-16 my-1">
-                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{characters[0]?.attackPower}</div>
-                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{characters[0]?.experience}</div>
-                    </div>
+                    <CharacterStats character={characters[0]} {dungeonLevel} />
                     <HealthBar health={characters[0].mana} maxHealth={characters[0].maxMana} r={29} g={78} b={216} left={false} />
                     <HealthBar health={characters[0].health} maxHealth={characters[0].maxHealth} left={false} />
                 </div>
@@ -299,8 +309,8 @@
                         <img in:shake|local={{ delay: 250, duration: 700, flip:-1 }} draggable="false" class="w-3/4 transform -scale-x-100" src="TinyQuest/gamedata/dungeon/{opponent.img}" />
                     {/key}
                     <div class="relative flex flex-row text-4xl text-right h-16 my-1">
-                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{opponent?.attackPower}</div>
-                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{opponent?.experience}</div>
+                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-3 h-16 mx-1"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{opponent?.attackPower}</div>
+                        <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-3 h-16 mx-1"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{opponent?.experience}</div>
                     </div>
                     <HealthBar health={opponent.mana} maxHealth={opponent.maxMana} r={29} g={78} b={216} />
                     <HealthBar health={opponent.health} maxHealth={opponent.maxHealth} />
@@ -359,12 +369,17 @@
                 on:touchstart={preventZoom}
             >
                 <img draggable="false" class="w-3/4 mr-0 ml-auto pointer-events-none" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
-                <div class="relative flex flex-row-reverse text-4xl h-16 my-1">
-                    <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{characters[0]?.attackPower}</div>
-                    <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-4 h-16 mx-2"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{characters[0]?.experience}</div>
-                </div>
+                <CharacterStats character={characters[0]} {dungeonLevel} />
                 <HealthBar health={characters[0].mana} maxHealth={characters[0].maxMana} left={false} r={29} g={78} b={216} />
                 <HealthBar health={characters[0].health} maxHealth={characters[0].maxHealth} left={false} />
+                <div class="flex flex-wrap w-[25rem] h-40 bg-gray-900">
+                    {#each Array.from(collectedMonsters) as monsterType}
+                        <div class="w-[4.5rem] h-[4.5rem] m-1 border-4 bg-gray-700 rounded-full overflow-hidden"
+                        style="border-color:{['#d03030', '#4060ff', '#a09020', '#20b040', '#90c0e0'][['e_fire', 'e_water', 'e_wood', 'e_earth', 'e_air'].indexOf(Actor.statsLookup[monsterType]?.element)]}">
+                            <img draggable="false" class="w-[4.5rem] h-[4.5rem]" src="TinyQuest/gamedata/dungeon/{Actor.statsLookup[monsterType].img}" />
+                        </div>
+                    {/each}
+                </div>
             </div>
             <div
                 class="absolute right-0 top-0 cursor-pointer select-none m-1 opacity-80"
@@ -375,6 +390,28 @@
             </div>
         </div>
         {/if}
+        {#if prompt}
+            <div in:fade={{ duration: 200 }} class="absolute top-0 left-0 w-[75rem] h-full flex-center-all bg-black/30">
+                <div class="flex flex-col bg-blue-800 border-[0.5rem] border-white rounded-2xl p-2">
+                    <div class="text-5xl m-2">{prompt.msg}</div>
+                    <button
+                        
+                        class="bg-black/30 border border-gray-300 text-white text-9xl rounded-3xl p-8 m-2 z-20"
+                        style="maXXrgin-top:25rem"
+                        on:pointerup|preventDefault|stopPropagation={prompt.fn}>{prompt.btn}</button
+                    >
+                    {#if prompt.btn2}
+                        <button
+                            
+                            class="bg-black/30 border border-gray-500 text-gray-300 text-9xl rounded-3xl p-8 m-2 z-20"
+                            style="maXXrgin-top:25rem"
+                            on:pointerup|preventDefault|stopPropagation={prompt.fn2}>{prompt.btn2}</button
+                        >
+                    {/if}
+                </div>
+            </div>
+        {/if}
+
     {/if}
 </FourByThreeScreen>
 

@@ -188,7 +188,8 @@ export class MazeGenerator2 {
 export class MazeGenerator {
     constructor(bitmap, seed = 123456789) {
         this.bitmap = bitmap;
-        this.random = new RandomFast(seed);
+        this.random = new RandomFast(seed + 12);
+        // console.log("RESETING ", this.random, seed);
     }
 
     divide(x, y, width, height) {
@@ -227,10 +228,10 @@ export class MazeGenerator {
         }
     }
 
-    getRandomOpenPosition() {
+    getRandomOpenPosition(searchType = 0) {
         let x = Math.floor(this.random.RandFloat() * this.bitmap.width);
         let y = Math.floor(this.random.RandFloat() * this.bitmap.height);
-        while (this.bitmap.GetPixel(x, y) === 1) {
+        while (this.bitmap.GetPixel(x, y) !== searchType) {
             x = Math.floor(this.random.RandFloat() * this.bitmap.width);
             y = Math.floor(this.random.RandFloat() * this.bitmap.height);
         }
