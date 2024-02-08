@@ -75,6 +75,12 @@ export let allMediaAll = {
 "believer": ["o0LydWpBQts", "Imagine Dragons - Believer (Lyrics)", "mp4"],
 "how many mics": ["-UyapAppSMQ", "How Many Mics Clean Radio Fugees 1996", "mp4"],
 "people are strange": ["j0Mz_IqpZX8", "The Doors - People Are Strange", "mp4"],
+"muppet show": ["27vGo-TVp3Q", "The Muppet Show Theme", "mp4"],
+"mahna mahna 1969": ["y5W60VwDkas", "Sesame Street -  Mahna Mahna (1969)", "mp4"],
+"4 on the floor": ["1Kc9D4b8NFg", "Sing-along | Numberblocks Songs | Four on the Dance Floor", "mp4"],
+"grimes": ["Tv9YoYCKNoE", "Grimes - Flesh without Blood/Life in the Vivid Dream", "mp4"],
+"bad guy": ["en5qEojed1o", "Billie Eilish - bad guy (Clean - Lyrics)", "mp4"],
+"buy an o": ["3c8iU8pHZrQ", "Sesame Street   Would You Like To Buy An O", "mp4"],
 };
 // This weird string will be parsed by genSpeech.cjs to generate the speech synthesis files.
 
@@ -154,6 +160,12 @@ export let allMediaAll = {
 "believer",
 "how many mics",
 "people are strange",
+"muppet show",
+"mahna mahna 1969",
+"4 on the floor",
+"grimes",
+"bad guy",
+"buy an o",
 
 ]
     */

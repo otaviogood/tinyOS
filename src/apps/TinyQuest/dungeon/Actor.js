@@ -3,10 +3,10 @@ export class Actor {
 `monsterType	img	health	maxHealth	mana	maxMana	attackPower	experience	level	element
 hero	heroic_knight_trans.webp	8	8	1	1	1	0		
 greenSlime	green_slime_trans.webp	1	1	0	0	1	1	0	e_water
-pumpkin	pumpkin.png	2	2	0	0	1	2	0	e_earth
+pumpkin	pumpkin.webp	2	2	0	0	1	2	0	e_earth
 tweeger	tweeger_trans.webp	4	4	0	0	1	3	1	e_fire
-hairMonster	hairMonster.png	2	2	0	0	2	4	2	e_air
-grouch	grouch.png	7	7	0	0	1	6	3	e_earth`
+hairMonster	hairMonster.webp	2	2	0	0	2	4	2	e_air
+grouch	grouch.webp	7	7	0	0	1	6	3	e_earth`
     static statsLookup = null;
     constructor(x, y, monsterType) {
         if (Actor.statsLookup === null) {

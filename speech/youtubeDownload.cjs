@@ -74,6 +74,12 @@ const allVids = {
     "believer": "o0LydWpBQts",
     "how many mics": "-UyapAppSMQ",
     "people are strange": "j0Mz_IqpZX8",
+    "muppet show": "27vGo-TVp3Q",
+    "mahna mahna 1969": "y5W60VwDkas",
+    "4 on the floor": "1Kc9D4b8NFg",
+    "grimes": "Tv9YoYCKNoE",
+    "bad guy": "en5qEojed1o",
+    "buy an o": "3c8iU8pHZrQ",
 };
 
 async function sleep(ms) {
