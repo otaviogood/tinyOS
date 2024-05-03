@@ -10,30 +10,31 @@
         "deploy": "vite build && firebase deploy --except functions"
     },
     "devDependencies": {
-        "@google-cloud/text-to-speech": "^4.1.0",
-        "@sveltejs/vite-plugin-svelte": "^2.0.2",
-        "@tailwindcss/forms": "^0.5.3",
-        "autoprefixer": "^10.4.13",
-        "postcss": "^8.4.21",
-        "postcss-load-config": "^4.0.1",
+        "@google-cloud/text-to-speech": "^4.2.3",
+        "@sveltejs/vite-plugin-svelte": "^2.5.3",
+        "@tailwindcss/forms": "^0.5.7",
+        "autoprefixer": "^10.4.19",
+        "postcss": "^8.4.38",
+        "postcss-load-config": "^4.0.2",
         "prettier": "^2.8.3",
         "prettier-plugin-svelte": "^2.9.0",
         "request": "^2.88.2",
-        "svelte": "^3.55.1",
-        "svelte-preprocess": "^5.0.0",
-        "tailwindcss": "^3.2.4",
-        "vite": "^4.0.4",
+        "svelte": "^4.2.15",
+        "svelte-preprocess": "^5.1.4",
+        "tailwindcss": "^3.4.3",
+        "vite": "^4.5.3",
         "ytdl-core": "^4.11.5"
     },
     "dependencies": {
         "color": "^4.2.3",
-        "firebase": "^9.15.0",
-        "howler": "^2.2.3",
+        "firebase": "^9.23.0",
+        "howler": "^2.2.4",
         "idb": "^7.1.1",
         "logrocket": "^3.0.1",
-        "luxon": "^3.2.1",
+        "luxon": "^3.4.4",
+        "planck": "^1.0.2",
         "svelte-spa-router": "^3.3.0",
         "three": "^0.148.0",
-        "tone": "^14.7.77"
+        "tone": "^14.9.17"
     }
 }

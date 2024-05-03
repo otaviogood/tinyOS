@@ -80,6 +80,16 @@ const allVids = {
     "grimes": "Tv9YoYCKNoE",
     "bad guy": "en5qEojed1o",
     "buy an o": "3c8iU8pHZrQ",
+    "immortals": "Y4o_8zbelwY",
+    "east bound": "IOgUaFkpS3Y",
+    "dance monkey": "oy_VGhM2G4o",
+    "gorillaz": "hhEJentZxxs",
+    "country roads": "1vrEljMfXYo",
+    "how far ill go": "cPAbx5kgCJo",
+    "under the sea": "GC_mV1IpjWA",
+    "unholy": "_fbq8RaKlxI",
+    "octopus garden": "A7coEcXjd7Q",
+    "spongebob": "LAxchGHx13s",
 };
 
 async function sleep(ms) {
