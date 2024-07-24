@@ -32,6 +32,8 @@
     let correctOrder = [];
     let numOptions = 3; // Increased by 1 to include the target number
     let difficulty = 1; // Number of digits in the numbers
+    let gameStartTimer = 0;
+    let gameCurrentTimer = 0;
 
     function genPos() {
         let sx = 0.71;
@@ -63,6 +65,11 @@
     }
 
     function generateNumbers() {
+        if (numOptions === 3) {
+            // get time for start of gameStartTimer
+            gameStartTimer = Date.now();
+            gameCurrentTimer = gameStartTimer;
+        }
         numberOptions = [];
         let targetNumber = getRandomInt(Math.pow(10, difficulty) - 1);
         let [x, y] = [.36, .3];
@@ -113,6 +120,7 @@
         finalGraphic = false;
         started = true;
         starCount = 0;
+        numOptions = 3; // Increased by 1 to include the target number
         generateNumbers();
     }
 
@@ -133,6 +141,9 @@
     function loop(msSinceStart) {
         frame = requestAnimationFrame(loop);
         frameCount += 1;
+        if ((frameCount % 60 === 0) && (!finalGraphic)) {
+            gameCurrentTimer = Date.now();
+        }
     }
 
     handleResize();
@@ -177,6 +188,11 @@
                     {/each}
                 {/if}
             </div>
+            {#if finalGraphic}
+                <div class="text-black text-9xl z-20">{Math.round((gameCurrentTimer - gameStartTimer) / 1000.0)}</div>
+            {:else}
+                <div class="text-black text-3xl z-20">{Math.round((gameCurrentTimer - gameStartTimer) / 1000.0)}</div>
+            {/if}
             <StarBar {maxStars} {starCount} bg="#ffffff" on:pointerup={resetToSplashScreen} />
             <WinScreen {maxStars} active={finalGraphic} on:startGame={startGame} on:resetToSplashScreen={resetToSplashScreen} style="position:absolute;z-index:100;background-color:#00000080" />
         </div>

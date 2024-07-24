@@ -90,6 +90,14 @@ const allVids = {
     "unholy": "_fbq8RaKlxI",
     "octopus garden": "A7coEcXjd7Q",
     "spongebob": "LAxchGHx13s",
+    "world hold on": "XpdpW0z9xnQ",
+    "love is the answer": "e5a26pvzwPM",
+    "corneta": "Nt9hfCuEWTk",
+    "yellow flicker": "QnoXecGpq6g",
+    "nature boy": "RMA_9L53BGw",
+    "butterflies": "y3l-ovZQY4M",
+    "paid in full": "E7t8eoA_1jQ",
+    "in my mind": "W9P_qUnMaFg",
 };
 
 async function sleep(ms) {
@@ -142,6 +150,7 @@ async function downloadAudio(shortName, link, destFolder = "../public/youtube") 
         console.log(`Downloading audio of "${info.videoDetails.title}" to ${fileName}... thumb: ${thumb}`);
         await sleep(500);
     }
+    await sleep(5500);
     // Fill out jsonInfo with shortName as the key, and hash
     jsonInfo += `"${shortName}": ["${hash}", "${info.videoDetails.title.replaceAll('"', "")}", "${audioFormat.container}"],\r\n`;
     speechInfo += `"${shortName}",\r\n`;

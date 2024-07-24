@@ -91,6 +91,14 @@ export let allMediaAll = {
 "unholy": ["_fbq8RaKlxI", "Sam Smith - Unholy ft. Kim Petras", "mp4"],
 "octopus garden": ["A7coEcXjd7Q", "Octopus's Garden (Remastered 2009)", "mp4"],
 "spongebob": ["LAxchGHx13s", "SpongeBob SquarePants 1999 Intro", "mp4"],
+"world hold on": ["XpdpW0z9xnQ", "Bob Sinclar - World Hold On (Official HD Video)", "mp4"],
+"love is the answer": ["e5a26pvzwPM", "Aloe Blacc - Love Is The Answer", "mp4"],
+"corneta": ["Nt9hfCuEWTk", "TroyBoi - Corneta (feat. Tropkillaz)", "mp4"],
+"yellow flicker": ["QnoXecGpq6g", "Lorde - Yellow Flicker Beat (Music Video)", "mp4"],
+"nature boy": ["RMA_9L53BGw", "Nature Boy (1992 Digital Remaster)", "mp4"],
+"butterflies": ["y3l-ovZQY4M", "Kacey Musgraves - Butterflies (Official Audio)", "mp4"],
+"paid in full": ["E7t8eoA_1jQ", "Eric B. & Rakim - Paid In Full", "mp4"],
+"in my mind": ["W9P_qUnMaFg", "Dynoro & Gigi D’Agostino - In My Mind", "mp4"],
 };
 // This weird string will be parsed by genSpeech.cjs to generate the speech synthesis files.
 
@@ -186,6 +194,14 @@ export let allMediaAll = {
 "unholy",
 "octopus garden",
 "spongebob",
+"world hold on",
+"love is the answer",
+"corneta",
+"yellow flicker",
+"nature boy",
+"butterflies",
+"paid in full",
+"in my mind",
 
 ]
     */
