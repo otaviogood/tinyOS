@@ -52,13 +52,18 @@
 
     async function playButton() {
         player?.stop();
+        if (playing) {
+            // player?.stop();
+            playing = false;
+            return;
+        }
         playing = false;
 
         // start playing the recorded audio
         player.start();
         playing = true;
     }
-    async function stopButton() {
+    async function stopRecordingButton() {
         // the recorded audio is returned as a blob
         recording = await recorder.stop();
         // console.log("recording stopped", recording);
@@ -93,16 +98,16 @@
         {:else}
             <button
                 class="fit-full-space bg-purple-600 text-white text-9xl"
-                on:pointerdown={stopButton}>STOP</button
+                on:pointerdown={stopRecordingButton}>STOP</button
             >
         {/if}
     </div>
     {#if recording}
         <div>
             <button
-                class="{playing ? 'bg-green-950 text-green-950' : 'bg-green-600 text-white'} active:bg-green-800 text-9xl m-2 p-10 rounded-r-full select-none"
+                class="{playing ? 'bg-green-950 text-gray-500' : 'bg-green-600 text-white'} active:bg-green-800 text-9xl m-2 p-10 rounded-r-full select-none"
                 style="width:26rem"
-                on:pointerdown={playButton}>PLAY</button
+                on:pointerdown={playButton}>{playing ? 'STOP' : 'PLAY'}</button
             >
         </div>
     {:else}
