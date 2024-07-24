@@ -53,9 +53,10 @@
         $allTowns.push(new Town(0.68, 0.68, "BUS STOP", "/TinyQuest/busstop"));
         $allTowns.push(new Town(0.48, 0.63, "MERMADD", "/TinyQuest/mathgrid", { game: "addition" }));
         $allTowns.push(new Town(0.4, 0.7, "MERMA-MULTIPLICAZZOOFLIZACKS", "/TinyQuest/mathgrid"));
+        $allTowns.push(new Town(0.94, 0.52, "RANDOMS", "/TinyQuest/randomnumbers"));
         $allTowns.push(new Town(0.94, 0.62, "AIRPLANE CRASH", "/TinyQuest/airplanecrash"));
         // $allTowns.push(new Town(0.94, 0.72, "READING", "/TinyQuest/reading1"));
-        // $allTowns.push(new Town(0.94, 0.72, "DUNGEON", "/TinyQuest/dungeon"));
+        $allTowns.push(new Town(0.94, 0.72, "DUNGEON", "/TinyQuest/dungeon"));
         $allTowns.push(new Town(0.94, 0.82, "TONES", "/TinyQuest/listensounds"));
         $allTowns.push(new Town(0.94, 0.92, "CHROMA-FLOWMA", "/TinyQuest/blockdrop"));
         $allTowns = $allTowns;
