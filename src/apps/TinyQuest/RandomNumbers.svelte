@@ -170,7 +170,7 @@
     <div class="relative overflow-hidden select-none" style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px">
         {#if !started}
             <div class="flex-center-all h-full flex flex-col">
-                <img src="TinyQuest/gamedata/randomnumbers/swirls.webp" class="fit-full-space" alt="wood background" style="" />
+                <img src="TinyQuest/gamedata/randomnumbers/swirls.webp" class="absolute top-0 left-0 w-full h-full" alt="wood background" style="" />
                 <!-- <div class="absolute top-0 left-0 w-full h-full" style="background-color:#6fd0c020" ></div> -->
                 <div class="text-9xl font-bold m-8 z-10 rounded-2xl text-teal-800 bg-teXal-300/30 p-6">{town?.name}</div>
                 <!-- Difficulty buttons 1-4 -->
@@ -197,7 +197,7 @@
                 {#if numberOptions}
                     {#each numberOptions as option, i}
                     <div in:fade
-                    class="absolute text-4xl flex-center-all rounded-full active:scale-105 transform transition-all duration-1000 cursor-pointer"
+                    class="absolute text-4xl flex-center-all rounded-full active:scale-105 transform transition-all duration-100 cursor-pointer"
                     style="width:15rem;height:15rem;left:{option.x * 100}rem;top:{option.y * 100}rem;font-size:6rem;color:#ffffff;line-height:3rem;background-color:{option.isTarget ? '#bf3474d0' : option.clicked ? '#4299e1d0' : '#707e90d0'};"
                     on:pointerup|preventDefault|stopPropagation={() => clickNumber(option)}
                 >
@@ -207,9 +207,9 @@
                 {/if}
             </div>
             {#if finalGraphic}
-                <div class="text-black text-9xl z-20">{Math.round((gameCurrentTimer - gameStartTimer) / 1000.0)}</div>
+                <div class="flex-center-all text-white m-2 w-96 h-32 text-8xl z-20 bg-gray-500 rounded-xl">{Math.round((gameCurrentTimer - gameStartTimer) / 1000.0)}</div>
             {:else}
-                <div class="text-black text-3xl z-20">{Math.round((gameCurrentTimer - gameStartTimer) / 1000.0)}</div>
+                <div class="flex-center-all text-white m-2 w-20 h-10 text-3xl z-20 bg-gray-500 rounded-xl">{Math.round((gameCurrentTimer - gameStartTimer) / 1000.0)}</div>
             {/if}
             <StarBar {maxStars} {starCount} bg="#ffffff" on:pointerup={resetToSplashScreen} />
             <WinScreen {maxStars} active={finalGraphic} on:startGame={startGame} on:resetToSplashScreen={resetToSplashScreen} style="position:absolute;z-index:100;background-color:#00000080" />

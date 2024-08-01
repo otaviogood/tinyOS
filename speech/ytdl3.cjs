@@ -106,7 +106,7 @@ async function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const ytdl = require("ytdl-core");
+const youtubedl = require("youtube-dl-exec");
 const request = require("request");
 const fs = require("fs");
 const path = require("node:path");
@@ -122,44 +122,79 @@ let speechInfo = `// This weird string will be parsed by genSpeech.cjs to genera
 async function downloadAudio(shortName, link, destFolder = "../public/youtube") {
     if (!link.includes("youtube.com") && link.length < 15) link = `https://www.youtube.com/watch?v=${link}`;
     let hash = link.split("v=")[1];
-    console.log(`Downloading audio of "${shortName}" from ${link}...`);
-    const info = await ytdl.getInfo(link);
-    const audioFormats = ytdl.filterFormats(info.formats, "audioonly");
-    // const audioFormats = ytdl.filterFormats(info.formats, (format) => format.container === "mp4");
-    // Find in audioFormats one with mimeType that starts with 'audio/mp4', and with the highest bitrate
-    const audioFormat = audioFormats.reduce((prev, curr) => {
-        if (curr.mimeType.startsWith("audio/mp4") && curr.bitrate > prev.bitrate) return curr;
-        return prev;
-    }, { bitrate: 0 });
-    const audioStream = ytdl(link, { format: audioFormat });
-
-    // Also get the description and thumbnail.
-    const desc = info.videoDetails.description;
-    const thumb = info.videoDetails.thumbnails[0].url;
-    const fileName = path.join(destFolder, `_${hash}.${audioFormat.container}`);
+    const fileName = path.join(destFolder, `_${hash}.mp4`);
     const thumbName = path.join(destFolder, "_" + hash + "_thumb.jpg");
-    if (!fs.existsSync(fileName) || !fs.existsSync(thumbName)) {
-        const file = fs.createWriteStream(fileName);
-        audioStream.pipe(file);
 
-        assert(thumb.includes("jpg"));
-        const fileImage = fs.createWriteStream(thumbName);
-        request(thumb)
-            .pipe(fileImage)
-            .on("finish", () => {
-                console.log("Download thumb complete!");
-            });
-        console.log(`Downloading audio of "${info.videoDetails.title}" to ${fileName}... thumb: ${thumb}`);
-        await sleep(500);
+    // Check if both the audio file and thumbnail already exist
+    if (fs.existsSync(fileName) && fs.existsSync(thumbName)) {
+        console.log(`Files for "${shortName}" (${hash}) already exist. Skipping download.`);
+        // We still need to update jsonInfo and speechInfo
+        jsonInfo += `"${shortName}": ["${hash}", "", "mp4"],\r\n`;
+        speechInfo += `"${shortName}",\r\n`;
+        return;
     }
-    await sleep(5500);
-    // Fill out jsonInfo with shortName as the key, and hash
-    jsonInfo += `"${shortName}": ["${hash}", "${info.videoDetails.title.replaceAll('"', "")}", "${audioFormat.container}"],\r\n`;
+
+    console.log(`Downloading audio of "${shortName}" from ${link}...`);
+
+    const info = await youtubedl(link, {
+        dumpSingleJson: true,
+        noCheckCertificates: true,
+        noWarnings: true,
+        preferFreeFormats: true,
+        addHeader: [
+            "referer:youtube.com",
+            "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        ],
+    });
+
+    if (!fs.existsSync(fileName)) {
+        console.time("audio download");
+        await youtubedl(link, {
+            output: fileName,
+            format: "bestaudio[ext=m4a]",
+            noCheckCertificates: true,
+            noWarnings: true,
+            preferFreeFormats: true,
+            addHeader: [
+                "referer:youtube.com",
+                "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            ],
+        });
+        console.timeEnd("audio download");
+    }
+
+    if (!fs.existsSync(thumbName)) {
+        // Find the smallest thumbnail that's at least 168x94
+        const suitableThumbnail = info.thumbnails.reduce((prev, curr) => {
+            if (
+                curr.width >= 168 &&
+                curr.height >= 94 &&
+                (prev === null || curr.width * curr.height < prev.width * prev.height)
+            ) {
+                return curr;
+            }
+            return prev;
+        }, null);
+
+        if (suitableThumbnail) {
+            const fileImage = fs.createWriteStream(thumbName);
+            request(suitableThumbnail.url)
+                .pipe(fileImage)
+                .on("finish", () => {
+                    console.log("Download thumb complete!");
+                });
+        } else {
+            console.log("No suitable thumbnail found.");
+        }
+    }
+
+    console.log(`Process complete for "${info.title}"`);
+
+    jsonInfo += `"${shortName}": ["${hash}", "${info.title.replaceAll('"', "")}", "mp4"],\r\n`;
     speechInfo += `"${shortName}",\r\n`;
 }
-
 async function downloadAll() {
-    for (const [key, value] of Object.entries(allVids).reverse()) {
+    for (const [key, value] of Object.entries(allVids)) {
         await downloadAudio(key, value);
     }
     jsonInfo += "};\r\n";
@@ -167,7 +202,6 @@ async function downloadAll() {
 ]
     */`;
     jsonFolder = "../src/apps";
-    // Write the json file to jsonFolder.
     fs.writeFile(path.join(jsonFolder, "mediaGenerated.js"), jsonInfo + speechInfo, (err) => {
         if (err) throw err;
         console.log("JSON file saved!");
