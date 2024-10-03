@@ -10,6 +10,7 @@ import Microphone from "./apps/Microphone.svelte";
 import Stories from "./apps/Stories.svelte";
 import Timer from "./apps/Timer.svelte";
 import Motor from "./apps/Motor.svelte";
+import Map from "./apps/Map.svelte";
 import MusicSequencer from "./apps/MusicSequencer/MusicSequencer.svelte";
 import Paint from "./apps/Paint/Paint.svelte";
 import AirplaneDesigner from "./apps/AirplaneDesigner/AirplaneDesigner.svelte";
@@ -33,6 +34,7 @@ import AirplaneCrash from "./apps/TinyQuest/AirplaneCrash.svelte";
 import BlockDrop from "./apps/TinyQuest/BlockDrop.svelte";
 import Dungeon from "./apps/TinyQuest/dungeon/Dungeon.svelte";
 import RandomNumbers from "./apps/TinyQuest/RandomNumbers.svelte";
+import LemonadeStand from "./apps/TinyQuest/LemonadeStand.svelte";
 
 
 export const routes = {
@@ -91,6 +93,11 @@ export const routes = {
     "/#/motor": Motor,
     "/#/motor/": Motor,
 
+    "/map": Map,
+    "/map/": Map,
+    "/#/map": Map,
+    "/#/map/": Map,
+
     "/musicsequencer": MusicSequencer,
     "/musicsequencer/": MusicSequencer,
     "/#/musicsequencer": MusicSequencer,
@@ -124,6 +131,7 @@ export const routes = {
     "/tinyquest/blockdrop": BlockDrop,
     "/tinyquest/dungeon": Dungeon,
     "/tinyquest/randomnumbers": RandomNumbers,
+    "/tinyquest/lemonadestand": LemonadeStand,
 
     // // Wildcard parameter
     // "/go/*": MainGame,

@@ -19,105 +19,76 @@
     import Sampler from "./Sampler.svelte";
 
     let bpm = 80;
-    let started = false;
+    let started = true;
     let samplerOn = false;
     let height = 6;
     let width = 16;
-    let grid = [];
-    for (let y = 0; y < height; y++) {
-            grid[y] = [];
-            for (let x = 0; x < width; x++) {
-                grid[y][x] = false;
-            }
-        }
-        console.log("MusicSequencer onMount2");
+    let grid = Array(height).fill().map(() => Array(width).fill(false));
+    let current16thNote = 0;
+    let loop;
+
+    const sampleNames = ["kick", "snare", "clap", "closedhat", "hihat", "cymbal"];
+    const players = new Tone.Players({
+        kick: "samples/CYCdh_ElecK04-Kick02.wav",
+        snare: "samples/CYCdh_ElecK04-Snr02.wav",
+        clap: "samples/CYCdh_ElecK04-Clap.wav",
+        closedhat: "samples/CYCdh_ElecK04-ClHat02.wav",
+        hihat: "samples/CYCdh_ElecK04-HfHat.wav",
+        cymbal: "samples/CYCdh_ElecK04-Cymbal02.wav",
+    }).toDestination();
+    const originalCount = sampleNames.length;
+
+    let currentSampleIndex = -1;
+    let recordedSamples = [];
+    let editingSample = null; // Add this line
 
     onMount(() => {
-        console.log("MusicSequencer onMount");
-        height = 6;
-        width = 16;
-        grid = [];
-        for (let y = 0; y < height; y++) {
-            grid[y] = [];
-            for (let x = 0; x < width; x++) {
-                grid[y][x] = false;
-            }
-        }
-        grid = grid;
+        initializeGrid();
+        initializeTone();
 
         return () => {
-            Tone.Transport.stop();
+            const transport = Tone.getTransport();
+            transport.stop();
+            transport.cancel();
+            loop?.dispose();
             players?.stopAll();
         };
     });
 
-    function tick() {}
+    function initializeGrid() {
+        grid = Array(height).fill().map(() => Array(width).fill(false));
+    }
 
-    handleResize();
+    function initializeTone() {
+        Tone.loaded().then(() => {
+            loop = new Tone.Loop(playStep, width === 32 ? "32n" : "16n").start(0);
+            const transport = Tone.getTransport();
+            transport.bpm.value = bpm;
+            transport.timeSignature = 4;
+            transport.start();
+        });
+    }
 
-    // // create two monophonic synths
-    // const synthA = new Tone.FMSynth().toDestination();
-    // const synthB = new Tone.AMSynth().toDestination();
-    // //play a note every quarter-note
-    // const loopA = new Tone.Loop((time) => {
-    //     synthA.triggerAttackRelease("C2", "8n", time);
-    // }, "4n").start(0);
-    // //play another note every off quarter-note, by starting it "8n"
-    // const loopB = new Tone.Loop((time) => {
-    //     synthB.triggerAttackRelease("C4", "8n", time);
-    // }, "4n").start("8n");
-    // // the loops start when the Transport is started
-    // Tone.Transport.start();
-    // ramp up to 800 bpm over 10 seconds
-    // Tone.Transport.bpm.rampTo(800, 10);
-
-    // const player = new Tone.Player("https://tonejs.github.io/audio/berklee/gong_1.mp3").toDestination();
-    // Tone.loaded().then(() => {
-    //     player.start();
-    // });
-    let current16thNote = 0;
-    const players = new Tone.Players({
-        "kick": "samples/CYCdh_ElecK04-Kick02.wav",
-        "snare": "samples/CYCdh_ElecK04-Snr02.wav",
-        "clap": "samples/CYCdh_ElecK04-Clap.wav",
-        "closedhat": "samples/CYCdh_ElecK04-ClHat02.wav",
-        "hihat": "samples/CYCdh_ElecK04-HfHat.wav",
-        "cymbal": "samples/CYCdh_ElecK04-Cymbal02.wav",
-    }).toDestination();
-    Tone.loaded().then(() => {
-        // players.player("kick").start();
-
-        const loop = new Tone.Loop(
-            (time) => {
-                // triggered every sixteenth note.
-                // console.log(time);
-                for (let y = 0; y < height; y++) {
-                    // if (grid[y][current16thNote]) synthA.triggerAttackRelease(["C3", "D3", "E3", "F3", "G3", "A4", "B4", "C4"][y], "16n", time);
-                    // if (grid[y][current16thNote]) players.player("kick").start();
+    function playStep(time) {
+        for (let y = 0; y < height; y++) {
+            if (grid[y][current16thNote]) {
+                const sampleName = sampleNames[y];
+                if (!sampleName.startsWith('recorded_')) {
+                    // Play built-in samples
+                    players.player(sampleName).start(time);
+                } else {
+                    // Play recorded samples
+                    const sampleIndex = parseInt(sampleName.split('_')[1]);
+                    const sample = recordedSamples[sampleIndex];
+                    if (sample) {
+                        const player = players.player(sampleName);
+                        player.start(time, sample.start, sample.duration);
+                    }
                 }
-                if (grid[0][current16thNote]) players.player("kick").start();
-                if (grid[1][current16thNote]) players.player("snare").start();
-                if (grid[2][current16thNote]) players.player("clap").start();
-                if (grid[3][current16thNote]) players.player("closedhat").start();
-                if (grid[4][current16thNote]) players.player("hihat").start();
-                if (grid[5][current16thNote]) players.player("cymbal").start();
-
-                // if (grid[0][current16thNote]) synthA.triggerAttackRelease("C4", "16n", time);
-                current16thNote = (current16thNote + 1) % width;
-            },
-            width === 32 ? "32n" : "16n"
-        ).start(0);
-        Tone.Transport.bpm.value = bpm;
-        Tone.Transport.timeSignature = 4;
-        Tone.Transport.start();
-        // Tone.Transport.schedule((time) => {
-        //     // use the time argument to schedule a callback with Draw
-        //     Tone.Draw.schedule(() => {
-        //         // do drawing or DOM manipulation here
-        //         console.log(time);
-        //     }, time);
-        // }, "+0.5");
-    });
+            }
+        }
+        current16thNote = (current16thNote + 1) % width;
+    }
 
     function pressGrid(x, y) {
         grid[y][x] = !grid[y][x];
@@ -138,7 +109,6 @@
     function colorizeCell(grid, x, y) {
         let scale = width / 16;
         let highlight = x % (8 * scale) === 0 ? 1 : 0;
-        // if (x % 4 === 0) highlight = 1;
         if (grid[y][x]) return "rgb(20,184,166)";
         if (y === 0) return `rgb(${17 + highlight * 34},${24},39)`;
         highlight = (x + 4 * scale) % (8 * scale) === 0 ? 1 : 0;
@@ -148,7 +118,80 @@
         return `rgb(${17},${24},39)`;
     }
 
-    started = true;
+    function updateBPM(delta) {
+        bpm += delta;
+        if (bpm < 20) bpm = 20;
+        if (bpm > 200) bpm = 200;
+        Tone.Transport.bpm.value = bpm;
+    }
+
+    function switchToSampler(index) {
+        // Stop current playback
+        const transport = Tone.getTransport();
+        transport.stop();
+        transport.cancel();
+
+        // Reset the current16thNote
+        current16thNote = 0;
+
+        // Stop all players
+        players.stopAll();
+
+        // Switch to sampler mode
+        samplerOn = true;
+        currentSampleIndex = index;
+        
+        if (index === height) {
+            // Creating a new sample
+            editingSample = null;
+        } else if (sampleNames[index].startsWith('recorded_')) {
+            // Editing an existing recorded sample
+            const sampleIndex = parseInt(sampleNames[index].split('_')[1]);
+            editingSample = recordedSamples[sampleIndex];
+        } else {
+            // Replacing a built-in sample
+            editingSample = null;
+        }
+    }
+
+    function handleSamplerClose(event) {
+        samplerOn = false;
+        if (event.detail && event.detail.recordedBuffer) {
+            const newSample = {
+                buffer: event.detail.recordedBuffer,
+                start: event.detail.startPosition * event.detail.recordedBuffer.duration,
+                duration: (event.detail.stopPosition - event.detail.startPosition) * event.detail.recordedBuffer.duration,
+            };
+            
+            if (currentSampleIndex === height) {
+                // Adding a new recorded sample
+                height += 1;
+                grid = [...grid, Array(width).fill(false)];
+                sampleNames.push(`recorded_${recordedSamples.length}`);
+                recordedSamples.push(newSample);
+                players.add(`recorded_${recordedSamples.length - 1}`, newSample.buffer);
+            } else if (sampleNames[currentSampleIndex].startsWith('recorded_')) {
+                // Replacing an existing recorded sample
+                const sampleIndex = parseInt(sampleNames[currentSampleIndex].split('_')[1]);
+                recordedSamples[sampleIndex] = newSample;
+                players.player(`recorded_${sampleIndex}`).buffer.set(newSample.buffer);
+            } else {
+                // Replacing a built-in sample with a recorded one
+                sampleNames[currentSampleIndex] = `recorded_${recordedSamples.length}`;
+                recordedSamples.push(newSample);
+                players.add(`recorded_${recordedSamples.length - 1}`, newSample.buffer);
+            }
+            
+            // Force a re-render of the grid
+            grid = [...grid];
+        }
+        currentSampleIndex = -1;
+
+        // Reinitialize Tone.js
+        initializeTone();
+    }
+
+    handleResize();
 </script>
 
 <FourByThreeScreen bg="black">
@@ -160,13 +203,6 @@
                 alt="skyscraper"
                 style="height:74rem"
             />
-            <!-- <div
-                in:fade={{ duration: 2000 }}
-                class="text-9xl font-bold text-white m-8 z-10 rounded-3xl px-8 py-1 w-[70rem] text-center"
-                style="margin-top:25rem;background:linear-gradient(.25turn, #40101000, #f01080f0, #40101000);"
-            >
-                {town?.name}
-            </div> -->
             <button
                 in:fade={{ duration: 2000 }}
                 class="bg-red-500 text-white text-9xl rounded-3xl px-8 z-10"
@@ -178,18 +214,16 @@
             >
         </div>
     {:else if samplerOn}
-        <Sampler />
+        <Sampler on:close={handleSamplerClose} editingSample={editingSample} />
     {:else}
         <div class="flex flex-col-reverse mt-48">
             {#each Array(height) as _, y}
                 <div class="flex flex-row">
                     <div
-                        class="w-10 h-20 m-2 flex-center-all text-3xl bg-red-900 rounded cursor-pointer"
-                        on:pointerup={() => {
-                            void 0;
-                        }}
+                        class="w-20 h-20 m-2 flex-center-all text-3xl bg-cyan-950 rounded cursor-pointer"
+                        on:pointerup={() => switchToSampler(y)}
                     >
-                        {["KI", "SN", "CL", "CH", "HH", "CY"][y]}
+                        {y < originalCount ? sampleNames[y].slice(0, 2).toUpperCase() : 'RC'}
                     </div>
                     {#each Array(width) as _, x}
                         <div
@@ -203,14 +237,19 @@
                                 pressGrid(x, y);
                             }}
                         >
-                            <!-- <div class="text-4xl text-gray-500">{x},{y}</div> -->
                             <div
-                                class="w-4 h-4 rounded-full {(current16thNote - 1) % width === x ? 'bg-teal-400' : 'bg-black'}"
+                                class="w-4 h-4 rounded-full {(current16thNote - 1) % width === x ? 'bg-teal-400' : 'bg-gray-950'}"
                             />
                         </div>
                     {/each}
                 </div>
             {/each}
+                    <div
+                        class="w-20 h-20 m-2 flex-center-all text-3xl bg-cyan-950 rounded cursor-pointer"
+                        on:pointerup={() => switchToSampler(height)}
+                    >
+                        +
+                    </div>
         </div>
         <br />
         <!-- <button
@@ -220,9 +259,15 @@
             }}>+</button
         > -->
         <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={toggle}>Play / Pause</button>
-        <button class="text-4xl bg-gray-800 p-4 rounded-lg ml-4 w-16" on:pointerup={() => {bpm--;Tone.Transport.bpm.value = bpm;}}>-</button>
+        <button
+            class="text-4xl bg-gray-800 p-4 rounded-lg ml-4 w-16"
+            on:pointerup={() => updateBPM(-1)}>-</button
+        >
         <span class="text-4xl bg-gray-900 p-4 rounded-lg">{bpm}</span>
-        <button class="text-4xl bg-gray-800 p-4 rounded-lg mr-4 w-16" on:pointerup={() => {bpm++;Tone.Transport.bpm.value = bpm;}}>+</button>
+        <button
+            class="text-4xl bg-gray-800 p-4 rounded-lg mr-4 w-16"
+            on:pointerup={() => updateBPM(1)}>+</button
+        >
         <!-- <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={() => Tone.start()}>START</button> -->
         <!-- <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={pause}>Pause</button>
             <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={resume}>Resume</button> -->

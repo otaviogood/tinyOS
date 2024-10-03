@@ -2,8 +2,17 @@ export async function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function getRandomInt(max) {
-    return Math.floor(Math.random() * Math.floor(max));
+// This function returns a random integer between min (inclusive) and max (exclusive)
+// If only one argument is passed, it returns a random integer between 0 and the argument (exclusive)
+export function getRandomInt(min, max) {
+    if (max === undefined) {
+        // If only one argument is passed, treat it as the max (exclusive), and min is 0
+        max = min;
+        min = 0;
+    }
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min)) + min;
 }
 
 // https://stackoverflow.com/questions/2450954/how-to-randomize-shuffle-a-javascript-array

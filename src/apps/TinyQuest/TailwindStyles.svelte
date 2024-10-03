@@ -27,6 +27,9 @@
             border-radius: 3rem;
         }
 
+        .font-mono {
+            font-family: 'Roboto Mono';
+        }
 
         .font-2vmin {
             font-size: 2vmin;

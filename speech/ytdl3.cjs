@@ -100,6 +100,13 @@ const allVids = {
     "in my mind": "W9P_qUnMaFg",
     "royals": "nlcIKh6sBtc",
     "animals": "CkRyaG4Mjik",
+    "american boy": "h7t9o5STsK0",
+    "crazy": "Qe500eIK1oA",
+    "mad world": "sFIQgPAms88",
+    "used to know": "8UVNT4wvIGY",
+    "hideaway": "Vnoz5uBEWOA",
+    "portugal the man": "8xT0vWporWs",
+    "sunday best": "Xt3m04Tscc8",
 };
 
 async function sleep(ms) {

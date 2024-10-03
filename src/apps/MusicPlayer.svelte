@@ -212,7 +212,7 @@
                 <div class="flex flex-col w-full">
                     <div class="flex flex-row flex-wrap w-full overflow-hidden overflow-y-scroll scroll" style="height:30rem;touch-action:auto;scroll-behavior:auto;" on:touchmove={(e) => {window.letMeScroll = true; e.currentTarget.dataset.lastTouch = 0;
                     }}>
-                        {#each Object.entries(allMedia) as media, i}
+                        {#each Object.entries(allMedia).reverse() as media, i}
                             <div class="w-1/3 border-white active:scale-110 transform transition-all duration-75" on:pointerup={() => {speechPlay(media[0])}}>
                                 <VideoCard label={media[0]} id={media[1][0]} highlight={media[0].toLowerCase() === typed.toLowerCase()} {typed} />
                             </div>

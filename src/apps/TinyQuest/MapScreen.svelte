@@ -59,6 +59,7 @@
         $allTowns.push(new Town(0.94, 0.72, "DUNGEON", "/TinyQuest/dungeon"));
         $allTowns.push(new Town(0.94, 0.82, "TONES", "/TinyQuest/listensounds"));
         $allTowns.push(new Town(0.94, 0.92, "CHROMA-FLOWMA", "/TinyQuest/blockdrop"));
+        $allTowns.push(new Town(0.25, 0.5, "LEMONADE STAND", "/TinyQuest/lemonadestand"));
         $allTowns = $allTowns;
         allRoads = [];
         // allRoads.push(new Road("ALPHABET TOWN", "LOWER CASE CAVE", $allTowns));
