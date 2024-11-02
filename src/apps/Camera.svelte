@@ -125,7 +125,7 @@
 
     let allKeys = null;
     async function browse() {
-        allKeys = keys();
+        allKeys = await keys();
     }
 
     function toggleFacing() {
@@ -146,14 +146,13 @@
     />
     <!-- Make a fullscreen image preview of the key that was returned from the ImageBrowser. -->
     {#if previewImage}
-        <div class="fit-full-space p-2 bg-black z-10">
-            <img src={previewImage} class="fit-full-space max-w-full max-h-full m-auto overflow-auto object-contain" alt="camera" on:pointerup={() => (previewImage = null)} />
-            <!-- <div
-                class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl"
-                on:pointerup={() => (previewImage = null)}
-            >
-                <i class="fas fa-times-circle" />
-            </div> -->
+        <div class="fit-full-space p-2 bg-black z-10 flex items-center justify-center">
+            <img 
+                src={previewImage} 
+                class="w-auto h-auto max-w-full max-h-full object-contain" 
+                alt="camera" 
+                on:pointerup={() => (previewImage = null)} 
+            />
         </div>
     {/if}
     <div class="flex flex-col overflow-auto">
@@ -161,7 +160,7 @@
         <video
             bind:this={video}
             class="block"
-            style="wiXXdth:512px;heXXight:480px;max-height:62rem;{false ? '' : 'border:2px solid #404040;'}"
+            style="max-height:62rem;{false ? '' : 'border:2px solid #404040;'}"
         />
         <canvas bind:this={canvas} width="640" height="480" style="display:none;" />
         <canvas bind:this={canvasThumb} width="320" height="200" style="display:none;" />
