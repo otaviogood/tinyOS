@@ -1,9 +1,13 @@
 <script>
     import { onMount, onDestroy } from "svelte";
-    import { tweened } from 'svelte/motion';
-    import { cubicOut } from 'svelte/easing';
+    import { tweened } from "svelte/motion";
+    import { cubicOut } from "svelte/easing";
+    import Slider from "../../components/Slider.svelte";
+    import FrequencyVisualizer from "./FrequencyVisualizer.svelte";
     import * as Tone from "tone";
-    import { createEventDispatcher } from 'svelte';
+    import { AnalyserNode, OfflineAudioContext } from "standardized-audio-context";
+    import { pxToRem, remToPx } from "../../screen";
+    import { createEventDispatcher } from "svelte";
     const dispatch = createEventDispatcher();
 
     export let editingSample = null; // Add this line
@@ -22,6 +26,11 @@
     let playbackPosition = 0;
     let analyser;
     let animationId;
+    let volume = 100; // Initial volume value
+    let volumeNode;
+    let dominantFrequency = 220;
+    let dominantFrequencyIndex = 0;
+    let frequencyData = [];
 
     // Buffer to store waveform data over time
     const bufferDuration = 8; // 8 seconds of data to display
@@ -29,17 +38,29 @@
     const bufferSize = bufferDuration * sampleRate;
     let currentBufferPosition = 0;
 
-    $: indicatorPosition = audioBuffer ? ((playbackPosition / (audioBuffer?.duration ?? bufferDuration)) + $startPosition) * 100 : 0;
+    $: indicatorPosition = audioBuffer
+        ? (playbackPosition / (audioBuffer?.duration ?? bufferDuration) + $startPosition) * 100
+        : 0;
 
     // Replace the regular variables with tweened stores
     let startPosition = tweened(0, {
         duration: 100,
-        easing: cubicOut
+        easing: cubicOut,
     });
     let stopPosition = tweened(1, {
         duration: 100,
-        easing: cubicOut
+        easing: cubicOut,
     });
+    $: {
+        if (audioBuffer && ($startPosition !== 0 || $stopPosition !== 1)) {
+            findDominantFrequency().then((freq) => {
+                if (freq) {
+                    dominantFrequency = freq;
+                    console.log(`Updated Dominant Frequency: ${dominantFrequency.toFixed(2)} Hz`);
+                }
+            });
+        }
+    }
 
     let isDragging = false;
     let draggedMarker = null;
@@ -67,7 +88,7 @@
         canvasHeight = canvas.height;
 
         if (editingSample) loadExistingSample();
-        
+
         drawWaveform();
     });
 
@@ -76,6 +97,7 @@
         audioBuffer = editingSample.buffer;
         startPosition.set(editingSample.start / audioBuffer.duration);
         stopPosition.set((editingSample.start + editingSample.duration) / audioBuffer.duration);
+        volume = editingSample.volume;
     }
 
     // Clean up on component destroy
@@ -89,7 +111,15 @@
             mic.dispose();
             mic = null;
         }
-        if (player) player.dispose();
+        if (volumeNode) {
+            volumeNode.dispose();
+            volumeNode = null;
+        }
+        if (player) {
+            player.stop();
+            player.dispose();
+            player = null;
+        }
         if (recorder) recorder.dispose();
         if (analyser) analyser.dispose();
     });
@@ -252,14 +282,26 @@
             try {
                 await Tone.start();
 
-                // If already playing, stop the current playback
-                if (playing && player) {
+                // Stop and dispose of the current player if it exists
+                if (player) {
                     player.stop();
                     player.dispose();
+                    player = null;
                 }
 
                 // Create a new player instance
-                player = new Tone.Player(audioBuffer).toDestination();
+                player = new Tone.Player(audioBuffer);
+
+                // Create a new volume node and connect it
+                if (volumeNode) {
+                    volumeNode.dispose();
+                }
+                volumeNode = new Tone.Volume().toDestination();
+                player.connect(volumeNode);
+
+                // Set initial volume
+                updateVolume();
+
                 playing = true;
 
                 player.onstop = () => {
@@ -320,6 +362,10 @@
                 animationId = null;
             }
         }
+        if (volumeNode) {
+            volumeNode.dispose();
+            volumeNode = null;
+        }
     }
 
     function normalizeAudio(buffer, targetAmplitude) {
@@ -364,6 +410,12 @@
                 // Normalize the audio to 70% loudness
                 const normalizedBuffer = normalizeAudio(tempAudioBuffer, 0.7);
                 audioBuffer = normalizedBuffer;
+
+                // Perform frequency analysis
+                dominantFrequency = await findDominantFrequency();
+                if (dominantFrequency) {
+                    console.log(`Dominant Frequency: ${dominantFrequency.toFixed(2)} Hz`);
+                }
 
                 // Clean up
                 if (mic) {
@@ -450,8 +502,11 @@
         let xy = getPointerPos(event);
         let x = Math.max(0, Math.min(1, xy[0]));
 
-        if (draggedMarker === "start") startPosition.set(Math.min(x, $stopPosition));
-        else stopPosition.set(Math.max(x, $startPosition));
+        if (draggedMarker === "start") {
+            startPosition.set(Math.min(x, $stopPosition), { duration: 0 });
+        } else {
+            stopPosition.set(Math.max(x, $startPosition), { duration: 0 });
+        }
     }
 
     function handleEnd() {
@@ -474,24 +529,147 @@
 
     function closeAndReturnSample() {
         if (audioBuffer) {
-            dispatch('close', { 
+            dispatch("close", {
                 recordedBuffer: audioBuffer,
                 startPosition: $startPosition,
-                stopPosition: $stopPosition
+                stopPosition: $stopPosition,
+                volume: volume,
             });
         } else {
-            dispatch('close', { recordedBuffer: null });
+            dispatch("close", { recordedBuffer: null });
         }
+    }
+
+    // Add this function to handle volume changes
+    function handleVolumeChange(event) {
+        volume = event.detail.v;
+        updateVolume();
+    }
+
+    // Add this function to update the volume
+    function updateVolume() {
+        if (volumeNode) {
+            // Convert volume (0-100) to decibels (-60 to 0)
+            const volumeInDecibels = Tone.gainToDb(volume / 100);
+            volumeNode.volume.rampTo(volumeInDecibels, 0.1); // Use rampTo for smooth transitions
+        }
+    }
+
+    async function findDominantFrequency() {
+        if (!audioBuffer) return null;
+
+        const sampleRate = audioBuffer.sampleRate;
+        let startTime = $startPosition * audioBuffer.duration;
+        let duration = ($stopPosition - $startPosition) * audioBuffer.duration;
+
+        if (duration <= 0) {
+            console.warn("Invalid selection for frequency analysis: duration is zero or negative.");
+            return null;
+        }
+
+        let sampleStart = Math.floor(startTime * sampleRate);
+        let numSamples = Math.floor(duration * sampleRate);
+
+        // Ensure we have at least the minimum number of samples
+        if (numSamples < 32) {
+            console.warn("Selected audio segment is too short for frequency analysis.");
+            return null;
+        }
+
+        // Determine the appropriate fftSize (must be power of two between 32 and 32768)
+        function getFftSize(n) {
+            const minFftSize = 32;
+            const maxFftSize = 32768;
+            let fftSize = minFftSize;
+            while (fftSize * 2 <= n && fftSize < maxFftSize) {
+                fftSize *= 2;
+            }
+            return fftSize;
+        }
+
+        const fftSize = getFftSize(numSamples);
+
+        // If numSamples exceeds fftSize, adjust sampleStart to analyze a window in the middle
+        if (numSamples > fftSize) {
+            const halfFftSize = Math.floor(fftSize / 2);
+            const middleSample = sampleStart + Math.floor(numSamples / 2);
+            sampleStart = middleSample - halfFftSize;
+            // Ensure sampleStart is within buffer bounds
+            sampleStart = Math.max(0, Math.min(sampleStart, audioBuffer.length - fftSize));
+            numSamples = fftSize;
+        }
+
+        // Create an OfflineAudioContext with enough samples
+        const offlineContext = new OfflineAudioContext(audioBuffer.numberOfChannels, fftSize, sampleRate);
+
+        // Create a buffer with the appropriate size (fftSize)
+        const extractedBuffer = offlineContext.createBuffer(audioBuffer.numberOfChannels, fftSize, sampleRate);
+
+        // Copy data from the original buffer to the new buffer
+        for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+            const sourceData = audioBuffer.getChannelData(channel);
+            const destData = extractedBuffer.getChannelData(channel);
+            const sliceStart = sampleStart;
+            const sliceEnd = sampleStart + fftSize;
+            const slice = sourceData.subarray(sliceStart, sliceEnd);
+
+            // Ensure slice does not exceed destData length
+            const len = Math.min(slice.length, destData.length);
+            destData.set(slice.subarray(0, len));
+
+            // Zero-pad if necessary
+            if (len < destData.length) {
+                destData.fill(0, len);
+            }
+        }
+
+        // Set up the audio processing chain
+        const source = offlineContext.createBufferSource();
+        source.buffer = extractedBuffer;
+
+        const analyser = offlineContext.createAnalyser();
+        analyser.fftSize = fftSize;
+
+        source.connect(analyser);
+        analyser.connect(offlineContext.destination);
+
+        source.start(0);
+
+        // Render the audio
+        await offlineContext.startRendering();
+
+        // Get the frequency data from the analyser
+        const dataArray = new Float32Array(analyser.frequencyBinCount);
+        analyser.getFloatFrequencyData(dataArray);
+
+        // Store the frequency data for visualization
+        frequencyData = Array.from(dataArray);
+
+        // Find the peak frequency bin
+        let maxIndex = 0;
+        let maxValue = -Infinity;
+        for (let i = 0; i < dataArray.length; i++) {
+            if (dataArray[i] > maxValue) {
+                maxValue = dataArray[i];
+                maxIndex = i;
+            }
+        }
+        dominantFrequencyIndex = maxIndex;
+
+        // Calculate the dominant frequency
+        const nyquistFreq = sampleRate / 2;
+        const freqBinWidth = nyquistFreq / analyser.frequencyBinCount;
+        const dominantFrequency = maxIndex * freqBinWidth;
+
+        console.log(`Dominant Frequency: ${dominantFrequency.toFixed(2)} Hz`);
+        return dominantFrequency;
     }
 </script>
 
-<svelte:window 
-    on:pointermove={handleMove}
-    on:pointerup={handleEnd}
-/>
+<svelte:window on:pointermove={handleMove} on:pointerup={handleEnd} />
 
 <div class="container flex-center-all flex-col">
-    <div class="h-32"></div>
+    <div class="h-32" />
     <div
         class="waveform-container relative w-[95rem] h-[32rem] mb-4"
         on:pointerdown={handleStart}
@@ -502,7 +680,7 @@
             <div id="playback-indicator" style="left: {indicatorPosition}%;" />
         {/if}
         <div class="bg-black/50 absolute top-0 left-0 h-full" style="width:{$startPosition * 100}%" />
-        <div class="bg-black/50 absolute top-0 h-full" style="width:{(1-$stopPosition) * 100}%;right:0px" />
+        <div class="bg-black/50 absolute top-0 h-full" style="width:{(1 - $stopPosition) * 100}%;right:0px" />
         <div class="marker start-marker" style="left: {$startPosition * 100}%;" />
         <div class="marker stop-marker" style="left: {$stopPosition * 100}%;" />
     </div>
@@ -510,21 +688,51 @@
         <div class="button-row">
             <button on:pointerdown={recordButton} class="btn" disabled={recording || playing}>
                 {#if recording}
-                    <i class="fa-solid fa-circle-dot text-red-600 btn-text"></i>
+                    <i class="fa-solid fa-circle-dot text-red-600 btn-text" />
                 {:else}
-                    <i class="fa-solid fa-circle text-red-600 btn-text"></i>
+                    <i class="fa-solid fa-circle text-red-600 btn-text" />
                 {/if}
             </button>
             <button on:pointerdown={stopButton} class="btn" disabled={!recording && !playing}>
-                <i class="fa-solid fa-stop text-[#60b0ff] btn-text"></i>
+                <i class="fa-solid fa-stop text-[#60b0ff] btn-text" />
             </button>
             <button on:pointerdown={playButton} class="btn" disabled={!audioBuffer}>
-                <i class="fa-solid fa-play text-[#60b0ff] btn-text"></i>
+                <i class="fa-solid fa-play text-[#60b0ff] btn-text" />
             </button>
         </div>
-            <button on:pointerup={closeAndReturnSample} class="btn text-5xl ml-aXXuto" style="border-radius:3.75rem">
-                <i class="fa-solid fa-check text-[#60b0ff] btn-text" style="font-size:4rem"></i>
-            </button>
+        <div class="absolute top-[45.5rem] left-9 w-[30rem]">
+            <Slider
+                size={7.5 * 2}
+                label=""
+                units=""
+                val={volume}
+                min={0}
+                max={100}
+                selected={true}
+                color="#2a8acf"
+                colorBgOuter=""
+                colorBgInner="#181820"
+                colorIndicator="#c0e0f0"
+                minimal
+                styleInner="outline: .3rem solid #80afe0;box-shadow: 0 0 1rem rgba(137, 229, 255, 0.6);"
+                on:change={handleVolumeChange}
+            />
+        </div>
+
+        {#if frequencyData.length > 0}
+            <div class="absolute top-[43rem] left-[68rem] w-[29.5rem] h-[12rem]">
+                <FrequencyVisualizer
+                    data={frequencyData}
+                    width={remToPx(29.5)}
+                    height={remToPx(12)}
+                    dominantFrequency={dominantFrequencyIndex}
+                />
+            </div>
+        {/if}
+
+        <button on:pointerup={closeAndReturnSample} class="btn text-5xl ml-aXXuto" style="border-radius:3.75rem">
+            <i class="fa-solid fa-check text-[#60b0ff] btn-text" style="font-size:4rem" />
+        </button>
     </div>
 </div>
 
@@ -535,7 +743,7 @@
     }
 
     .btn-text {
-        filter: drop-shadow(0 0 .4rem rgba(255, 255, 255, 0.3));
+        filter: drop-shadow(0 0 0.4rem rgba(255, 255, 255, 0.3));
         font-size: 3rem;
     }
 
@@ -579,13 +787,13 @@
         height: 12rem;
         gap: 2rem;
         margin-bottom: 4rem;
-        border: .5rem solid #080f18;
+        border: 0.5rem solid #080f18;
         border-radius: 6rem;
     }
 
     .btn {
         /* transition: all 0.2s ease; */
-        border: .4rem solid transparent;
+        border: 0.4rem solid transparent;
         width: 7.5rem;
         height: 7.5rem;
         border-radius: 100%;
@@ -639,12 +847,7 @@
         top: 0;
         width: 2px;
         height: 100%;
-        background: linear-gradient(
-            to bottom,
-            #ff7aff 0%,
-            transparent 50%,
-            #ff7aff 100%
-        );
+        background: linear-gradient(to bottom, #ff7aff 0%, transparent 50%, #ff7aff 100%);
         cursor: move;
         margin-left: -1px;
     }
@@ -657,8 +860,8 @@
         transform: translateX(-50%);
         width: 0;
         height: 0;
-        border-left: .6rem solid transparent;
-        border-right: .6rem solid transparent;
+        border-left: 0.6rem solid transparent;
+        border-right: 0.6rem solid transparent;
     }
 
     .start-marker::before {

@@ -99,8 +99,20 @@ export let allMediaAll = {
 "butterflies": ["y3l-ovZQY4M", "", "mp4"],
 "paid in full": ["E7t8eoA_1jQ", "", "mp4"],
 "in my mind": ["W9P_qUnMaFg", "", "mp4"],
-"royals": ["nlcIKh6sBtc", "Lorde - Royals (US Version)", "mp4"],
-"animals": ["CkRyaG4Mjik", "Martin Garrix - Animals (Radio Edit)", "mp4"],
+"royals": ["nlcIKh6sBtc", "", "mp4"],
+"animals": ["CkRyaG4Mjik", "", "mp4"],
+"american boy": ["h7t9o5STsK0", "", "mp4"],
+"crazy": ["Qe500eIK1oA", "", "mp4"],
+"mad world": ["sFIQgPAms88", "", "mp4"],
+"used to know": ["8UVNT4wvIGY", "", "mp4"],
+"hideaway": ["Vnoz5uBEWOA", "", "mp4"],
+"portugal the man": ["8xT0vWporWs", "", "mp4"],
+"sunday best": ["Xt3m04Tscc8", "", "mp4"],
+"hey jude": ["mQER0A0ej0M", "Hey Jude (Remastered 2015)", "mp4"],
+"here comes the sun": ["tDEzmaZHuS0", "The Beatles - Here Comes The Sun (Remastered 2009)", "mp4"],
+"southern cross": ["4FBDOU6NEZ8", "Southern Cross", "mp4"],
+"cloudy day": ["V91GRYjlR2I", "TONES AND I - CLOUDY DAY (OFFICIAL ANIMATED VIDEO)", "mp4"],
+"lost ones": ["4HhfKArW3BY", "Lost Ones", "mp4"],
 };
 // This weird string will be parsed by genSpeech.cjs to generate the speech synthesis files.
 
@@ -206,6 +218,18 @@ export let allMediaAll = {
 "in my mind",
 "royals",
 "animals",
+"american boy",
+"crazy",
+"mad world",
+"used to know",
+"hideaway",
+"portugal the man",
+"sunday best",
+"hey jude",
+"here comes the sun",
+"southern cross",
+"cloudy day",
+"lost ones",
 
 ]
     */

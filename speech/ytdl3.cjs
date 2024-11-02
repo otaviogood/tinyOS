@@ -107,6 +107,11 @@ const allVids = {
     "hideaway": "Vnoz5uBEWOA",
     "portugal the man": "8xT0vWporWs",
     "sunday best": "Xt3m04Tscc8",
+    "hey jude": "mQER0A0ej0M",
+    "here comes the sun": "tDEzmaZHuS0",
+    "southern cross": "4FBDOU6NEZ8",
+    "cloudy day": "V91GRYjlR2I",
+    "lost ones": "4HhfKArW3BY",
 };
 
 async function sleep(ms) {

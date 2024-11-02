@@ -16,6 +16,7 @@
     } from "../../screen";
     import FourByThreeScreen from "../../components/FourByThreeScreen.svelte";
     import * as Tone from "tone";
+    import CloseButton from "../../components/CloseButton.svelte";
     import Sampler from "./Sampler.svelte";
 
     let bpm = 80;
@@ -23,7 +24,9 @@
     let samplerOn = false;
     let height = 6;
     let width = 16;
-    let grid = Array(height).fill().map(() => Array(width).fill(false));
+    let grid = Array(height)
+        .fill()
+        .map(() => Array(width).fill(false));
     let current16thNote = 0;
     let loop;
 
@@ -56,7 +59,9 @@
     });
 
     function initializeGrid() {
-        grid = Array(height).fill().map(() => Array(width).fill(false));
+        grid = Array(height)
+            .fill()
+            .map(() => Array(width).fill(false));
     }
 
     function initializeTone() {
@@ -73,17 +78,21 @@
         for (let y = 0; y < height; y++) {
             if (grid[y][current16thNote]) {
                 const sampleName = sampleNames[y];
-                if (!sampleName.startsWith('recorded_')) {
-                    // Play built-in samples
-                    players.player(sampleName).start(time);
-                } else {
+                const player = players.player(sampleName);
+                
+                if (sampleName.startsWith("recorded_")) {
                     // Play recorded samples
-                    const sampleIndex = parseInt(sampleName.split('_')[1]);
+                    const sampleIndex = parseInt(sampleName.split("_")[1]);
                     const sample = recordedSamples[sampleIndex];
                     if (sample) {
-                        const player = players.player(sampleName);
+                        // Set the volume for the player
+                        player.volume.value = Tone.gainToDb(sample.volume / 100);
                         player.start(time, sample.start, sample.duration);
                     }
+                } else {
+                    // Play built-in samples
+                    // For built-in samples, we keep the default volume
+                    player.start(time);
                 }
             }
         }
@@ -140,13 +149,13 @@
         // Switch to sampler mode
         samplerOn = true;
         currentSampleIndex = index;
-        
+
         if (index === height) {
             // Creating a new sample
             editingSample = null;
-        } else if (sampleNames[index].startsWith('recorded_')) {
+        } else if (sampleNames[index].startsWith("recorded_")) {
             // Editing an existing recorded sample
-            const sampleIndex = parseInt(sampleNames[index].split('_')[1]);
+            const sampleIndex = parseInt(sampleNames[index].split("_")[1]);
             editingSample = recordedSamples[sampleIndex];
         } else {
             // Replacing a built-in sample
@@ -161,8 +170,9 @@
                 buffer: event.detail.recordedBuffer,
                 start: event.detail.startPosition * event.detail.recordedBuffer.duration,
                 duration: (event.detail.stopPosition - event.detail.startPosition) * event.detail.recordedBuffer.duration,
+                volume: event.detail.volume, // Store the volume in the sample object
             };
-            
+
             if (currentSampleIndex === height) {
                 // Adding a new recorded sample
                 height += 1;
@@ -170,9 +180,9 @@
                 sampleNames.push(`recorded_${recordedSamples.length}`);
                 recordedSamples.push(newSample);
                 players.add(`recorded_${recordedSamples.length - 1}`, newSample.buffer);
-            } else if (sampleNames[currentSampleIndex].startsWith('recorded_')) {
+            } else if (sampleNames[currentSampleIndex].startsWith("recorded_")) {
                 // Replacing an existing recorded sample
-                const sampleIndex = parseInt(sampleNames[currentSampleIndex].split('_')[1]);
+                const sampleIndex = parseInt(sampleNames[currentSampleIndex].split("_")[1]);
                 recordedSamples[sampleIndex] = newSample;
                 players.player(`recorded_${sampleIndex}`).buffer.set(newSample.buffer);
             } else {
@@ -181,7 +191,7 @@
                 recordedSamples.push(newSample);
                 players.add(`recorded_${recordedSamples.length - 1}`, newSample.buffer);
             }
-            
+
             // Force a re-render of the grid
             grid = [...grid];
         }
@@ -214,16 +224,16 @@
             >
         </div>
     {:else if samplerOn}
-        <Sampler on:close={handleSamplerClose} editingSample={editingSample} />
+        <Sampler on:close={handleSamplerClose} {editingSample} />
     {:else}
-        <div class="flex flex-col-reverse mt-48">
+        <div class="flex flex-col-reverse mt-10">
             {#each Array(height) as _, y}
                 <div class="flex flex-row">
                     <div
                         class="w-20 h-20 m-2 flex-center-all text-3xl bg-cyan-950 rounded cursor-pointer"
                         on:pointerup={() => switchToSampler(y)}
                     >
-                        {y < originalCount ? sampleNames[y].slice(0, 2).toUpperCase() : 'RC'}
+                        {y < originalCount ? sampleNames[y].slice(0, 2).toUpperCase() : "RC"}
                     </div>
                     {#each Array(width) as _, x}
                         <div
@@ -244,12 +254,12 @@
                     {/each}
                 </div>
             {/each}
-                    <div
-                        class="w-20 h-20 m-2 flex-center-all text-3xl bg-cyan-950 rounded cursor-pointer"
-                        on:pointerup={() => switchToSampler(height)}
-                    >
-                        +
-                    </div>
+            <div
+                class="w-20 h-20 m-2 flex-center-all text-3xl bg-cyan-950 rounded cursor-pointer"
+                on:pointerup={() => switchToSampler(height)}
+            >
+                +
+            </div>
         </div>
         <br />
         <!-- <button
@@ -259,23 +269,9 @@
             }}>+</button
         > -->
         <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={toggle}>Play / Pause</button>
-        <button
-            class="text-4xl bg-gray-800 p-4 rounded-lg ml-4 w-16"
-            on:pointerup={() => updateBPM(-1)}>-</button
-        >
+        <button class="text-4xl bg-gray-800 p-4 rounded-lg ml-4 w-16" on:pointerup={() => updateBPM(-1)}>-</button>
         <span class="text-4xl bg-gray-900 p-4 rounded-lg">{bpm}</span>
-        <button
-            class="text-4xl bg-gray-800 p-4 rounded-lg mr-4 w-16"
-            on:pointerup={() => updateBPM(1)}>+</button
-        >
-        <!-- <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={() => Tone.start()}>START</button> -->
-        <!-- <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={pause}>Pause</button>
-            <button class="text-4xl bg-gray-800 p-4 rounded-lg mx-4" on:pointerup={resume}>Resume</button> -->
-        <div
-            class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl z-40"
-            on:pointerup={pop}
-        >
-            <i class="fas fa-times-circle" />
-        </div>
+        <button class="text-4xl bg-gray-800 p-4 rounded-lg mr-4 w-16" on:pointerup={() => updateBPM(1)}>+</button>
+        <CloseButton confirm />
     {/if}
 </FourByThreeScreen>

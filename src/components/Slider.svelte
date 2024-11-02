@@ -8,12 +8,17 @@
     export let max = 100;
     export let digits = 1; // Digits after decimal point that are displayed
     export let color = "#2aaa82";
+    export let colorBgOuter = "#1f2937";
+    export let colorBgInner = "#1f2937";
+    export let colorIndicator = "#ff1060";
+    export let minimal = false;
     export let selected = false;
     export let readonly = false;
     export let size = 10;
     export let style = "";
     let clazz = "";
     export { clazz as class };
+    export let styleInner = "";
     export let val = 0.0;// Number.NaN;//Math.random() * (max-min) + min;
     export let setVal = null;
 
@@ -80,8 +85,8 @@
 </script>
 
 <div
-    class="flex flex-col w-full bg-gray-800 overflow-hidden {clazz}"
-    style="widXXXth:{size * 15}rem;height:{size * .45}rem;font-size:{size * 0.16}rem;line-height:{size*0.2}rem;{style}"
+    class="flex flex-col w-full overflow-hidden {clazz}"
+    style="height:{size * .45}rem;font-size:{size * 0.16}rem;line-height:{size*0.2}rem;background-color:{colorBgOuter};{style}"
     on:pointermove|preventDefault|stopPropagation={pointerMove}
     on:pointerup|preventDefault|stopPropagation={pointerUp}
     on:pointercancel={() => {pointerPressed = false}}
@@ -89,13 +94,13 @@
 >
     <div
         bind:this={clickable}
-        class="{pointerPressed ? 'bg-gray-800' : 'bg-gray-700'} w-fXull h-full relative flex-center-all overflow-hidden"
-        style="margin:{size*0.032}rem;margin-left:{size * 0.193}rem;margin-right:{size * 0.193}rem;border-radius:{size * 0.032}rem;{selected ? 'outline: .15rem solid #ff1060;' : ''}{pointerPressed ? 'outline: .3rem solid #b0b0b0;' : ''}"
+        class="h-full relative flex-center-all overflow-hidden"
+        style="background-color:{pointerPressed ? '#1f2937' : colorBgInner};margin:{size*0.032}rem;margin-left:{size * 0.193}rem;margin-right:{size * 0.193}rem;border-radius:{size * 0.032}rem;{selected ? 'outline: .15rem solid ' + colorIndicator : ''};{pointerPressed ? 'outline: .3rem solid #b0b0b0;' : ''}{styleInner}"
         on:pointerdown|preventDefault|stopPropagation={pointerDown}
         on:pointermove|preventDefault|stopPropagation={pointerMove}
         on:pointerup|preventDefault|stopPropagation={pointerUp}
     >
-        <div class="absolute w-full pointer-events-none" style="height:12%;background-color:{color[0] === "#" ? color + "40" : color}" />
+        <div class="absolute w-full pointer-events-none" style="height:6%;background-color:{color[0] === "#" ? color + "40" : color}" />
         <!-- <div class="absolute h-full pointer-events-none" style="width:{fractionA * 100}%;left:0%;background-color:{color}" /> -->
         {#if sliderPos >= 0}
             <div class="absolute h-full pointer-events-none" style="width:{sliderPos * max * 100 / (max - min) }%;left:{100*(-min) / (max - min)}%;background-color:{color}" />
@@ -104,14 +109,16 @@
         {/if}
         <!-- <div class="absolute h-full pointer-events-none" style="width:{Math.abs(sliderPos * 0.5)}%;{sliderPos < 0 ? 'right:50%;' : 'left:50%;'}background-color:{color}" /> -->
         {#if setVal}
-            <div class="absolute pointer-events-none top-0 arrow-down {!selected ? 'invisible' : ''}" style="left:{fractionSet * 100}%;" />
-            <div class="absolute h-full w-full pointer-events-none text-base {!selected ? 'invisible' : ''}" style="font-size:{size * 0.096}rem;padding-left:{size*0.032}rem;top:{size*0.225}rem;color:#ff1060;text-align:left;" >{setVal?.[0].toFixed(digits) ?? ""}</div>
+            <div class="absolute pointer-events-none top-0 arrow-down {!selected ? 'invisible' : ''}" style="left:{fractionSet * 100}%;border-top: .7em solid {colorIndicator};" />
+            <div class="absolute h-full w-full pointer-events-none text-base {!selected ? 'invisible' : ''}" style="font-size:{size * 0.096}rem;padding-left:{size*0.032}rem;top:{size*0.225}rem;color:{colorIndicator};text-align:left;" >{setVal?.[0].toFixed(digits) ?? ""}</div>
         {/if}
         {#if (min < 0) && (max > 0)}
             <div class="absolute bottom-0 h-1/2 pointer-events-none" style="width:{size * 0.1}%;left:{100*(0 - min) / (max - min)}%;background-color:#d0d0d0b0" />
         {/if}
-        <div class="absolute h-full w-full pointer-events-none" style="padding-right:{size*0.032}rem;color:{pointerPressed ? '#ffffffa0' : '#ffffffd0'};text-align:right;" >{label}<br/>{val.toFixed(digits)} {units}</div>
-        <div class="absolute h-full w-full pointer-events-none text-base" style="font-size:{size * 0.096}rem;padding-left:{size*0.032}rem;color:{pointerPressed ? '#ffffffa0' : '#ffffff80'};text-align:left;" >[{min.toFixed(digits)}..{max.toFixed(digits)}]</div>
+        {#if minimal === false}
+            <div class="absolute h-full w-full pointer-events-none" style="padding-right:{size*0.032}rem;color:{pointerPressed ? '#ffffffa0' : '#ffffffd0'};text-align:right;" >{label}<br/>{val.toFixed(digits)} {units}</div>
+            <div class="absolute h-full w-full pointer-events-none text-base" style="font-size:{size * 0.096}rem;padding-left:{size*0.032}rem;color:{pointerPressed ? '#ffffffa0' : '#ffffff80'};text-align:left;" >[{min.toFixed(digits)}..{max.toFixed(digits)}]</div>
+        {/if}
     </div>
 </div>
 
@@ -121,8 +128,6 @@
         height: 0; 
         border-left: .7em solid transparent;
         border-right: .7em solid transparent;
-        
-        border-top: .7em solid #ff1060;
         margin-left:-.7em;
     }
 </style>
