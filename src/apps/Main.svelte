@@ -5,13 +5,13 @@
         userData,
         phoneScreen,
         firebaseApp,
-    } from "./stores";
+    } from "../stores";
     // import { FirebaseApp, Doc, Collection, User, UploadTask, StorageRef } from "sveltefire";
     // import { getFirestore, collection, query, where, getDocs } from "firebase/firestore";
     import { DateTime, Interval, Duration } from "luxon";
-    import { push, pop, replace } from "svelte-spa-router";
-    import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "./screen";
-    import { sleep, getRandomInt, shuffleArray, preventZoom } from "./utils";
+    import { push, pop } from "../router";
+    import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../screen";
+    import { sleep, getRandomInt, shuffleArray, preventZoom } from "../utils";
 
     const icons = [
         {name: "Tiny Quest", icon: "fa-hat-wizard", bgcolor: "bg-green-500", link: "tinyquest/mapscreen"},
@@ -31,6 +31,10 @@
         {name: "Plane Design", icon: "fa-plane-departure", bgcolor: "bg-rose-500", link: "airplanedesigner"},
         // {name: "CityMap", icon: "fa-road", bgcolor: "bg-emerald-500", link: "citymap"},
         {name: "Map", icon: "fa-globe", bgcolor: "bg-cyan-500", link: "map"},
+        // {name: "Space", icon: "fa-atom", bgcolor: "bg-violet-500", link: "spaceexplorer"},
+        // {name: "Orbits", icon: "fa-atom", bgcolor: "bg-violet-500", link: "orbits"},
+        // {name: "Motor", icon: "fa-compass", bgcolor: "bg-amber-500", link: "Motor"},
+        // {name: "Bluetooth", icon: "fa-compass", bgcolor: "bg-amber-500", link: "Bluetooth"},
         {name: "Settings", icon: "fa-cog", bgcolor: "bg-gray-500", link: "settings"},
     ];
 

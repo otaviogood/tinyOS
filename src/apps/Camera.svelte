@@ -1,7 +1,7 @@
 <!-- Svelte / Tailwind component to take a picture from the camera with a preview, and save them as PNGs -->
 <script>
     import { onMount } from "svelte";
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../router";
     import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
     import ImageBrowser from "./Paint/ImageBrowser.svelte";
     import { openDB, deleteDB, wrap, unwrap } from "idb";

@@ -8,7 +8,7 @@
 
     import { Howl, Howler } from "howler";
     import WinScreen from "../WinScreen.svelte";
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../../../router";
     import { allTowns, currentTownIndex, earnedStar } from "../stores";
     import { handleResize } from "../../../screen";
     import { sleep, getRandomInt, preventZoom } from "../util";

@@ -3,7 +3,7 @@
     import { onMount } from "svelte";
     import { slide, fade } from "svelte/transition";
     import { Howl, Howler } from "howler";
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../router";
     import {
         invAspectRatio,
         fullWidth,

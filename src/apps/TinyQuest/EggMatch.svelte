@@ -8,7 +8,7 @@
     import StarBar from "./StarBar.svelte";
     import SVGCache from "./SVGCache.svelte";
     import WinScreen from "./WinScreen.svelte";
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../../router";
     import { allTowns, currentTownIndex, earnedStar } from "./stores";
     import { spin } from "./Transitions";
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";

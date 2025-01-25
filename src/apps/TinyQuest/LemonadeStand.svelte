@@ -10,7 +10,7 @@
     import { onMount, tick } from "svelte";
     import { slide, fade, scale } from "svelte/transition";
     import { Howl, Howler } from "howler";
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../../router";
     import { Town } from "./places";
     import { allTowns, currentTownIndex, earnedStar } from "./stores";
     import CloseButton from "../../components/CloseButton.svelte";

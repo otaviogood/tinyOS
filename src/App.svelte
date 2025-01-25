@@ -2,8 +2,8 @@
     import { onMount, getContext, setContext } from "svelte";
     import { Howl, Howler } from "howler";
     import { handleResize } from "./screen";
-    import Router from "svelte-spa-router";
-    import { routes } from "./router.js";
+    // Import from the new dynamic router
+    import { Router, push, pop } from "./router.js";
     // import { firebaseConfig } from "./secrets";
     // import { initializeApp } from "firebase/app";
     // import { FirebaseApp, Doc, Collection, User, UploadTask, StorageRef } from "sveltefire";
@@ -72,7 +72,7 @@
 
 <div class="fit-full-space overflow-hidden" on:contextmenu|preventDefault|stopPropagation={() => void(0)} >
     <GlobalRenderContext fps={60} disable>
-        <Router {routes} />
+        <svelte:component this={$Router.component} />
     </GlobalRenderContext>
 </div>
 

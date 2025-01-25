@@ -5,7 +5,7 @@
     import { Howl, Howler } from "howler";
     import StarBar from "./StarBar.svelte";
     import WinScreen from "./WinScreen.svelte";
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../../router";
     import { allTowns, currentTownIndex, earnedStar } from "./stores";
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../../screen";
     import { sleep, getRandomInt, shuffleArray, preventZoom } from "./util";

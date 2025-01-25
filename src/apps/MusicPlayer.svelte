@@ -3,7 +3,7 @@
     import { onMount } from "svelte";
     import { slide, fade } from "svelte/transition";
     import { Howl, Howler } from "howler";
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../router";
     // import { allTowns, currentTownIndex, earnedStar } from "./stores";
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../screen";
     import { sleep, getRandomInt, shuffleArray, preventZoom, caseMe } from "../utils";

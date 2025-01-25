@@ -1,6 +1,6 @@
 <script>
     import { onMount } from "svelte";
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../router";
     import { Howl, Howler } from "howler";
     import {
         invAspectRatio,

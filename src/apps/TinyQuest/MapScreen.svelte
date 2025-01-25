@@ -1,7 +1,7 @@
 <script>
     import "./TailwindStyles.svelte";
     import { onMount } from "svelte";
-    import { pop } from "svelte-spa-router";
+    import { pop, push } from "../../router";
     import { slide, fade } from "svelte/transition";
     import { Howl, Howler } from "howler";
     import { Road, Town } from "./places";
@@ -24,9 +24,6 @@
     // import Three from "./Three.svelte";
     import Fast2d from "../../components/Fast2d/Fast2d.svelte";
     import FastLine from "../../components/Fast2d/FastLine.svelte";
-
-    import Router from "svelte-spa-router";
-    import { push, location, replace } from "svelte-spa-router";
 
     // let webgl;
 
@@ -53,7 +50,7 @@
         $allTowns.push(new Town(0.68, 0.68, "BUS STOP", "/TinyQuest/busstop"));
         $allTowns.push(new Town(0.48, 0.63, "MERMADD", "/TinyQuest/mathgrid", { game: "addition" }));
         $allTowns.push(new Town(0.4, 0.7, "MERMA-MULTIPLICAZZOOFLIZACKS", "/TinyQuest/mathgrid"));
-        $allTowns.push(new Town(0.94, 0.52, "RANDOMS", "/TinyQuest/randomnumbers"));
+        // $allTowns.push(new Town(0.94, 0.52, "RANDOMS", "/TinyQuest/randomnumbers"));
         $allTowns.push(new Town(0.94, 0.62, "AIRPLANE CRASH", "/TinyQuest/airplanecrash"));
         // $allTowns.push(new Town(0.94, 0.72, "READING", "/TinyQuest/reading1"));
         $allTowns.push(new Town(0.94, 0.72, "DUNGEON", "/TinyQuest/dungeon"));

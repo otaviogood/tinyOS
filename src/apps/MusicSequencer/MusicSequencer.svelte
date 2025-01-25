@@ -1,6 +1,6 @@
 <script>
     import { onMount } from "svelte";
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../../router";
     import { slide, fade } from "svelte/transition";
     import {
         invAspectRatio,

@@ -1,5 +1,5 @@
 <script>
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../router";
     import SVGArcDeg from "../components/SVGArcDeg.svelte";
     import { slide, fade } from "svelte/transition";
 

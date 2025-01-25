@@ -1,6 +1,6 @@
 <script>
     import { onMount } from "svelte";
-    import { pop } from "svelte-spa-router";
+    import { pop } from "../router";
     import {
         invAspectRatio,
         fullWidth,
