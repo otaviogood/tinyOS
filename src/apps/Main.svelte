@@ -32,6 +32,7 @@
         // {name: "CityMap", icon: "fa-road", bgcolor: "bg-emerald-500", link: "citymap"},
         {name: "Map", icon: "fa-globe", bgcolor: "bg-cyan-500", link: "map"},
         // {name: "Space", icon: "fa-atom", bgcolor: "bg-violet-500", link: "spaceexplorer"},
+        {name: "Word Finder", icon: "fa-table-cells", bgcolor: "bg-violet-500", link: "wordfinder"},
         // {name: "Orbits", icon: "fa-atom", bgcolor: "bg-violet-500", link: "orbits"},
         // {name: "Motor", icon: "fa-compass", bgcolor: "bg-amber-500", link: "Motor"},
         // {name: "Bluetooth", icon: "fa-compass", bgcolor: "bg-amber-500", link: "Bluetooth"},
