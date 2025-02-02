@@ -12,6 +12,7 @@
     import { push, pop } from "../router";
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../screen";
     import { sleep, getRandomInt, shuffleArray, preventZoom } from "../utils";
+    import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
 
     const icons = [
         {name: "Tiny Quest", icon: "fa-hat-wizard", bgcolor: "bg-green-500", link: "tinyquest/mapscreen"},
@@ -32,7 +33,8 @@
         // {name: "CityMap", icon: "fa-road", bgcolor: "bg-emerald-500", link: "citymap"},
         {name: "Map", icon: "fa-globe", bgcolor: "bg-cyan-500", link: "map"},
         // {name: "Space", icon: "fa-atom", bgcolor: "bg-violet-500", link: "spaceexplorer"},
-        {name: "Word Finder", icon: "fa-table-cells", bgcolor: "bg-violet-500", link: "wordfinder"},
+        {name: "Word Finder", icon: "fa-table-cells-large", bgcolor: "bg-violet-500", link: "wordfinder"},
+        {name: "Word Fit", icon: "fa-table-cells", bgcolor: "bg-amber-500", link: "wordfit"},
         // {name: "Orbits", icon: "fa-atom", bgcolor: "bg-violet-500", link: "orbits"},
         // {name: "Motor", icon: "fa-compass", bgcolor: "bg-amber-500", link: "Motor"},
         // {name: "Bluetooth", icon: "fa-compass", bgcolor: "bg-amber-500", link: "Bluetooth"},
@@ -42,23 +44,23 @@
     handleResize();
 </script>
 
-<div class="fit-full-space select-none overflow-hidden bg-black" on:touchstart={preventZoom}>
+<FourByThreeScreen bg="black">
     <div class="wrapper">
         {#each icons as icon, i}
             <div class="flex-center-all flex-col text-white select-none bXXorder border-red-500">
                 <button class="p-2 active:scale-105 transform transition-all duration-75" on:pointerup={() => {push("/" + icon.link)}}>
-                    <div class="w-64 h-64 roundeXXd-3xl {icon.bgcolor} flex-center-all text-9xl text-white" style="border-radius:5rem"><i class="fas {icon.icon}"></i></div>
+                    <div class="w-56 h-56 roundeXXd-3xl {icon.bgcolor} flex-center-all text-9xl text-white" style="border-radius:4rem"><i class="fas {icon.icon}"></i></div>
                     <div class="font-bold text-3xl m-2">{icon.name.toUpperCase()}</div>
                 </button>
             </div>
         {/each}
     </div>
-</div>
+</FourByThreeScreen>
 
 <style>
     .wrapper {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(5, 1fr);
         grid-template-rows: repeat(4, 1fr);
         height:100rem;
         /* row-gap: 1rem;

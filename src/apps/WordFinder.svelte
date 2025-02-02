@@ -1,6 +1,5 @@
 <script>
     import { onMount } from "svelte";
-    import { pop } from "../router";
     import { 
         bigScale, 
         pxToRem, 
@@ -9,31 +8,25 @@
     } from "../screen";
     import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
     import { Howl } from "howler";
-    import { tweened } from "svelte/motion";
-    import { cubicOut } from "svelte/easing";
     import { sleep } from "../utils";
     import Line from "../components/Line.svelte";
     import CloseButton from "../components/CloseButton.svelte";
     import { fade, slide } from 'svelte/transition';
 
     const GRID_SIZE = 5;
-    const GAME_DURATION = 120; // 2 minutes in seconds
     let dictionary = new Set();
     let grid = [];
     let foundWords = new Set();
     let currentWord = "";
     let currentPath = [];
-    let timeLeft; //GAME_DURATION;
     let gameOver = false;
     let score = 0;
     let elem;
     let errorShake = false;
     let isDragging = false;
     let lastCell = null;
-    let gridElem; // Reference to the grid div
     let pointerX = 0;
     let pointerY = 0;
-    let cellCenters = [];  // Will store center positions of cells in rem units
     let mostRecentWord = null;
 
     const CELL_SIZE = 10; // size in rem
@@ -52,10 +45,7 @@
         const text = await response.text();
         dictionary = new Set(text.split("\n").map(w => w.trim().toLowerCase()));
         startNewGame();
-        updateCellCenters();
-        window.addEventListener('resize', updateCellCenters);
         return () => {
-            window.removeEventListener('resize', updateCellCenters);
         };
     });
 
@@ -74,18 +64,8 @@
         foundWords.clear();
         currentWord = "";
         currentPath = [];
-        // timeLeft = GAME_DURATION;
         gameOver = false;
         score = 0;
-        
-        // Start timer
-        // const timer = setInterval(() => {
-        //     timeLeft--;
-        //     if (timeLeft <= 0) {
-        //         clearInterval(timer);
-        //         endGame();
-        //     }
-        // }, 1000);
     }
 
     function getPointerPos(ev) {
@@ -109,6 +89,7 @@
 
     function handlePointerDown(x, y, event) {
         if (gameOver) return;
+        if (errorShake) return;
         event.preventDefault();
         
         const rect = elem.getBoundingClientRect();
@@ -167,10 +148,6 @@
         lastCell = null;
     }
 
-    function endGame() {
-        gameOver = true;
-    }
-
     function checkWord(word) {
         if (dictionary.has(word) && !foundWords.has(word)) {
             const wordScore = getWordScore(word);
@@ -188,24 +165,6 @@
         }
     }
 
-    // Function to get cell center positions in rem units
-    function updateCellCenters() {
-        if (!gridElem) return;
-        const rect = gridElem.getBoundingClientRect();
-        const cellWidth = rect.width / GRID_SIZE / 16;  // Convert to rem
-        const cellHeight = rect.height / GRID_SIZE / 16;
-
-        cellCenters = [];
-        for (let y = 0; y < GRID_SIZE; y++) {
-            for (let x = 0; x < GRID_SIZE; x++) {
-                cellCenters[y * GRID_SIZE + x] = {
-                    x: (x + 0.5) * cellWidth,
-                    y: (y + 0.5) * cellHeight
-                };
-            }
-        }
-    }
-
     function getWordScore(word) {
         if (word.length === 2) return 1;
         if (word.length === 3) return 2;
@@ -217,8 +176,6 @@
         return 16 + ((word.length - 8) * 6);
     }
 
-    // $: timeStr = `${Math.floor(timeLeft / 60)}:${(timeLeft % 60).toString().padStart(2, '0')}`;
-
 handleResize();
 </script>
 
@@ -229,15 +186,6 @@ handleResize();
          on:pointerup|preventDefault={handlePointerUp}
          on:pointerleave|preventDefault={handlePointerUp}>
         
-        <!-- Add timer bar -->
-        {#if timeLeft}
-            <div class="absolute right-4 top-44 w-[1rem] h-[57rem] bg-green-500 rounded-full overflow-hidden">
-                <div class="w-full bg-gray-800 rounded-full transition-all duration-1000"
-                    style="height: {((GAME_DURATION - timeLeft) / GAME_DURATION) * 100}%;">
-                </div>
-            </div>
-        {/if}
-
         <!-- Left side - scores and words -->
         <div class="absolute left-0 top-0 w-[70rem] h-full p-4">
             <div class="text-white text-5xl mb-4 p-3 border-[.5rem] bg-blue-950 border-gray-600 rounded-3xl w-max">
@@ -271,8 +219,9 @@ handleResize();
         {#each grid as row, i}
             {#each row as letter, j}
                 <div
-                    class="absolute flex-center-all text-7xl text-white select-none
-                          {currentPath.includes(`${j},${i}`) ? 'bg-blue-500' : 'bg-blue-900'}"
+                    class="absolute flex-center-all text-7xl text-white select-none transition-opacity duration-500
+                          {currentPath.includes(`${j},${i}`) ? 'bg-blue-500' : 'bg-blue-900'}
+                          {errorShake ? 'opacity-70' : 'opacity-100'}"
                     style="
                         width: {CELL_SIZE}rem;
                         height: {CELL_SIZE}rem;
@@ -325,13 +274,4 @@ handleResize();
 </FourByThreeScreen>
 
 <style>
-    .shake {
-        animation: shake 0.5s;
-    }
-
-    @keyframes shake {
-        0%, 100% { transform: translateX(0); }
-        25% { transform: translateX(10px); }
-        75% { transform: translateX(-10px); }
-    }
 </style>
