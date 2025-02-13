@@ -24,20 +24,31 @@
             Q: 10, Z: 10
         };
 
-    // Compute daily date at UTC midnight for display purposes.
+    // Helper function to check if daylight saving time is in effect
+    function isDaylightSavingTime(date) {
+        const january = new Date(date.getFullYear(), 0, 1);
+        const july = new Date(date.getFullYear(), 6, 1);
+        const stdTimezoneOffset = Math.max(january.getTimezoneOffset(), july.getTimezoneOffset());
+        return date.getTimezoneOffset() < stdTimezoneOffset;
+    }
+
+    // Compute daily date at Eastern Time midnight for display purposes.
     const now = new Date();
-    const dailyDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const offset = isDaylightSavingTime(now) ? 4 : 5; // Eastern Time offset in hours
+    const dailyDate = new Date(now.getTime() - offset * 60 * 60 * 1000);
 
     // Global variables for the seeded random generator.
     let randomFast;
 
-    // Compute a daily seed based on UTC midnight.
+    // Compute a daily seed based on Eastern Time midnight.
     function getDailySeed() {
         const now = new Date();
-        const y = now.getUTCFullYear();
-        const m = now.getUTCMonth();
-        const d = now.getUTCDate();
-        // Use UTC midnight as the seed and mod to keep within 32-bit.
+        const offset = isDaylightSavingTime(now) ? 4 : 5; // Eastern Time offset in hours
+        const adjustedTime = new Date(now.getTime() - offset * 60 * 60 * 1000);
+        const y = adjustedTime.getUTCFullYear();
+        const m = adjustedTime.getUTCMonth();
+        const d = adjustedTime.getUTCDate();
+        // Use Eastern Time midnight as the seed and mod to keep within 32-bit.
         return Date.UTC(y, m, d) % 0xffffffff;
     }
 
@@ -119,10 +130,23 @@
     // A board with "5 hexes along each side" corresponds to a hexagon board with radius = 4.
     const BOARD_RADIUS = 4;
 
-    // Sound effects
-    var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: 0.25 });
-    var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: 0.25 });
-    var snd_error = new Howl({ src: ["/TinyQuest/sfx/sfx_sounds_error10.wav"], volume: 0.25 });
+    // Add volume state
+    let isMuted = false;
+    const VOLUME_LEVEL = 0.25;
+
+    // Modified sound effects to use the volume state
+    var snd_good = new Howl({ src: ["/TinyQuest/sfx/sfx_coin_double1.wav"], volume: VOLUME_LEVEL });
+    var snd_fanfare = new Howl({ src: ["/TinyQuest/sfx/sfx_sound_mechanicalnoise2.wav"], volume: VOLUME_LEVEL });
+    var snd_error = new Howl({ src: ["/TinyQuest/sfx/sfx_sounds_error10.wav"], volume: VOLUME_LEVEL });
+
+    // Add volume toggle function
+    function toggleVolume() {
+        isMuted = !isMuted;
+        const newVolume = isMuted ? 0 : VOLUME_LEVEL;
+        snd_good.volume(newVolume);
+        snd_fanfare.volume(newVolume);
+        snd_error.volume(newVolume);
+    }
 
     // Use the seeded random generator instead of Math.random.
     function getRandomLetter() {
@@ -160,7 +184,45 @@
         return grid.find(cell => cell.q === q && cell.r === r);
     }
 
+    // Add this function after getCell()
+    function rotateGridClockwise() {
+        // Correct 60-degree clockwise rotation for axial coordinates:
+        // Convert (q, r) into cube (x=q, y=-q-r, z=r),
+        // then rotate: (x, y, z) -> (-z, -x, -y),
+        // finally convert back: q' = -r, r' = q + r.
+        grid = grid.map(cell => ({
+            ...cell,
+            q: -cell.r,
+            r: cell.q + cell.r,
+            grayed: cell.grayed,
+            letter: cell.letter
+        }));
 
+        // Update found word paths accordingly.
+        foundWords = foundWords.map(word => ({
+            ...word,
+            path: word.path.map(cellKey => {
+                const [q, r] = cellKey.split(',').map(Number);
+                return `${-r},${q + r}`;
+            })
+        }));
+
+        // ALSO update the current drag path so that the active connectivity lines rotate.
+        if (currentPath && currentPath.length > 0) {
+            currentPath = currentPath.map(cellKey => {
+                const [q, r] = cellKey.split(',').map(Number);
+                return `${-r},${q + r}`;
+            });
+        }
+
+        // Optionally, update lastCell if you are mid-drag.
+        if (lastCell) {
+            lastCell = {
+                q: -lastCell.r,
+                r: lastCell.q + lastCell.r
+            };
+        }
+    }
 
     // Add this new function after startNewGame()
     function startNewGameRandomPaths() {
@@ -411,7 +473,8 @@
 
     // Instead of sorting inline in the markup, we sort here reactively.
     $: sortedFoundWords = [...foundWords].sort((a, b) =>
-        a.word.localeCompare(b.word)
+        // Sort by score descending (highest first), then alphabetically if scores are equal
+        b.score - a.score || a.word.localeCompare(b.word)
     );
 
     onMount(async () => {
@@ -442,7 +505,6 @@
                 {dailyDate.toLocaleDateString()}
             </div>
             <div class="text-white text-3xl">
-                Found Words:<br/><br/>
                 <div class="flex flex-col flex-wrap h-[60rem] gap-x-8" style="width: 30rem;">
                     {#each sortedFoundWords as item (item.id)}
                         <div class="flex items-center w-[23rem] bg-gray-700 rounded-3xl p-1 m-1" in:fade|local={{ duration: 800 }} out:slide|local={{ duration: 300 }}>
@@ -581,6 +643,25 @@
         {/if}
 
         <CloseButton />
+        
+        <!-- Volume toggle button -->
+        <button
+            class="absolute top-9 left-[26rem] text-white text-4xl hover:text-gray-300 transition-colors
+                   w-[4rem] h-[4rem] rounded-full bg-blue-950 hover:bg-blue-800 
+                   flex items-center pl-2"
+            on:click={toggleVolume}
+        >
+            <i class="fas {isMuted ? 'fa-volume-mute' : 'fa-volume-up'}"></i>
+        </button>
+
+        <button
+            class="absolute top-[11rem] left-[26rem] text-white text-4xl hover:text-gray-300 transition-colors
+                   w-[4rem] h-[4rem] rounded-full bg-blue-950 hover:bg-blue-800 
+                   flex items-center justify-center"
+            on:click={rotateGridClockwise}
+        >
+            <i class="fas fa-redo"></i>
+        </button>
     </div>
 </FourByThreeScreen>
 
