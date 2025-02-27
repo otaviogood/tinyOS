@@ -11,6 +11,9 @@
     export let marginLeft = "0rem";
     export let split = false;
     export let active = true;
+    export let bgColor = "bg-pink-200";
+    export let fgColor = "text-pink-700";
+    export let borderColor = "bg-pink-400";
 
     let myElement;
     // Returns pointer pos as an [x, y] array in [0..1] range.
@@ -43,13 +46,13 @@
 </script>
 
 <div bind:this={myElement}
-    class="m-1 bg-pink-200 text-pink-700 flex-center-all text-6xl font-bold rounded-xl relative active:scale-110 transform transition-all duration-75"
+    class="m-1 {bgColor} {fgColor} flex-center-all text-6xl font-bold rounded-xl relative active:scale-110 transform transition-all duration-75"
     style="width:{width};height:{height};margin-left:{marginLeft};opacity:{active?1:0.4}"
     on:pointerdown|preventDefault|stopPropagation={onPointerUp}
 >
     {#if split}
-        <div class="w-1 h-4 top-0 bg-pink-400 absolute"></div>
-        <div class="w-1 h-4 bottom-0 bg-pink-400 absolute"></div>
+        <div class="w-1 h-4 top-0 {borderColor} absolute"></div>
+        <div class="w-1 h-4 bottom-0 {borderColor} absolute"></div>
     {/if}
     <slot>{caseMe(keyLetter)}</slot>
 </div>
