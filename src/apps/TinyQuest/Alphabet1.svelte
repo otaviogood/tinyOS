@@ -202,31 +202,30 @@
                 <div class="grid grid-flow-row grid-rows-2 grid-cols-2 h-full w-full font-bold">
                     {#if currentLetters}
                         {#each currentLetters as l, i}
-                            {#if onLetters[i]}
-                                <div
-                                    in:fade
-                                    out:fade={{ duration: 450 }}
-                                    on:introstart={() => (onLettersSvelte[i] = true)}
-                                    on:outroend={() => (onLettersSvelte[i] = false)}
-                                    class="{['bg-red-400', 'bg-blue-400', 'bg-green-400', 'bg-yellow-400'][i]} flex-center-all flex-col text-white cursor-pointer overflow-hidden select-none active:{[
-                                        'bg-red-200',
-                                        'bg-blue-200',
-                                        'bg-green-200',
-                                        'bg-yellow-200',
-                                    ][i]} {i == correct ? 'active:scale-125' : 'active:scale-105'} transform transition-all duration-75 m-auto"
-                                    style="border-radius:12rem; width:95%;height:95%;touch-action: none;"
-                                    on:touchstart={preventZoom}
-                                    on:pointerup|preventDefault|stopPropagation={() => clickedLetter(i, l)}
-                                >
-                                    <div style="font-size:21rem;line-height: 90%;margin-top:-.75rem;">{l}</div>
-                                    <div class="w-1/2 h-3 -mt-5 mb-10" style="border: 0rem dashed #ffffff40;border-width:0.75rem 0 0 0" />
-                                    <AlphabetSprites icon={getIcon(l)?.[1]} size="9rem" />
-                                    <span style="font-size:3rem;display:inline-block">{gameType === "lower" ? getIcon(l)?.[2].toLowerCase() : getIcon(l)?.[2]}</span>
-                                </div>
-                            {/if}
-                            {#if !onLettersSvelte[i]}
-                                <div />
-                            {/if}
+                            <div class="w-full h-full flex-center-all">
+                                {#if onLetters[i]}
+                                    <div
+                                        in:fade
+                                        out:fade={{ duration: 450 }}
+                                        on:introstart={() => (onLettersSvelte[i] = true)}
+                                        on:outroend={() => (onLettersSvelte[i] = false)}
+                                        class="{['bg-red-400', 'bg-blue-400', 'bg-green-400', 'bg-yellow-400'][i]} flex-center-all flex-col text-white cursor-pointer overflow-hidden select-none active:{[
+                                            'bg-red-200',
+                                            'bg-blue-200',
+                                            'bg-green-200',
+                                            'bg-yellow-200',
+                                        ][i]} {i == correct ? 'active:scale-125' : 'active:scale-105'} transform transition-all duration-75 m-auto"
+                                        style="border-radius:12rem; width:95%;height:95%;touch-action: none;"
+                                        on:touchstart={preventZoom}
+                                        on:pointerup|preventDefault|stopPropagation={() => clickedLetter(i, l)}
+                                    >
+                                        <div style="font-size:21rem;line-height: 90%;margin-top:-.75rem;">{l}</div>
+                                        <div class="w-1/2 h-3 -mt-5 mb-10" style="border: 0rem dashed #ffffff40;border-width:0.75rem 0 0 0" />
+                                        <AlphabetSprites icon={getIcon(l)?.[1]} size="9rem" />
+                                        <span style="font-size:3rem;display:inline-block">{gameType === "lower" ? getIcon(l)?.[2].toLowerCase() : getIcon(l)?.[2]}</span>
+                                    </div>
+                                {/if}
+                            </div>
                         {/each}
                     {/if}
                 </div>
