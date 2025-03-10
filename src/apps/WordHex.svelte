@@ -298,7 +298,7 @@
             const word = randomWord.slice(0, maxWordLength);
             
             // Place the first letter with a unique id.
-            grid.push({ id: nextCellId++, q: startCell.q, r: startCell.r, letter: word[0], grayed: false });
+            grid.push({ id: nextCellId++, q: startCell.q, r: startCell.r, letter: word[0], grayed: 0 });
             let current = startCell;
             
             // For subsequent letters, place them in adjacent free cells.
@@ -310,7 +310,7 @@
                 const nextIndex = Math.floor(randomFast.RandFloat() * freeNeighbors.length);
                 const nextCell = freeNeighbors[nextIndex];
                 removeFreeCell(nextCell.q, nextCell.r);
-                grid.push({ id: nextCellId++, q: nextCell.q, r: nextCell.r, letter: word[i], grayed: false });
+                grid.push({ id: nextCellId++, q: nextCell.q, r: nextCell.r, letter: word[i], grayed: 0 });
                 current = nextCell;
             }
         }
@@ -326,7 +326,7 @@
             for (let r = -BOARD_RADIUS; r <= BOARD_RADIUS; r++) {
                 if (Math.abs(q + r) <= BOARD_RADIUS) {
                     let letter = getRandomLetter();
-                    grid.push({ id: nextCellId++, q, r, letter, grayed: false });
+                    grid.push({ id: nextCellId++, q, r, letter, grayed: 0 });
                 }
             }
         }
@@ -352,7 +352,7 @@
         if (errorShake) return;
         const cell = getCell(q, r);
         // Do not allow starting on a grayed-out cell.
-        if (cell.grayed) return;
+        if (cell.grayed > 0) return;
         event.preventDefault();
         
         const rect = elem.getBoundingClientRect();
@@ -375,7 +375,7 @@
 
         // Check each hex cell's center
         for (const cell of grid) {
-            if (cell.grayed) continue;
+            if (cell.grayed > 0) continue;
             const center = getHexCenter(cell.q, cell.r);
             const dx = pointerX - center.x;
             const dy = pointerY - center.y;
@@ -426,12 +426,16 @@
             const wordScore = getWordScore(word);
             mostRecentWord = word;
             score += wordScore;
-            // Mark each cell in the word's path as grayed
+            
+            // Calculate the grayed value based on the log2 of the score
+            const grayedValue = Math.round(Math.log2(wordScore));
+            
+            // Mark each cell in the word's path with the grayed value
             for (const cellKey of currentPath) {
                 const [q, r] = cellKey.split(",").map(Number);
                 const cell = getCell(q, r);
                 if (cell) {
-                    cell.grayed = true;
+                    cell.grayed = grayedValue;
                 }
             }
             // Store a copy of the path and assign a unique id.
@@ -468,7 +472,7 @@
             const [q, r] = cellKey.split(",").map(Number);
             const cell = getCell(q, r);
             if (cell) {
-                cell.grayed = false;
+                cell.grayed = 0;
             }
         }
         // Force Svelte to notice the change in the grid by reassigning it.
@@ -483,6 +487,16 @@
         // Sort by score descending (highest first), then alphabetically if scores are equal
         b.score - a.score || a.word.localeCompare(b.word)
     );
+
+    // Add this function to generate a color from a word
+    function getWordColor(word) {
+        // Use RandomFast's HashString instead of custom implementation
+        const hash = RandomFast.HashString(word);
+        // Convert to hue (0-360)
+        const hue = Math.abs(hash % 360);
+        // Return HSL color with consistent saturation and lightness
+        return `hsl(${hue}, 95%, 60%)`;
+    }
 
     onMount(async () => {
         const response = await fetch("apps/dictionary.txt");
@@ -543,18 +557,23 @@
             <div
                 animate:flip
                 class="hexagon absolute flex-center-all text-7xl text-white select-none transition-opacity duration-500
-                      {cell.grayed 
-                        ? 'bg-gray-700' 
-                        : (currentPath.includes(`${cell.q},${cell.r}`) ? 'bg-blue-500' : 'bg-blue-900')}
                       {errorShake ? 'opacity-70' : 'opacity-100'}"
                 style="
                     width: {EFFECTIVE_HEX_WIDTH}rem;
                     height: {EFFECTIVE_HEX_HEIGHT}rem;
                     left: {center.x - EFFECTIVE_HEX_WIDTH / 2}rem;
                     top: {center.y - EFFECTIVE_HEX_HEIGHT / 2}rem;
+                    background-color: {cell.grayed > 0 
+                        ? `rgba(120, 120, 120, ${Math.min(0.6 - cell.grayed * 0.018, 0.9)})` 
+                        : (currentPath.includes(`${cell.q},${cell.r}`) ? '#3b82f6' : '#1e3a8a')};
                 "
                 on:pointerdown|preventDefault={(e) => handlePointerDown(cell.q, cell.r, e)}
             >
+                <!-- Debug info -->
+                <!-- {#if cell.grayed > 0}
+                    <span class="absolute top-2 text-2xl text-center text-white">g:{cell.grayed}</span>
+                {/if} -->
+                
                 <!-- Scrabble score displayed at the bottom-right corner of the hexagon cell -->
                 <span class="absolute bottom-0 text-center text-2xl text-gray-500">
                     {scrabbleScores[cell.letter]}
@@ -566,21 +585,25 @@
         <!-- Persistent connectivity lines drawn for found words -->
         <div class="opacity-40">
             {#each foundWords as foundWord (foundWord.id)}
-                {#each foundWord.path as cellKey, index}
+                {@const wordColor = getWordColor(foundWord.word)}
+                {#each foundWord.path as cellKey, index (index)}
                     {#if index < foundWord.path.length - 1}
                         {@const [q1, r1] = cellKey.split(',').map(Number)}
                         {@const [q2, r2] = foundWord.path[index + 1].split(',').map(Number)}
                         {@const start = getHexCenter(q1, r1)}
                         {@const end = getHexCenter(q2, r2)}
-                        <Line 
-                            x0={start.x}
-                            y0={start.y}
-                            x1={end.x}
-                            y1={end.y}
-                            color="rgba(255,105,180)"
-                            thick={1}
-                            rounded
-                        />
+                        {@const lineKey = `${q1},${r1}-${q2},${r2}`}
+                        {#key lineKey}
+                            <Line 
+                                x0={start.x}
+                                y0={start.y}
+                                x1={end.x}
+                                y1={end.y}
+                                color={wordColor}
+                                thick={1}
+                                rounded
+                            />
+                        {/key}
                     {/if}
                 {/each}
 
@@ -593,7 +616,7 @@
                         width: 4rem; 
                         height: 4rem; 
                         border-radius: 50%; 
-                        background-color: rgba(255,105,180);
+                        background-color: {wordColor};
                         left: {center.x - 2}rem;
                         top: {center.y - 2}rem;
                     ">
