@@ -416,13 +416,16 @@
         }));
         // Sum the letter scores.
         const baseScore = letterScores.reduce((sum, { score }) => sum + score, 0);
-        // For word lengths 4 or greater, use length-2 as multiplier; otherwise multiplier is 1.
-        const multiplier = word.length >= 4 ? word.length - 2 : 1;
+        // For word lengths 3 or greater, use length-1 as multiplier; otherwise multiplier is 1
+        const multiplier = word.length >= 3 ? word.length - 1 : 1;
         return { word: uppercaseWord, letterScores, baseScore, multiplier, finalScore: baseScore * multiplier };
     }
 
     function checkWord(word) {
-        if (dictionary.has(word) && !foundWords.some(item => item.word === word)) {
+        if (dictionary.has(word) && !foundWords.some(item => 
+            // Only consider it a duplicate if it uses the exact same path
+            JSON.stringify(item.path.sort()) === JSON.stringify([...currentPath].sort())
+        )) {
             const wordScore = getWordScore(word);
             mostRecentWord = word;
             score += wordScore;
@@ -461,8 +464,8 @@
             .split('')
             .reduce((score, letter) => score + (scrabbleScores[letter] || 0), 0);
         
-        // Apply multiplier for words length 4 or greater
-        const multiplier = word.length >= 4 ? word.length - 2 : 1;
+        // Apply multiplier for words length 3 or greater
+        const multiplier = word.length >= 3 ? word.length - 1 : 1;
         return baseScore * multiplier;
     }
 
