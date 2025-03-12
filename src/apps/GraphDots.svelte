@@ -481,29 +481,6 @@
       updateDotIntersections();
     }
   
-    // Helper function to check if a dot was already hit by previous equations
-    function wasHitBefore(dotIndex) {
-      return equationList.some(eq => eq.hitDotIndices.includes(dotIndex));
-    }
-  
-    // === Allow an equation to be edited when clicked ===
-    // function editEquation(equationId) {
-    //   const eq = equationList.find(e => e.id === equationId);
-    //   if (eq) {
-    //     equationInput = eq.equation;
-    //     editingEquationId = eq.id;
-    //     // Remove the equation from the list while editing.
-    //     equationList = equationList.filter(e => e.id !== equationId);
-    //     // Reset the current drawing state.
-    //     drawnPoints = [];
-    //     computedPoints = [];
-    //     polylineSegments = [];
-    //     animationIndex = 0;
-    //     goodHitCount = 0;
-    //     gameInProgress = false;
-    //   }
-    // }
-  
     // === Allow deletion from the list (like WordHex's removeWord) ===
     function removeEquation(equationId) {
       equationList = equationList.filter(e => e.id !== equationId);

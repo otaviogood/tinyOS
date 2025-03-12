@@ -36,6 +36,7 @@
         {name: "Word Finder", icon: "fa-table-cells-large", bgcolor: "bg-violet-500", link: "wordfinder"},
         {name: "Word Fit", icon: "fa-table-cells", bgcolor: "bg-amber-500", link: "wordfit"},
         {name: "Word Hive", icon: "fa-circle-nodes", bgcolor: "bg-indigo-500", link: "wordhex"},
+        {name: "Dot Plot", icon: "fa-chart-line", bgcolor: "bg-yellow-500", link: "graphdots"},
         // {name: "Orbits", icon: "fa-atom", bgcolor: "bg-violet-500", link: "orbits"},
         // {name: "Motor", icon: "fa-compass", bgcolor: "bg-amber-500", link: "Motor"},
         // {name: "Bluetooth", icon: "fa-compass", bgcolor: "bg-amber-500", link: "Bluetooth"},
