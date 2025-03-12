@@ -7,13 +7,15 @@
         handleResize 
     } from "../screen";
     import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
+    import { getDailySeed, getDailyDateInfo } from "../daily-seed";
     import { Howl } from "howler";
-    import { sleep } from "../utils";
     import Line from "../components/Line.svelte";
     import CloseButton from "../components/CloseButton.svelte";
     import { fade, slide } from 'svelte/transition';
     import { flip } from 'svelte/animate';
     import RandomFast from "../random-fast";
+
+    const { displayDate } = getDailyDateInfo();
 
     const scrabbleScores = {
             A: 1, E: 1, I: 1, O: 1, U: 1, L: 1, N: 1, S: 1, T: 1, R: 1,
@@ -25,78 +27,8 @@
             Q: 10, Z: 10
         };
 
-    // Helper function to check if daylight saving time is in effect
-    function isDaylightSavingTime(date) {
-        const january = new Date(date.getFullYear(), 0, 1);
-        const july = new Date(date.getFullYear(), 6, 1);
-        const stdTimezoneOffset = Math.max(january.getTimezoneOffset(), july.getTimezoneOffset());
-        return date.getTimezoneOffset() < stdTimezoneOffset;
-    }
-
-    // Compute daily date at Eastern Time midnight for display purposes.
-    const now = new Date();
-    const offset = isDaylightSavingTime(now) ? 4 : 5; // Eastern Time offset in hours
-    const adjustedTime = new Date(now.getTime() - offset * 60 * 60 * 1000);
-    // Format the date consistently in ET timezone
-    const y = adjustedTime.getUTCFullYear();
-    const m = adjustedTime.getUTCMonth();
-    const d = adjustedTime.getUTCDate();
-    // Create a new date object at UTC midnight, then format it
-    const dailyDate = new Date(Date.UTC(y, m, d));
-    // Format for display (will be consistent regardless of local timezone)
-    const displayDate = `${m+1}/${d}/${y}`;
-
     // Global variables for the seeded random generator.
     let randomFast;
-
-    // Compute a daily seed based on Eastern Time midnight.
-    function getDailySeed() {
-        const now = new Date();
-        const offset = isDaylightSavingTime(now) ? 4 : 5; // Eastern Time offset in hours
-        const adjustedTime = new Date(now.getTime() - offset * 60 * 60 * 1000);
-        const y = adjustedTime.getUTCFullYear();
-        const m = adjustedTime.getUTCMonth();
-        const d = adjustedTime.getUTCDate();
-        // Use Eastern Time midnight as the seed and mod to keep within 32-bit.
-        return Date.UTC(y, m, d) % 0xffffffff;
-    }
-
-    // englishLetterProbabilities represents the relative frequency of each letter in English,
-    // where index 0 is 'A', index 1 is 'B', ..., index 25 is 'Z'.
-    // These values are approximate and based on common frequency statistics.
-    export const englishLetterProbabilities = [
-        0.08167, // A
-        0.01492, // B
-        0.02782, // C
-        0.04253, // D
-        0.12702, // E
-        0.02228, // F
-        0.02015, // G
-        0.06094, // H
-        0.06966, // I
-        0.00153, // J
-        0.00772, // K
-        0.04025, // L
-        0.02406, // M
-        0.06749, // N
-        0.07507, // O
-        0.01929, // P
-        0.00095, // Q
-        0.05987, // R
-        0.06327, // S
-        0.09056, // T
-        0.02758, // U
-        0.00978, // V
-        0.02360, // W
-        0.00150, // X
-        0.01974, // Y
-        0.00074  // Z
-    ];
-    // Calculate cumulative probabilities
-    const cumulative = englishLetterProbabilities.reduce((acc, p, i) => {
-        acc.push((acc[i - 1] || 0) + p);
-        return acc;
-    }, []);
 
     let dictionary = new Set();
     // Our grid is now a flat array of hexagon cells.
@@ -156,14 +88,6 @@
         snd_good.volume(newVolume);
         snd_fanfare.volume(newVolume);
         snd_error.volume(newVolume);
-    }
-
-    // Use the seeded random generator instead of Math.random.
-    function getRandomLetter() {
-        const totalProbability = cumulative[cumulative.length - 1];
-        const randomValue = randomFast.RandFloat() * totalProbability;
-        const index = cumulative.findIndex(total => randomValue < total);
-        return String.fromCharCode(65 + index);  // 65 is 'A'
     }
 
     // Return the center (in rem) for a hex cell with axial coordinates (q, r).
@@ -237,7 +161,7 @@
     // Modified startNewGameRandomPaths() adding an id for each cell.
     function startNewGameRandomPaths() {
         // Seed the generator as usual.
-        randomFast = new RandomFast(getDailySeed()+8);
+        randomFast = new RandomFast(getDailySeed(8));
         
         // Generate the list of valid hex coordinates.
         let cells = [];
@@ -320,22 +244,13 @@
     function startNewGame() {
         randomFast = new RandomFast(getDailySeed());
         
-        grid = [];
-        // Generate a hexagon board of axial coordinates (q, r)
-        for (let q = -BOARD_RADIUS; q <= BOARD_RADIUS; q++) {
-            for (let r = -BOARD_RADIUS; r <= BOARD_RADIUS; r++) {
-                if (Math.abs(q + r) <= BOARD_RADIUS) {
-                    let letter = getRandomLetter();
-                    grid.push({ id: nextCellId++, q, r, letter, grayed: 0 });
-                }
-            }
-        }
         foundWords = [];
         currentWord = "";
         currentPath = [];
         gameOver = false;
         score = 0;
 
+        // No need to create a grid here since startNewGameRandomPaths() will do it
         startNewGameRandomPaths();
     }
 

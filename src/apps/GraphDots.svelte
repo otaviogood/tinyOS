@@ -12,22 +12,15 @@
     import { fade, slide, scale } from 'svelte/transition';
     import RandomFast from "../random-fast";
     import CalcKeyboard from "../components/CalcKeyboard.svelte";
-  
+    import { getDailyDateInfo, getDailySeed } from "../daily-seed.js";
+
     // Set up daily date (for seeding, score display, etc.)
-    const now = new Date();
-    const dailyDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  
-    // Seed functions (very similar to what you do in WordFit.svelte)
-    function getDailySeed() {
-      const y = now.getUTCFullYear();
-      const m = now.getUTCMonth();
-      const d = now.getUTCDate();
-      // Use UTC midnight as the seed and mod to keep within 32 bits.
-      return Date.UTC(y, m, d) % 0xffffffff;
-    }
-  
+    const { dailyDate, displayDate } = getDailyDateInfo();
+
+    // Seed functions are now imported from daily-seed.js
+
     let randomFast; // seeded RNG
-  
+
     // Define graph coordinate boundaries.
     // (We use a math‐style coordinate system from –10 to 10 in both directions.)
     const X_MIN = -10;
@@ -102,7 +95,7 @@
   
     // Reset (or start a new round) the game.
     function resetGame() {
-      // Initialize the seeded RNG so that every day the puzzle will be the same.
+      // Initialize the seeded RNG using the imported getDailySeed function
       randomFast = new RandomFast(getDailySeed());
   
       // Compute the valid integer range for dot placement (ensuring the full dot remains inside the viewBox).
@@ -736,7 +729,7 @@
           Score: {totalScore}
         </div>
         <div class="text-white text-3xl">
-          {dailyDate.toLocaleDateString()}
+          {displayDate}
         </div>
       </div>
   
@@ -778,7 +771,6 @@
           on:keydown={handleKeyDown}
           use:focusInput
           bind:this={inputElement}
-          autofocus
           class="flex-1 text-3xl p-2 rounded-md border border-gray-600 bg-gray-700 text-white"
           placeholder="Enter equation"
         />
