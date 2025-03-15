@@ -13,6 +13,7 @@
     import RandomFast from "../random-fast";
     import CalcKeyboard from "../components/CalcKeyboard.svelte";
     import { getDailyDateInfo, getDailySeed } from "../daily-seed.js";
+    import { getOS } from "../utils";
 
     // Set up daily date (for seeding, score display, etc.)
     const { dailyDate, displayDate } = getDailyDateInfo();
@@ -537,8 +538,9 @@
         equationInput += keyMap[key] || key;
       }
       
-      // Focus the input element after adding the key
-      if (inputElement) {
+      // Only focus the input on non-iOS devices to prevent iPad keyboard
+      const os = getOS();
+      if (inputElement && os !== "iOS") {
         inputElement.focus();
       }
     }
