@@ -339,7 +339,7 @@
     function checkWord(word) {
         if (dictionary.has(word) && !foundWords.some(item => 
             // Only consider it a duplicate if it uses the exact same path
-            JSON.stringify(item.path.sort()) === JSON.stringify([...currentPath].sort())
+            JSON.stringify([...item.path].sort()) === JSON.stringify([...currentPath].sort())
         )) {
             const wordScore = getWordScore(word);
             mostRecentWord = word;
