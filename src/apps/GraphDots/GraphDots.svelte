@@ -5,15 +5,15 @@
         pxToRem, 
         remToPx,
         handleResize 
-    } from "../screen";
-    import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
-    import CloseButton from "../components/CloseButton.svelte";
+    } from "../../screen";
+    import FourByThreeScreen from "../../components/FourByThreeScreen.svelte";
+    import CloseButton from "../../components/CloseButton.svelte";
     import { Howl } from "howler";
     import { fade, slide, scale } from 'svelte/transition';
-    import RandomFast from "../random-fast";
-    import CalcKeyboard from "../components/CalcKeyboard.svelte";
-    import { getDailyDateInfo, getDailySeed } from "../daily-seed.js";
-    import { getOS } from "../utils";
+    import RandomFast from "../../random-fast";
+    import CalcKeyboard from "./CalcKeyboard.svelte";
+    import { getDailyDateInfo, getDailySeed } from "../../daily-seed.js";
+    import { getOS } from "../../utils";
 
     // Set up daily date (for seeding, score display, etc.)
     const { dailyDate, displayDate } = getDailyDateInfo();
@@ -211,7 +211,7 @@
         // We prepend "with(Math) { return ... }" so that common functions (sin, cos, etc.) work.
         f = new Function("x", "with (Math) { return " + equationInput + " }");
         // Test the function with a sample value
-        const testVal = f(0);
+        const testVal = f(0.1234567);
         if (isNaN(testVal)) throw new Error("Function returned NaN");
       } catch (e) {
         errorMessage = "Invalid equation!";
@@ -553,7 +553,7 @@
   </script>
   
   <FourByThreeScreen bg="#181818">
-    <div class="fit-full-space relative">
+    <div class="fit-full-space relative no-select">
 
       <!-- Updated SVG container with fixed size and centered positioning -->
       <div class="absolute inset-0 flex m-4">
@@ -800,5 +800,15 @@
         100% {
             transform: scale(1);
         }
+    }
+    
+    /* Add these styles to prevent text selection */
+    :global(.no-select) {
+        -webkit-touch-callout: none; /* iOS Safari */
+        -webkit-user-select: none;   /* Safari */
+        -khtml-user-select: none;    /* Konqueror HTML */
+        -moz-user-select: none;      /* Firefox */
+        -ms-user-select: none;       /* Internet Explorer/Edge */
+        user-select: none;           /* Non-prefixed version, currently supported by Chrome and Opera */
     }
   </style>

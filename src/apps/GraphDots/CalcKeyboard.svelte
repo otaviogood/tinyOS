@@ -1,5 +1,5 @@
 <script>
-    import KeyboardKey from "./KeyboardKey.svelte";
+    import KeyboardKey from "../../components/KeyboardKey.svelte";
     import { createEventDispatcher } from "svelte";
 
     const dispatch = createEventDispatcher();
@@ -11,9 +11,9 @@
     // Define the calculator keyboard layout with a more consistent grid
     let keyRows = [
         ["sin", "cos", "sqrt", "^", "backspace"],
-        ["7", "8", "9", "/", "("],
-        ["4", "5", "6", "*", ")"],
-        ["1", "2", "3", "-"],
+        ["7", "8", "9", "/", "abs"],
+        ["4", "5", "6", "*", "("],
+        ["1", "2", "3", "-", ")"],
         ["0", ".", "x", "+", "="],
     ];
     
@@ -53,6 +53,11 @@
 
     function keyDown(e) {
         if (!e || !e.key) return;
+        
+        // Don't intercept arrow keys - let them work for cursor movement
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+            return;
+        }
         
         // Map keyboard input to calculator keys
         let keyToPress = e.key;
