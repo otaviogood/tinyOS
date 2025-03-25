@@ -10,10 +10,10 @@
 
     // Define the calculator keyboard layout with a more consistent grid
     let keyRows = [
-        ["sin", "cos", "sqrt", "^", "backspace"],
-        ["7", "8", "9", "/", "abs"],
-        ["4", "5", "6", "*", "("],
-        ["1", "2", "3", "-", ")"],
+        ["sin", "cos", "(", ")", "backspace"],
+        ["7", "8", "9", "/", "sqrt"],
+        ["4", "5", "6", "*", "^"],
+        ["1", "2", "3", "-", "abs"],
         ["0", ".", "x", "+", "="],
     ];
     
@@ -58,23 +58,42 @@
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
             return;
         }
-        
         // Map keyboard input to calculator keys
-        let keyToPress = e.key;
+        let keyToPress;
         
-        // // Handle Enter key as equals
-        // if (e.key === "Enter") keyToPress = "=";
-        // else return;
+        // Handle common calculator keys
+        if (e.key === "Enter" || e.key === "=") {
+            keyToPress = "=";
+        } else if (e.key === "Backspace"){//} || e.key === "Delete") {
+            keyToPress = "backspace";
+        } else if (/^[0-9.]$/.test(e.key)) {
+            // Numbers and decimal point
+            keyToPress = e.key;
+        } else if (e.key === "+" || e.key === "-" || e.key === "*" || e.key === "/") {
+            // Basic operators
+            keyToPress = e.key;
+        } else if (e.key === "(" || e.key === ")") {
+            // Parentheses
+            keyToPress = e.key;
+        } else if (e.key === "^") {
+            // Exponent
+            keyToPress = "^";
+        } else if (/^[a-zA-Z]$/.test(e.key)) {
+            // For any alphabetic character
+            keyToPress = e.key;
+        } else {
+            // Not a recognized key
+            return;
+        }
+        let key = {
+            detail: {
+                key: keyToPress,
+                side: 0,
+                xy: [0, 0]
+            }
+        };
         
-        // let key = {
-        //     detail: {
-        //         key: keyToPress,
-        //         side: 0,
-        //         xy: [0, 0]
-        //     }
-        // };
-        
-        // pressed(key);
+        pressed(key);
     }
 </script>
 
