@@ -48,7 +48,7 @@
 <div bind:this={myElement}
     class="m-1 {bgColor} {fgColor} flex-center-all text-6xl font-bold rounded-xl relative active:scale-110 transform transition-all duration-75"
     style="width:{width};height:{height};margin-left:{marginLeft};opacity:{active?1:0.4}"
-    on:pointerdown|preventDefault|stopPropagation={onPointerUp}
+    on:pointerup|preventDefault|stopPropagation={onPointerUp}
 >
     {#if split}
         <div class="w-1 h-4 top-0 {borderColor} absolute"></div>
