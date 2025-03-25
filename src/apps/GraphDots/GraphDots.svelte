@@ -5,15 +5,15 @@
         pxToRem, 
         remToPx,
         handleResize 
-    } from "../screen";
-    import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
-    import CloseButton from "../components/CloseButton.svelte";
+    } from "../../screen";
+    import FourByThreeScreen from "../../components/FourByThreeScreen.svelte";
+    import CloseButton from "../../components/CloseButton.svelte";
     import { Howl } from "howler";
     import { fade, slide, scale } from 'svelte/transition';
-    import RandomFast from "../random-fast";
-    import CalcKeyboard from "../components/CalcKeyboard.svelte";
-    import { getDailyDateInfo, getDailySeed } from "../daily-seed.js";
-    import { getOS } from "../utils";
+    import RandomFast from "../../random-fast";
+    import CalcKeyboard from "./CalcKeyboard.svelte";
+    import { getDailyDateInfo, getDailySeed } from "../../daily-seed.js";
+    import { getOS } from "../../utils";
 
     // Set up daily date (for seeding, score display, etc.)
     const { dailyDate, displayDate } = getDailyDateInfo();
@@ -93,11 +93,6 @@
   
     // Add this variable at the top of your script section
     let inputElement;
-  
-    // Add these variables to track cursor position
-    let cursorPosition = 0;
-    let selectionStart = 0;
-    let selectionEnd = 0;
   
     // Reset (or start a new round) the game.
     function resetGame() {
@@ -216,7 +211,7 @@
         // We prepend "with(Math) { return ... }" so that common functions (sin, cos, etc.) work.
         f = new Function("x", "with (Math) { return " + equationInput + " }");
         // Test the function with a sample value
-        const testVal = f(0);
+        const testVal = f(0.1234567);
         if (isNaN(testVal)) throw new Error("Function returned NaN");
       } catch (e) {
         errorMessage = "Invalid equation!";
@@ -491,56 +486,22 @@
     function removeEquation(equationId) {
       equationList = equationList.filter(e => e.id !== equationId);
       updateDotIntersections();
+      if (inputElement) inputElement.focus();
     }
   
-    // Modify handleKeyDown to prevent duplicate input
+    // Submit if Enter is pressed.
     function handleKeyDown(event) {
-      // Prevent default browser handling for these keys
-      if (["ArrowLeft", "ArrowRight", "Home", "End", "Backspace", "Delete"].includes(event.key)) {
-        event.preventDefault();
-      }
-      
       if (event.key === "Enter") {
-        event.preventDefault();
         submitEquation();
-      } else if (event.key === "ArrowLeft") {
-        cursorPosition = Math.max(0, cursorPosition - 1);
-      } else if (event.key === "ArrowRight") {
-        cursorPosition = Math.min(equationInput.length, cursorPosition + 1);
-      } else if (event.key === "Home") {
-        cursorPosition = 0;
-      } else if (event.key === "End") {
-        cursorPosition = equationInput.length;
-      } else if (event.key === "Backspace") {
-        if (cursorPosition > 0) {
-          equationInput = 
-            equationInput.substring(0, cursorPosition - 1) + 
-            equationInput.substring(cursorPosition);
-          cursorPosition--;
-        }
-      } else if (event.key === "Delete") {
-        if (cursorPosition < equationInput.length) {
-          equationInput = 
-            equationInput.substring(0, cursorPosition) + 
-            equationInput.substring(cursorPosition + 1);
-        }
-      } 
-      // Remove handling of regular key input in handleKeyDown
-      // We'll let the binding handle that instead
+      }
     }
   
     // Add this function near the top of your script section
     function focusInput(node) {
-      // Never focus inputs on iOS to prevent keyboard popup
-      const os = getOS();
-      if (os !== "iOS") {
-        node.focus();
-      }
+      node.focus();
       return {
         update() {
-          if (os !== "iOS") {
-            node.focus();
-          }
+          node.focus();
         }
       };
     }
@@ -553,14 +514,8 @@
         submitEquation();
       } else if (key === "Clear") {
         equationInput = "";
-        cursorPosition = 0;
       } else if (key === "Delete" || key === "backspace") {
-        if (cursorPosition > 0) {
-          equationInput = 
-            equationInput.substring(0, cursorPosition - 1) + 
-            equationInput.substring(cursorPosition);
-          cursorPosition--;
-        }
+        equationInput = equationInput.slice(0, -1);
       } else {
         // Map special keys to their mathematical representations
         const keyMap = {
@@ -579,33 +534,15 @@
           ")": ")",
         };
         
-        // Add the key to the input at cursor position (using the mapped value if available)
-        const insertText = keyMap[key] || key;
-        equationInput = 
-          equationInput.substring(0, cursorPosition) + 
-          insertText + 
-          equationInput.substring(cursorPosition);
-        cursorPosition += insertText.length;
+        // Add the key to the input (using the mapped value if available)
+        equationInput += keyMap[key] || key;
       }
-    }
-  
-    // Update the handleInputClick function to account for monospaced font
-    function handleInputClick(event) {
-      // Get input container dimensions
-      const inputRect = event.currentTarget.getBoundingClientRect();
-      const clickX = event.clientX - inputRect.left;
       
-      // Padding offset (left padding of the pre element)
-      const paddingLeft = 8; // Adjust based on your CSS
-      
-      // Get character width (for monospaced font)
-      const charWidth = 19.2; // Approximate width for monospaced font (adjust as needed)
-      
-      // Calculate cursor position based on click position, accounting for padding
-      let approxPos = Math.floor((clickX - paddingLeft) / charWidth);
-      
-      // Ensure cursor position is within bounds
-      cursorPosition = Math.max(0, Math.min(approxPos, equationInput.length));
+      // Only focus the input on non-iOS devices to prevent iPad keyboard
+      const os = getOS();
+      if (inputElement && os !== "iOS") {
+        inputElement.focus();
+      }
     }
   
     onMount(() => {
@@ -616,7 +553,7 @@
   </script>
   
   <FourByThreeScreen bg="#181818">
-    <div class="fit-full-space relative">
+    <div class="fit-full-space relative no-select">
 
       <!-- Updated SVG container with fixed size and centered positioning -->
       <div class="absolute inset-0 flex m-4">
@@ -807,11 +744,15 @@
            The label "y =" is shown and the player only enters the remainder. -->
       <div class="absolute w-[60rem] bottom-8 left-[32rem] transform -translate-x-1/2 flex items-center bg-gray-800 p-4 rounded-xl">
         <span class="text-white text-3xl mr-2">y =</span>
-        <pre 
-          class="flex-1 text-3xl h-[3.75rem] p-2 rounded-md border border-gray-600 bg-gray-700 text-white overflow-hidden font-mono"
-          on:click={handleInputClick}
-          on:pointerdown={handleInputClick}
-        >{equationInput.substring(0, cursorPosition)}<span class="cursor"></span>{equationInput.substring(cursorPosition)}</pre>
+        <input
+          type="text"
+          bind:value={equationInput}
+          on:keydown={handleKeyDown}
+          use:focusInput
+          bind:this={inputElement}
+          class="flex-1 text-3xl p-2 rounded-md border border-gray-600 bg-gray-700 text-white"
+          placeholder="Enter equation"
+        />
         <button
           on:click={submitEquation}
           class="ml-2 text-white text-3xl p-3 px-8 bg-blue-600 rounded-md hover:bg-blue-700"
@@ -860,40 +801,14 @@
             transform: scale(1);
         }
     }
-
-    .cursor {
-      display: inline-block;
-      width: 2px;
-      height: 1.2em;
-      background-color: white;
-      vertical-align: middle;
-      margin: 0 -1px;
-      animation: blink 1s step-end infinite;
-    }
     
-    @keyframes blink {
-      50% { opacity: 0; }
+    /* Add these styles to prevent text selection */
+    :global(.no-select) {
+        -webkit-touch-callout: none; /* iOS Safari */
+        -webkit-user-select: none;   /* Safari */
+        -khtml-user-select: none;    /* Konqueror HTML */
+        -moz-user-select: none;      /* Firefox */
+        -ms-user-select: none;       /* Internet Explorer/Edge */
+        user-select: none;           /* Non-prefixed version, currently supported by Chrome and Opera */
     }
   </style>
-
-  <!-- Update the hidden input -->
-  <input
-    type="text"
-    value={equationInput}
-    on:keydown={handleKeyDown}
-    on:input={(e) => {
-      // Only handle direct typing from keyboard
-      if (e.inputType === "insertText") {
-        const char = e.data;
-        equationInput = 
-          equationInput.substring(0, cursorPosition) + 
-          char + 
-          equationInput.substring(cursorPosition);
-        cursorPosition++;
-      }
-    }}
-    use:focusInput
-    bind:this={inputElement}
-    class="absolute opacity-0 pointer-events-none"
-    readonly
-  />

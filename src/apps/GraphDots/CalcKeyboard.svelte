@@ -1,5 +1,5 @@
 <script>
-    import KeyboardKey from "./KeyboardKey.svelte";
+    import KeyboardKey from "../../components/KeyboardKey.svelte";
     import { createEventDispatcher } from "svelte";
 
     const dispatch = createEventDispatcher();
@@ -10,10 +10,10 @@
 
     // Define the calculator keyboard layout with a more consistent grid
     let keyRows = [
-        ["sin", "cos", "(", ")", "backspace"],
-        ["7", "8", "9", "/", "sqrt"],
-        ["4", "5", "6", "*", "^"],
-        ["1", "2", "3", "-"],
+        ["sin", "cos", "sqrt", "^", "backspace"],
+        ["7", "8", "9", "/", "abs"],
+        ["4", "5", "6", "*", "("],
+        ["1", "2", "3", "-", ")"],
         ["0", ".", "x", "+", "="],
     ];
     
@@ -54,52 +54,27 @@
     function keyDown(e) {
         if (!e || !e.key) return;
         
-        // Map keyboard input to calculator keys
-        let keyToPress;
-        
-        // Handle common calculator keys
-        if (e.key === "Enter" || e.key === "=") {
-            keyToPress = "=";
-        } else if (e.key === "Backspace" || e.key === "Delete") {
-            keyToPress = "backspace";
-        } else if (/^[0-9.]$/.test(e.key)) {
-            // Numbers and decimal point
-            keyToPress = e.key;
-        } else if (e.key === "+" || e.key === "-" || e.key === "*" || e.key === "/") {
-            // Basic operators
-            keyToPress = e.key;
-        } else if (e.key === "(" || e.key === ")") {
-            // Parentheses
-            keyToPress = e.key;
-        } else if (e.key === "^") {
-            // Exponent
-            keyToPress = "^";
-        } else if (e.key.toLowerCase() === "x") {
-            // Variable x
-            keyToPress = "x";
-        } else if (e.key.toLowerCase() === "s") {
-            // sin function
-            keyToPress = "sin";
-        } else if (e.key.toLowerCase() === "c") {
-            // cos function
-            keyToPress = "cos";
-        } else if (e.key.toLowerCase() === "r") {
-            // sqrt function
-            keyToPress = "sqrt";
-        } else {
-            // Not a recognized key
+        // Don't intercept arrow keys - let them work for cursor movement
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
             return;
         }
         
-        let key = {
-            detail: {
-                key: keyToPress,
-                side: 0,
-                xy: [0, 0]
-            }
-        };
+        // Map keyboard input to calculator keys
+        let keyToPress = e.key;
         
-        pressed(key);
+        // // Handle Enter key as equals
+        // if (e.key === "Enter") keyToPress = "=";
+        // else return;
+        
+        // let key = {
+        //     detail: {
+        //         key: keyToPress,
+        //         side: 0,
+        //         xy: [0, 0]
+        //     }
+        // };
+        
+        // pressed(key);
     }
 </script>
 
