@@ -588,35 +588,35 @@
         cursorPosition += insertText.length;
       }
     }
-  
+
     // Update the handleInputClick function to account for monospaced font
     function handleInputClick(event) {
       // Get input container dimensions
       const inputRect = event.currentTarget.getBoundingClientRect();
       const clickX = event.clientX - inputRect.left;
-      
-      // Padding offset (left padding of the pre element)
-      const paddingLeft = 8; // Adjust based on your CSS
-      
+
+      // Convert Tailwind's p-2 (0.5rem) to pixels using the remToPx utility
+      const paddingLeft = remToPx(0.0);
+
       // Get character width (for monospaced font)
-      const charWidth = 19.2; // Approximate width for monospaced font (adjust as needed)
-      
+      const charWidth = remToPx(1.25); // Approximate width for monospaced font (adjust as needed)
+
       // Calculate cursor position based on click position, accounting for padding
       let approxPos = Math.floor((clickX - paddingLeft) / charWidth);
-      
+
       // Ensure cursor position is within bounds
       cursorPosition = Math.max(0, Math.min(approxPos, equationInput.length));
 
       focusInput(inputElement);
     }
-  
+
     onMount(() => {
       resetGame();
     });
 
     handleResize();
   </script>
-  
+
   <FourByThreeScreen bg="#181818">
     <div class="fit-full-space relative">
 
