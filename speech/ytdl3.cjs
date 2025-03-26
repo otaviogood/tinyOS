@@ -112,6 +112,15 @@ const allVids = {
     "southern cross": "4FBDOU6NEZ8",
     "cloudy day": "V91GRYjlR2I",
     "lost ones": "4HhfKArW3BY",
+    "i need a dollar": "nFZP8zQ5kzk",
+    "get low whistle": "7nUdHAVSLr4",
+    "summertime sadness": "5gqEJT1lxgk",
+    "boy oh boy": "_LmnkRzP3oM",
+    "wake me up": "3JvM-fnpPCU",
+    "human beat box": "jJewbFZHI34",
+    "creator": "Bfejcxo5_XY",
+    "disparate youth": "mIMMZQJ1H6E",
+    "biko": "jsVieeccpQs",
 };
 
 async function sleep(ms) {

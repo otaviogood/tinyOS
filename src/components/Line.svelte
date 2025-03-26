@@ -13,13 +13,14 @@
     export let color = "#ffffff";
     export let arrowThick = 0;
     export let rounded = false;
-    export let origin = [0, 0]
+    export let origin = [0, 0];
     export let scale = 1;
 
-    let nx0 = origin[0] + x0 * scale;
-    let ny0 = origin[1] + y0 * scale;
-    let nx1 = origin[0] + x1 * scale;
-    let ny1 = origin[1] + y1 * scale;
+    // Use reactive declarations so that these values update when any of the inputs change:
+    $: nx0 = origin[0] + x0 * scale;
+    $: ny0 = origin[1] + y0 * scale;
+    $: nx1 = origin[0] + x1 * scale;
+    $: ny1 = origin[1] + y1 * scale;
 
     let arrowWidthPx = remToPx(thick * arrowThick, $bigScale);
     // If global var bigScale changes, recompute arrowWidthPx

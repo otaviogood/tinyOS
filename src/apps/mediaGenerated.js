@@ -108,11 +108,20 @@ export let allMediaAll = {
 "hideaway": ["Vnoz5uBEWOA", "", "mp4"],
 "portugal the man": ["8xT0vWporWs", "", "mp4"],
 "sunday best": ["Xt3m04Tscc8", "", "mp4"],
-"hey jude": ["mQER0A0ej0M", "Hey Jude (Remastered 2015)", "mp4"],
-"here comes the sun": ["tDEzmaZHuS0", "The Beatles - Here Comes The Sun (Remastered 2009)", "mp4"],
-"southern cross": ["4FBDOU6NEZ8", "Southern Cross", "mp4"],
-"cloudy day": ["V91GRYjlR2I", "TONES AND I - CLOUDY DAY (OFFICIAL ANIMATED VIDEO)", "mp4"],
-"lost ones": ["4HhfKArW3BY", "Lost Ones", "mp4"],
+"hey jude": ["mQER0A0ej0M", "", "mp4"],
+"here comes the sun": ["tDEzmaZHuS0", "", "mp4"],
+"southern cross": ["4FBDOU6NEZ8", "", "mp4"],
+"cloudy day": ["V91GRYjlR2I", "", "mp4"],
+"lost ones": ["4HhfKArW3BY", "", "mp4"],
+"i need a dollar": ["nFZP8zQ5kzk", "", "mp4"],
+"get low whistle": ["7nUdHAVSLr4", "", "mp4"],
+"summertime sadness": ["5gqEJT1lxgk", "", "mp4"],
+"boy oh boy": ["_LmnkRzP3oM", "", "mp4"],
+"wake me up": ["3JvM-fnpPCU", "", "mp4"],
+"human beat box": ["jJewbFZHI34", "", "mp4"],
+"creator": ["Bfejcxo5_XY", "", "mp4"],
+"disparate youth": ["mIMMZQJ1H6E", "Santigold - Disparate Youth (Official Music Video)", "mp4"],
+"biko": ["jsVieeccpQs", "Biko", "mp4"],
 };
 // This weird string will be parsed by genSpeech.cjs to generate the speech synthesis files.
 
@@ -230,6 +239,15 @@ export let allMediaAll = {
 "southern cross",
 "cloudy day",
 "lost ones",
+"i need a dollar",
+"get low whistle",
+"summertime sadness",
+"boy oh boy",
+"wake me up",
+"human beat box",
+"creator",
+"disparate youth",
+"biko",
 
 ]
     */

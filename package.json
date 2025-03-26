@@ -35,6 +35,6 @@
         "planck": "^1.0.2",
         "three": "^0.148.0",
         "tone": "^14.9.17",
-        "youtube-dl-exec": "^3.0.7"
+        "youtube-dl-exec": "^3.0.19"
     }
 }

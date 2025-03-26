@@ -24,20 +24,31 @@
             Q: 10, Z: 10
         };
 
-    // Compute daily date at UTC midnight for display purposes.
+    // Function to determine if daylight saving time is in effect
+    function isDaylightSavingTime(date) {
+        const january = new Date(date.getFullYear(), 0, 1);
+        const july = new Date(date.getFullYear(), 6, 1);
+        const stdTimezoneOffset = Math.max(january.getTimezoneOffset(), july.getTimezoneOffset());
+        return date.getTimezoneOffset() < stdTimezoneOffset;
+    }
+
+    // Compute daily date at Eastern Time midnight for display purposes.
     const now = new Date();
-    const dailyDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const offset = isDaylightSavingTime(now) ? 4 : 5; // Eastern Time offset
+    const dailyDate = new Date(now.getTime() - offset * 60 * 60 * 1000);
 
     // Global variables for the seeded random generator.
     let randomFast;
 
-    // Compute a daily seed based on UTC midnight.
+    // Compute a daily seed based on Eastern Time midnight.
     function getDailySeed() {
         const now = new Date();
-        const y = now.getUTCFullYear();
-        const m = now.getUTCMonth();
-        const d = now.getUTCDate();
-        // Use UTC midnight as the seed and mod to keep within 32-bit.
+        const offset = isDaylightSavingTime(now) ? 4 : 5; // Eastern Time offset
+        const adjustedTime = new Date(now.getTime() - offset * 60 * 60 * 1000);
+        const y = adjustedTime.getUTCFullYear();
+        const m = adjustedTime.getUTCMonth();
+        const d = adjustedTime.getUTCDate();
+        // Use Eastern Time midnight as the seed and mod to keep within 32-bit.
         return Date.UTC(y, m, d) % 0xffffffff;
     }
 

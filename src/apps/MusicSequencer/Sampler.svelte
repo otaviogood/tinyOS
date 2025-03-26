@@ -1,12 +1,15 @@
 <script>
     import { onMount, onDestroy } from "svelte";
+    import { writable } from "svelte/store";
     import { tweened } from "svelte/motion";
     import { cubicOut } from "svelte/easing";
+    import { slide, fade } from "svelte/transition";
     import Slider from "../../components/Slider.svelte";
     import FrequencyVisualizer from "./FrequencyVisualizer.svelte";
+    import OctaveKeys from "./OctaveKeys.svelte";
     import * as Tone from "tone";
     import { AnalyserNode, OfflineAudioContext } from "standardized-audio-context";
-    import { pxToRem, remToPx } from "../../screen";
+    import { pxToRem, remToPx, handleResize } from "../../screen";
     import { createEventDispatcher } from "svelte";
     const dispatch = createEventDispatcher();
 
@@ -23,12 +26,14 @@
     let player;
     let playing = false;
     let audioBuffer;
+    let baseNote = "C4";
+    let currentPlayingNote = null;
     let playbackPosition = 0;
     let analyser;
     let animationId;
     let volume = 100; // Initial volume value
     let volumeNode;
-    let dominantFrequency = 220;
+    let dominantFrequency = { frequency: 220, note: "A3" };
     let dominantFrequencyIndex = 0;
     let frequencyData = [];
 
@@ -51,16 +56,6 @@
         duration: 100,
         easing: cubicOut,
     });
-    $: {
-        if (audioBuffer && ($startPosition !== 0 || $stopPosition !== 1)) {
-            findDominantFrequency().then((freq) => {
-                if (freq) {
-                    dominantFrequency = freq;
-                    console.log(`Updated Dominant Frequency: ${dominantFrequency.toFixed(2)} Hz`);
-                }
-            });
-        }
-    }
 
     let isDragging = false;
     let draggedMarker = null;
@@ -277,10 +272,23 @@
 
     let playbackStartTime = 0;
 
-    async function playButton() {
+    async function playButton(note = "C4") {
         if (audioBuffer) {
             try {
                 await Tone.start();
+                console.log("note", note);
+
+                const baseFreq = Tone.Frequency(baseNote).toFrequency();
+                const noteFreq = Tone.Frequency(note).toFrequency();
+                console.log(`Base Frequency: ${baseFreq}`);
+                console.log(`Note Frequency: ${noteFreq}`);
+                if (!baseFreq || !noteFreq) {
+                    console.warn(`Frequency not found for note: ${note}`);
+                    return;
+                }
+                currentPlayingNote = note;
+
+                const playbackRate = noteFreq / baseFreq;
 
                 // Stop and dispose of the current player if it exists
                 if (player) {
@@ -299,6 +307,8 @@
                 volumeNode = new Tone.Volume().toDestination();
                 player.connect(volumeNode);
 
+                player.playbackRate = playbackRate;
+
                 // Set initial volume
                 updateVolume();
 
@@ -307,6 +317,7 @@
                 player.onstop = () => {
                     playing = false;
                     playbackPosition = 0;
+                    currentPlayingNote = null;
                 };
 
                 // Start the animation for playback
@@ -337,6 +348,7 @@
                 playing = false;
                 player.stop();
                 playbackPosition = 0; // Reset position here
+                currentPlayingNote = null;
                 return;
             }
             // Update playback indicator
@@ -357,6 +369,7 @@
             playing = false;
             player.stop();
             playbackPosition = 0;
+            currentPlayingNote = null;
             if (animationId) {
                 cancelAnimationFrame(animationId);
                 animationId = null;
@@ -413,9 +426,9 @@
 
                 // Perform frequency analysis
                 dominantFrequency = await findDominantFrequency();
-                if (dominantFrequency) {
-                    console.log(`Dominant Frequency: ${dominantFrequency.toFixed(2)} Hz`);
-                }
+                // if (dominantFrequency) {
+                //     console.log(`Dominant Frequency: ${dominantFrequency.frequency.toFixed(2)} Hz`);
+                // }
 
                 // Clean up
                 if (mic) {
@@ -483,6 +496,21 @@
         return [x, y];
     }
 
+    function setDragPos(which, x) {
+        if (!audioBuffer) return;
+        const minSeparationSamples = 1024;
+        const minSeparation = minSeparationSamples / audioBuffer.length;
+
+        if (which === "start") {
+            const maxStart = Math.min(x, $stopPosition - minSeparation);
+            startPosition.set(Math.max(0, maxStart));
+        } else {
+            const minStop = Math.max(x, $startPosition + minSeparation);
+            stopPosition.set(Math.min(1, minStop));
+        }
+        // console.log("start", $startPosition, "stop", $stopPosition);
+    }
+
     function handleStart(event) {
         let xy = getPointerPos(event);
         let x = xy[0];
@@ -492,33 +520,32 @@
 
         isDragging = true;
         draggedMarker = startDist < stopDist ? "start" : "stop";
-        if (draggedMarker === "start") startPosition.set(Math.min(x, $stopPosition));
-        else stopPosition.set(Math.max(x, $startPosition));
+        setDragPos(draggedMarker, x);
     }
 
-    function handleMove(event) {
+    async function handleMove(event) {
         if (!isDragging) return;
 
         let xy = getPointerPos(event);
         let x = Math.max(0, Math.min(1, xy[0]));
 
-        if (draggedMarker === "start") {
-            startPosition.set(Math.min(x, $stopPosition), { duration: 0 });
-        } else {
-            stopPosition.set(Math.max(x, $startPosition), { duration: 0 });
-        }
+        setDragPos(draggedMarker, x);
+        dominantFrequency = await findDominantFrequency();
+        // if (dominantFrequency) console.log(`Dominant Frequency: ${dominantFrequency.frequency.toFixed(2)} Hz`);
     }
 
-    function handleEnd() {
+    async function handleEnd() {
         if (!isDragging) return;
 
         isDragging = false;
         if (draggedMarker === "start") {
-            startPosition.set(findNearestZeroCrossing($startPosition));
+            setDragPos("start", findNearestZeroCrossing($startPosition));
         } else {
-            stopPosition.set(findNearestZeroCrossing($stopPosition));
+            setDragPos("stop", findNearestZeroCrossing($stopPosition));
         }
         draggedMarker = null;
+        dominantFrequency = await findDominantFrequency();
+        // if (dominantFrequency) console.log(`Dominant Frequency: ${dominantFrequency.frequency.toFixed(2)} Hz`);
     }
 
     function handlePointerLeave(event) {
@@ -546,19 +573,26 @@
         updateVolume();
     }
 
-    // Add this function to update the volume
+    // Add this function to update the volume using an exponential curve
     function updateVolume() {
         if (volumeNode) {
-            // Convert volume (0-100) to decibels (-60 to 0)
-            const volumeInDecibels = Tone.gainToDb(volume / 100);
-            volumeNode.volume.rampTo(volumeInDecibels, 0.1); // Use rampTo for smooth transitions
+            // Use an exponential curve for volume mapping
+            const exponent = 2.0; // You can experiment with this value
+            const normalizedVolume = Math.pow(volume / 100, exponent) + 0.0001;
+
+            // Convert the normalized volume to decibels
+            const volumeInDecibels = Tone.gainToDb(normalizedVolume);
+
+            // Set the volume immediately without ramping
+            volumeNode.volume.value = volumeInDecibels;
         }
     }
 
     async function findDominantFrequency() {
         if (!audioBuffer) return null;
 
-        const sampleRate = audioBuffer.sampleRate;
+        const targetSampleRate = 8192; // Target sample rate to capture frequencies up to 8192 Hz
+
         let startTime = $startPosition * audioBuffer.duration;
         let duration = ($stopPosition - $startPosition) * audioBuffer.duration;
 
@@ -567,19 +601,14 @@
             return null;
         }
 
-        let sampleStart = Math.floor(startTime * sampleRate);
-        let numSamples = Math.floor(duration * sampleRate);
+        // Calculate the number of samples in the selected region
+        const originalSampleStart = Math.floor(startTime * audioBuffer.sampleRate);
+        const originalNumSamples = Math.floor(duration * audioBuffer.sampleRate);
 
-        // Ensure we have at least the minimum number of samples
-        if (numSamples < 32) {
-            console.warn("Selected audio segment is too short for frequency analysis.");
-            return null;
-        }
-
-        // Determine the appropriate fftSize (must be power of two between 32 and 32768)
+        // Determine the appropriate fftSize (must be power of two between 32 and 8192)
         function getFftSize(n) {
             const minFftSize = 32;
-            const maxFftSize = 32768;
+            const maxFftSize = 8192; // Smaller fftSize since we have fewer samples
             let fftSize = minFftSize;
             while (fftSize * 2 <= n && fftSize < maxFftSize) {
                 fftSize *= 2;
@@ -587,35 +616,37 @@
             return fftSize;
         }
 
-        const fftSize = getFftSize(numSamples);
+        const fftSize = getFftSize(originalNumSamples);
 
-        // If numSamples exceeds fftSize, adjust sampleStart to analyze a window in the middle
-        if (numSamples > fftSize) {
-            const halfFftSize = Math.floor(fftSize / 2);
-            const middleSample = sampleStart + Math.floor(numSamples / 2);
-            sampleStart = middleSample - halfFftSize;
-            // Ensure sampleStart is within buffer bounds
-            sampleStart = Math.max(0, Math.min(sampleStart, audioBuffer.length - fftSize));
-            numSamples = fftSize;
+        // If the selected region is larger than fftSize, take the middle fftSize samples
+        let analysisStartSample = originalSampleStart;
+        if (originalNumSamples > fftSize) {
+            analysisStartSample = originalSampleStart + Math.floor((originalNumSamples - fftSize) / 2);
         }
 
-        // Create an OfflineAudioContext with enough samples
-        const offlineContext = new OfflineAudioContext(audioBuffer.numberOfChannels, fftSize, sampleRate);
+        // Downsample the audio buffer to the target sample rate
+        const resampledBuffer = await resampleBuffer(
+            audioBuffer,
+            audioBuffer.sampleRate,
+            targetSampleRate,
+            analysisStartSample,
+            Math.min(fftSize, originalNumSamples) // Ensure we don't exceed the selected region
+        );
+
+        // Create an OfflineAudioContext with the resampled buffer's sample rate
+        const offlineContext = new OfflineAudioContext(resampledBuffer.numberOfChannels, fftSize, targetSampleRate);
 
         // Create a buffer with the appropriate size (fftSize)
-        const extractedBuffer = offlineContext.createBuffer(audioBuffer.numberOfChannels, fftSize, sampleRate);
+        const extractedBuffer = offlineContext.createBuffer(resampledBuffer.numberOfChannels, fftSize, targetSampleRate);
 
-        // Copy data from the original buffer to the new buffer
-        for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
-            const sourceData = audioBuffer.getChannelData(channel);
+        // Copy data from the resampled buffer to the new buffer
+        for (let channel = 0; channel < resampledBuffer.numberOfChannels; channel++) {
+            const sourceData = resampledBuffer.getChannelData(channel);
             const destData = extractedBuffer.getChannelData(channel);
-            const sliceStart = sampleStart;
-            const sliceEnd = sampleStart + fftSize;
-            const slice = sourceData.subarray(sliceStart, sliceEnd);
 
-            // Ensure slice does not exceed destData length
-            const len = Math.min(slice.length, destData.length);
-            destData.set(slice.subarray(0, len));
+            // Ensure we don't exceed the source data length
+            const len = Math.min(fftSize, sourceData.length);
+            destData.set(sourceData.subarray(0, len));
 
             // Zero-pad if necessary
             if (len < destData.length) {
@@ -642,10 +673,10 @@
         const dataArray = new Float32Array(analyser.frequencyBinCount);
         analyser.getFloatFrequencyData(dataArray);
 
-        // Store the frequency data for visualization
+        // Store the frequency data for visualization (up to 8192 Hz)
         frequencyData = Array.from(dataArray);
 
-        // Find the peak frequency bin
+        // Find the peak frequency bin within the entire range (up to 8192 Hz)
         let maxIndex = 0;
         let maxValue = -Infinity;
         for (let i = 0; i < dataArray.length; i++) {
@@ -657,21 +688,62 @@
         dominantFrequencyIndex = maxIndex;
 
         // Calculate the dominant frequency
-        const nyquistFreq = sampleRate / 2;
-        const freqBinWidth = nyquistFreq / analyser.frequencyBinCount;
-        const dominantFrequency = maxIndex * freqBinWidth;
+        const nyquist = targetSampleRate / 2;
+        const freqBinWidth = nyquist / analyser.frequencyBinCount;
+        const bestFreq = maxIndex * freqBinWidth;
 
-        console.log(`Dominant Frequency: ${dominantFrequency.toFixed(2)} Hz`);
-        return dominantFrequency;
+        // console.log(`Dominant Frequency: ${bestFreq.toFixed(2)} Hz`);
+
+        // Use Tone.js to get the closest note
+        const closestNote = Tone.Frequency(bestFreq).toNote();
+        baseNote = closestNote;
+
+        // console.log(`Closest note: ${closestNote}`);
+        return { frequency: bestFreq, note: closestNote };
     }
+
+    async function resampleBuffer(buffer, originalSampleRate, targetSampleRate, startSample, numSamples) {
+        const resampleContext = new OfflineAudioContext(
+            buffer.numberOfChannels,
+            Math.ceil((numSamples * targetSampleRate) / originalSampleRate),
+            targetSampleRate
+        );
+
+        const resampleSource = resampleContext.createBufferSource();
+
+        // Extract the portion of the buffer we want to resample
+        const segmentBuffer = resampleContext.createBuffer(buffer.numberOfChannels, numSamples, originalSampleRate);
+
+        for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+            const sourceData = buffer.getChannelData(channel);
+            const segmentData = segmentBuffer.getChannelData(channel);
+            segmentData.set(sourceData.subarray(startSample, startSample + numSamples));
+        }
+
+        resampleSource.buffer = segmentBuffer;
+
+        resampleSource.connect(resampleContext.destination);
+        resampleSource.start();
+
+        const resampledBuffer = await resampleContext.startRendering();
+        return resampledBuffer;
+    }
+
+    function handlePlayNoteEvent(event) {
+        const note = event.detail.note;
+        console.log("nOtE", note);
+        playButton(note);
+    }
+
+    handleResize();
 </script>
 
 <svelte:window on:pointermove={handleMove} on:pointerup={handleEnd} />
 
 <div class="container flex-center-all flex-col">
-    <div class="h-32" />
+    <div class="h-4" />
     <div
-        class="waveform-container relative w-[95rem] h-[32rem] mb-4"
+        class="waveform-container relative w-[95rem] h-[32rem] mb-36"
         on:pointerdown={handleStart}
         on:pointerleave={handlePointerLeave}
     >
@@ -696,11 +768,18 @@
             <button on:pointerdown={stopButton} class="btn" disabled={!recording && !playing}>
                 <i class="fa-solid fa-stop text-[#60b0ff] btn-text" />
             </button>
-            <button on:pointerdown={playButton} class="btn" disabled={!audioBuffer}>
+            <button on:pointerdown={() => playButton(baseNote)} class="btn" disabled={!audioBuffer}>
                 <i class="fa-solid fa-play text-[#60b0ff] btn-text" />
             </button>
         </div>
-        <div class="absolute top-[45.5rem] left-9 w-[30rem]">
+        <button
+            on:pointerup={closeAndReturnSample}
+            class="btn absolute top-[46.3rem] right-12 text-5xl ml-auto"
+            style="border-radius:3.75rem"
+        >
+            <i class="fa-solid fa-check text-[#60b0ff] btn-text" style="font-size:4rem" />
+        </button>
+        <div class="absolute top-[46.5rem] left-9 w-[30rem]">
             <Slider
                 size={7.5 * 2}
                 label=""
@@ -720,19 +799,22 @@
         </div>
 
         {#if frequencyData.length > 0}
-            <div class="absolute top-[43rem] left-[68rem] w-[29.5rem] h-[12rem]">
+            <div in:fade={{ duration: 1000 }} class="absolute top-[35rem] left-[2.5rem] w-[95rem] h-[8rem]">
                 <FrequencyVisualizer
                     data={frequencyData}
-                    width={remToPx(29.5)}
-                    height={remToPx(12)}
+                    width={remToPx(95)}
+                    height={remToPx(8)}
                     dominantFrequency={dominantFrequencyIndex}
+                    dominantNote={dominantFrequency.note}
+                    currentPlayingNote={currentPlayingNote}
                 />
             </div>
         {/if}
-
-        <button on:pointerup={closeAndReturnSample} class="btn text-5xl ml-aXXuto" style="border-radius:3.75rem">
-            <i class="fa-solid fa-check text-[#60b0ff] btn-text" style="font-size:4rem" />
-        </button>
+        {#if audioBuffer}
+            <div in:fade={{ duration: 1000 }}>
+                <OctaveKeys rotation={0} highlightNote={dominantFrequency.note} on:playnote={handlePlayNoteEvent} />
+            </div>
+        {/if}
     </div>
 </div>
 
