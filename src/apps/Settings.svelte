@@ -1,5 +1,6 @@
 <script>
     import { pop } from "../router";
+    import { onMount } from "svelte";
     import {
         invAspectRatio,
         fullWidth,
@@ -15,23 +16,24 @@
     import { openDB, deleteDB, wrap, unwrap } from "idb";
     import { Howl, Howler } from "howler";
     import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
-    import { casing } from "../stores";
+    import { casing, age } from "../stores";
+    import APIKeyInput from "./AI/APIKeyInput.svelte";
 
     handleResize();
 
     let hold = false;
-    let volume = -1;
+    let showApiKeyInput = false;
 
     function openFullscreen() {
         let elem = document.documentElement;
         if (elem.requestFullscreen) {
             elem.requestFullscreen();
-        } else if (elem.webkitRequestFullscreen) {
+        } else if (elem["webkitRequestFullscreen"]) {
             /* Safari */
-            elem.webkitRequestFullscreen();
-        } else if (elem.msRequestFullscreen) {
+            elem["webkitRequestFullscreen"]();
+        } else if (elem["msRequestFullscreen"]) {
             /* IE11 */
-            elem.msRequestFullscreen();
+            elem["msRequestFullscreen"]();
         }
     }
 
@@ -40,12 +42,12 @@
         let elem = document.documentElement;
         if (document.exitFullscreen) {
             document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
+        } else if (document["webkitExitFullscreen"]) {
             /* Safari */
-            document.webkitExitFullscreen();
-        } else if (document.msExitFullscreen) {
+            document["webkitExitFullscreen"]();
+        } else if (document["msExitFullscreen"]) {
             /* IE11 */
-            document.msExitFullscreen();
+            document["msExitFullscreen"]();
         }
     }
 </script>
@@ -57,10 +59,10 @@
     <br />
     <p>
         This is a series of games and apps I made for small kids less than 5 years old. There's more info at otaviogood.com and github.com/otaviogood/tinyOS.
-    </p>
+    </p><br/>
     <p>
         This works best if you "install" it by (for iOS) clicking the share button and then "Add to Home Screen".
-    </p>
+    </p><br/>
     <hr />
 
     <div class="text-4xl m-4">
@@ -76,6 +78,18 @@
                 $casing = ($casing + 1) % 2;
             }}>Upper / Lower Case</button
         > {["lower", "UPPER", "Mixed", "Strict Mixed"][$casing]}<br /><br />
+        
+        <div class="flex items-center my-4">
+            <span class="text-3xl mr-4">Age:</span>
+            <input 
+                type="number" 
+                min="0" 
+                max="99" 
+                class="bg-white text-black text-3xl rounded p-4 w-32"
+                bind:value={$age}
+            />
+        </div><br />
+        
         <button
             class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
             on:pointerdown={() => {
@@ -95,7 +109,7 @@
             }}
             on:pointerup={() => {
                 hold = false;
-            }}>clear all local storage (paintings, photos) (hold for 5 seconds)</button
+            }}>clear all local storage (paintings, photos, etc) (hold for 5 seconds)</button
         ><br />
         <button
             class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
@@ -108,7 +122,7 @@
             on:pointerup={() => {
                 hold = false;
             }}>Fullscreen (hold for 2 seconds)</button
-        ><br />
+        >
         <button
             class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
             on:pointerdown={() => {
@@ -121,20 +135,17 @@
                 hold = false;
             }}>Not Fullscreen (hold for 2 seconds)</button
         ><br />
-        {#key volume}
-            <div class="flex flex-row items-center">
-                {#each Array(11).fill(0) as _, i}
-                    <button
-                        class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
-                        on:pointerdown={() => {
-                            Howler.volume(i / 10);
-                            volume = i / 10;
-                        }}>{(i / 10).toFixed(1)}</button
-                    >
-                {/each}
-                <div class="ml-8">Volume: {Howler.volume().toFixed(1)}</div>
-            </div>
-        {/key}
+        <button
+            class="bg-gray-600 text-white text-3xl rounded p-4 m-2"
+            on:pointerdown={() => {
+                hold = true;
+                setTimeout(() => {
+                    if (hold) showApiKeyInput = true;
+                }, 2000);
+            }}
+            on:pointerup={() => {
+                hold = false;
+            }}><i class="fa-solid fa-key"></i> Change OpenAI API Key (hold for 2 seconds)</button>
     </div>
 
     <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-500 text-8xl" on:pointerup={pop}>
@@ -142,11 +153,9 @@
     </div>
 </FourByThreeScreen>
 
+{#if showApiKeyInput}
+    <APIKeyInput on:keySaved={() => showApiKeyInput = false} />
+{/if}
+
 <style>
-    p {
-        font-size: 20px;
-        margin: 20px;
-        text-indent: 3ch;
-        display: block;
-    }
 </style>

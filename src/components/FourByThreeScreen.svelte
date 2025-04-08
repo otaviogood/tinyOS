@@ -19,7 +19,7 @@
     export let bg = "#000000";
 </script>
 
-<div class="fit-full-space select-none overflow-hidden" style={bg ? "background-color:" + bg : ""} on:touchstart={preventZoom}>
+<div class="fit-full-space select-none overflow-hidden text-3xl" style={bg ? "background-color:" + bg : ""} on:touchstart={preventZoom}>
     <div
         class="relative overflow-hidden select-none {clazz}"
         style="width:{$bigWidth}; height:{$bigHeight};margin-left:{$bigPadX}px;margin-top:{$bigPadY}px"

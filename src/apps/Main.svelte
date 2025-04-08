@@ -13,6 +13,14 @@
     import { invAspectRatio, fullWidth, fullHeight, landscape, bigWidth, bigHeight, bigScale, bigPadX, bigPadY, handleResize } from "../screen";
     import { sleep, getRandomInt, shuffleArray, preventZoom } from "../utils";
     import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
+    import { onMount } from 'svelte';
+
+    let hasApiKey = false;
+
+    onMount(() => {
+        const storedKey = localStorage.getItem('openai_api_key');
+        hasApiKey = !!storedKey;
+    });
 
     const icons = [
         {name: "Tiny Quest", icon: "fa-hat-wizard", bgcolor: "bg-green-500", link: "tinyquest/mapscreen"},
@@ -40,15 +48,20 @@
         // {name: "Orbits", icon: "fa-atom", bgcolor: "bg-violet-500", link: "orbits"},
         // {name: "Motor", icon: "fa-compass", bgcolor: "bg-amber-500", link: "Motor"},
         // {name: "Bluetooth", icon: "fa-compass", bgcolor: "bg-amber-500", link: "Bluetooth"},
+        // {name: "DNA", icon: "fa-compass", bgcolor: "bg-amber-500", link: "dna"},
+        {name: "AI", icon: "fa-question", bgcolor: "bg-cyan-500", link: "ai"},
         {name: "Settings", icon: "fa-cog", bgcolor: "bg-gray-500", link: "settings"},
     ];
+
+    // Add or remove the AI app based on whether an API key exists
+    $: displayIcons = hasApiKey ? icons : icons.filter(icon => icon.name !== "AI");
 
     handleResize();
 </script>
 
 <FourByThreeScreen bg="black">
     <div class="wrapper">
-        {#each icons as icon, i}
+        {#each displayIcons as icon, i}
             <div class="flex-center-all flex-col text-white select-none bXXorder border-red-500">
                 <button class="p-2 active:scale-105 transform transition-all duration-75" on:pointerup={() => {push("/" + icon.link)}}>
                     <div class="w-56 h-56 roundeXXd-3xl {icon.bgcolor} flex-center-all text-9xl text-white" style="border-radius:4rem"><i class="fas {icon.icon}"></i></div>
