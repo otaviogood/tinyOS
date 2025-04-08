@@ -39,6 +39,10 @@ This project uses Svelte, Vite, Tailwind.
 #### Recommended
 [VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
 
+### PWA stuff
+npm run build
+npm run preview
+
 ## Generate data
 
 ### Music
