@@ -1,6 +1,6 @@
 import { elasticOut, cubicInOut, cubicOut } from "svelte/easing";
 
-export function shake(node, { delay, duration, flip=1 }) {
+export function shake(node, { delay, duration, flip = 1 }) {
     return {
         delay,
         duration,
@@ -8,9 +8,28 @@ export function shake(node, { delay, duration, flip=1 }) {
             const eased = cubicOut(t);
 
             return `
-                    transform: scale(${(1.0 + Math.sin(eased * Math.PI) * 0.05)*flip}, ${1.0 + Math.sin(eased * Math.PI) * 0.05}) rotate(${Math.sin(eased * Math.PI * 3) * 0.2}rad);
+                    transform: scale(${(1.0 + Math.sin(eased * Math.PI) * 0.05) * flip}, ${
+                1.0 + Math.sin(eased * Math.PI) * 0.05
+            }) rotate(${Math.sin(eased * Math.PI * 3) * 0.2}rad);
                     will-change: transform;
-                    filter: drop-shadow(0 0 ${4.75*(1.0-eased)}rem #ff3020);
+                    filter: drop-shadow(0 0 ${4.75 * (1.0 - eased)}rem #ff3020);
+                    `;
+        },
+    };
+}
+
+export function shakeIce(node, { delay, duration, flip = 1 }) {
+    return {
+        delay,
+        duration,
+        css: (t) => {
+            const eased = cubicOut(t);
+
+            return `
+                    transform: scale(${(1.0 + Math.sin(eased * Math.PI) * 0.05) * flip}, ${
+                1.0 + Math.sin(eased * Math.PI) * 0.05
+            }) translate(${Math.sin(eased * Math.PI * 3) * 0.2}rem, ${Math.sin(eased * Math.PI * 3) * 0.2}rem);
+                    will-change: transform;
                     `;
         },
     };

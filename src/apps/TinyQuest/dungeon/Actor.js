@@ -1,30 +1,32 @@
 export class Actor {
-    static statsCSV = 
-`monsterType	img	health	maxHealth	mana	maxMana	attackPower	experience	level	element
-hero	heroic_knight_trans.webp	8	8	1	1	1	0		
-greenSlime	green_slime_trans.webp	1	1	0	0	1	1	0	e_water
-pumpkin	pumpkin.webp	2	2	0	0	1	2	0	e_earth
-tweeger	tweeger_trans.webp	4	4	0	0	1	3	1	e_fire
-hairMonster	hairMonster.webp	2	2	0	0	2	4	2	e_air
-grouch	grouch.webp	7	7	0	0	1	6	3	e_earth`
+    static statsCSV = `monsterType	img	actorMode	health	maxHealth	mana	maxMana	attackPower	experience	level	element
+hero	heroic_knight_trans.webp	0	8	8	1	1	1	0		
+greenSlime	green_slime_trans.webp	0	1	1	0	0	1	5	0	e_water
+pumpkin	pumpkin.webp	0	2	2	0	0	1	10	0	e_earth
+tweeger	tweeger_trans.webp	0	4	4	0	0	1	15	1	e_fire
+hairMonster	hairMonster.webp	0	2	2	0	0	2	20	2	e_air
+grouch	grouch.webp	0	7	7	0	0	1	25	3	e_earth
+pizzaMonster	pizzaMonster.webp	0	2	2	0	0	4	30	4	e_fire
+artifactFreeze	artifactFreeze.webp	1	0	0	0	0	0	10	0	e_water
+manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0	`;
     static statsLookup = null;
     constructor(x, y, monsterType) {
         if (Actor.statsLookup === null) {
             // Parse the tab delimited statsCSV CSV string to be a dictionary with the first column as the key.
             Actor.statsLookup = {};
-            const lines = Actor.statsCSV.split('\n');
-            const keys = lines[0].split('\t');
+            const lines = Actor.statsCSV.split("\n");
+            const keys = lines[0].split("\t");
             // get rid of extra tabs
             for (let i = 0; i < keys.length; i++) keys[i] = keys[i].trim();
             // console.log(keys);
 
             for (let i = 1; i < lines.length; i++) {
-                const values = lines[i].split('\t');
+                const values = lines[i].split("\t");
                 // get rid of extra tabs
                 for (let j = 0; j < values.length; j++) values[j] = values[j].trim();
                 const stats = {};
                 for (let j = 0; j < keys.length; j++) {
-                    if (values[j] === '') continue;
+                    if (values[j] === "") continue;
                     // console.log(keys[j], values[j]);
                     // If it can be converted to a number, do so.
                     if (!isNaN(values[j])) values[j] = Number(values[j]);
@@ -32,13 +34,14 @@ grouch	grouch.webp	7	7	0	0	1	6	3	e_earth`
                 }
                 Actor.statsLookup[values[0]] = stats;
             }
-
         }
         // console.log(Actor.statsLookup);
         this.x = x;
         this.y = y;
         this.monsterType = monsterType;
         this.isDead = false;
+        this.drop = null;
+        this.dropChance = 0.5;
         // Set member variables based on monsterType. lookup stats from Actor.statsLookup.
         // Dynamically set only the member variables that are defined in statsLookup.
         const stats = Actor.statsLookup[monsterType];
@@ -47,7 +50,7 @@ grouch	grouch.webp	7	7	0	0	1	6	3	e_earth`
         }
 
         // Additional variables for turn-based roguelike (e.g., health, attack power, etc.)
-        if (monsterType === 'hero') {
+        if (monsterType === "hero") {
             this.img = "heroic_knight_trans.webp";
             this.health = 8;
             this.maxHealth = 8;
@@ -55,42 +58,12 @@ grouch	grouch.webp	7	7	0	0	1	6	3	e_earth`
             this.maxMana = 1;
             this.attackPower = 1;
             this.experience = 0;
-            this.XPHealthDelta = 10;
+            this.XPHealthDelta = 16;
+            this.XPMaxHealthDelta = 256;
             this.lastXPHealth = 0;
+            this.lastXPMaxHealth = 0;
             this.attackingTrigger = 0; // For animation triggers
-        // } else if (monsterType === 'greenSlime') {
-        //     this.img = "pumpkin.png";
-        //     this.health = 1;
-        //     this.maxHealth = 1;
-        //     this.mana = 0;
-        //     this.maxMana = 0;
-        //     this.attackPower = 1;
-        //     this.experience = 1;
-        // } else if (monsterType === 'tweeger') {
-        //     this.img = "tweeger_trans.webp";
-        //     this.health = 4;
-        //     this.maxHealth = 4;
-        //     this.mana = 0;
-        //     this.maxMana = 0;
-        //     this.attackPower = 1;
-        //     this.experience = 1;
-        // } else if (monsterType === 'hairMonster') {
-        //     this.img = "hairMonster.png";
-        //     this.health = 2;
-        //     this.maxHealth = 2;
-        //     this.mana = 0;
-        //     this.maxMana = 0;
-        //     this.attackPower = 2;
-        //     this.experience = 2;
-        // } else if (monsterType === 'grouch') {
-        //     this.img = "grouch.png";
-        //     this.health = 7;
-        //     this.maxHealth = 7;
-        //     this.mana = 0;
-        //     this.maxMana = 0;
-        //     this.attackPower = 1;
-        //     this.experience = 6;
-        } else if (monsterType === 'stairs') {
+        } else if (monsterType === "stairs") {
             this.img = "stairs01.jpg";
             this.stairs = true;
             this.health = 1;
@@ -100,6 +73,9 @@ grouch	grouch.webp	7	7	0	0	1	6	3	e_earth`
             this.attackPower = 1;
             this.experience = 1;
         }
+
+        // Initialize frozen state
+        this.frozen = 0; // Number of turns the actor remains frozen
     }
 
     // Get the actor's current position
@@ -118,8 +94,27 @@ grouch	grouch.webp	7	7	0	0	1	6	3	e_earth`
         if (this.health > this.maxHealth) this.health = this.maxHealth;
     }
 
+    addMaxHealth(dMaxHealth) {
+        this.maxHealth += dMaxHealth;
+        if (this.health > this.maxHealth) this.health = this.maxHealth;
+    }
+
+    addMana(dm) {
+        this.mana += dm;
+        if (this.mana > this.maxMana) this.mana = this.maxMana;
+    }
+
+    addMaxMana(dMaxMana) {
+        this.maxMana += dMaxMana;
+        if (this.mana > this.maxMana) this.mana = this.maxMana;
+    }
+
     addXP(dXP) {
         this.experience += dXP;
+        if (this.experience >= this.lastXPMaxHealth + this.XPMaxHealthDelta) {
+            this.addMaxHealth(1);
+            this.lastXPMaxHealth = this.experience;
+        }
         if (this.experience >= this.lastXPHealth + this.XPHealthDelta) {
             this.addHealth(1);
             this.lastXPHealth = this.experience;
@@ -158,6 +153,35 @@ grouch	grouch.webp	7	7	0	0	1	6	3	e_earth`
     attack(target) {
         if (target) {
             target.takeDamage(this.attackPower);
+        }
+    }
+
+    // Add a method to freeze the actor
+    freeze(duration) {
+        this.frozen = duration;
+    }
+
+    // Check if the actor is frozen
+    isFrozen() {
+        return this.frozen > 0;
+    }
+
+    // Decrease frozen counter after a turn
+    decreaseFrozen() {
+        if (this.frozen > 0) {
+            this.frozen--;
+        }
+    }
+
+    pickup(character) {
+        if (character.actorMode === 1) {
+            // pick up item
+            this.addXP(character.experience);
+            character.setDeadStatus(true);
+        } else if (character.actorMode === 2) {
+            // pick up mana potion
+            this.addMana(1);
+            character.setDeadStatus(true);
         }
     }
 }

@@ -4,7 +4,7 @@
     import { slide, fade } from "svelte/transition";
 	import { tweened } from 'svelte/motion';
     import { elasticOut, cubicInOut, cubicOut } from "svelte/easing";
-    import { shake, slideHit, scalePulse2 } from "./AnimSvelte.js";
+    import { shake, slideHit, scalePulse, scalePulse2, shakeIce } from "./AnimSvelte.js";
 
     import { Howl, Howler } from "howler";
     import WinScreen from "../WinScreen.svelte";
@@ -36,6 +36,20 @@
     let dungeonLevel = 0;
     let prompt = null;
     let collectedMonsters = new Set();
+    let dyingCharacter = null; // Single dying character instead of array
+
+    // Tweened animation values
+    const monsterAlive = tweened(1, {
+        delay: 100,
+		duration: 1500,
+		easing: cubicOut
+	});
+    
+    const deathAnim = tweened(1, {
+        delay: 0,
+        duration: 1500,
+        easing: cubicOut
+    });
 
     // let imageCache=[];
     onMount(() => {
@@ -85,6 +99,18 @@
                 if (character.stairs) {
                     prompt = { msg:"You got to level " + (dungeonLevel + 2), btn:"Go", fn:()=>{prompt=null; resetGame(dungeonLevel + 1)}, btn2:"No", fn2:()=>{prompt=null}};
                     return;
+                } else if (character.actorMode === 1) {
+                    // pick up artifact
+                    collectedMonsters.add(character.monsterType);
+                    collectedMonsters = collectedMonsters;
+                    playerCharacter.pickup(character);
+                    removeDeadCharacters();
+                    return;
+                } else if (character.actorMode === 2) {
+                    // pick up mana potion
+                    playerCharacter.pickup(character);
+                    removeDeadCharacters();
+                    return;
                 } else {
                     startFightScreen(character);
                     return;
@@ -104,8 +130,38 @@
 
     // Function to remove dead characters from the characters array
     function removeDeadCharacters() {
-        // Don't remove hero though.
-        characters = characters.filter((character) => !character.isActorDead() || character.monsterType==='hero' );
+        let keep = [];
+        let foundDyingCharacter = false;
+        
+        for (const character of characters) {
+            if (character.isActorDead() && character.monsterType !== 'hero') {
+                // Always animate the first dead character we find
+                if (!foundDyingCharacter) {
+                    foundDyingCharacter = true;
+                    dyingCharacter = character;
+
+                    if (character.drop) {
+                        const npc = new Actor(character.x, character.y, character.drop);
+                        characters.push(npc);
+                        characters = characters;
+                    }
+
+                    // Cancel any in-progress animation and start a new one
+                    deathAnim.set(1, {duration: 0}); // Instant reset
+                    deathAnim.set(0, {delay: character.actorMode === 0 ? 2300 : 0}).then(() => {
+                        // After animation completes, clear dying character reference
+                        // to allow next animation to start
+                        dyingCharacter = null;
+                        
+                        // Check for more dead characters after this animation
+                        removeDeadCharacters();
+                    });
+                }
+            } else {
+                keep.push(character);
+            }
+        }
+        characters = keep;
     }
 
     function startFightScreen(opp) {
@@ -118,9 +174,19 @@
         const opponentCharacter = opponent;
         if (playerCharacter.isDead) return;
         if (opponentCharacter.isDead) return;
-        playerCharacter.health -= opponentCharacter.attackPower;
+        
+        // Player always attacks
         opponentCharacter.health -= playerCharacter.attackPower;
         playerCharacter.attackingTrigger++;
+        
+        // Opponent only attacks if not frozen
+        if (!opponentCharacter.isFrozen()) {
+            playerCharacter.health -= opponentCharacter.attackPower;
+        } else {
+            // Decrease frozen counter after opponent's turn
+            opponentCharacter.decreaseFrozen();
+        }
+        
         if (opponentCharacter.health <= 0) {
             opponentCharacter.health = 0;
             opponentCharacter.isDead = true;
@@ -141,6 +207,29 @@
         }
         removeDeadCharacters();
         opponent = opponent;
+    }
+
+    // Add a freeze attack function
+    function freezeAttack() {
+        const playerCharacter = characters[0];
+        const opponentCharacter = opponent;
+        
+        if (playerCharacter.isDead || opponentCharacter.isDead) return;
+        if (playerCharacter.mana < 1) return; // Not enough mana
+        
+        // Use mana to freeze the opponent
+        playerCharacter.mana -= 1;
+        
+        // Freeze the opponent for 2 turns
+        opponentCharacter.freeze(2);
+        
+        // Visual feedback
+        playerCharacter.attackingTrigger++;
+        
+        // Update UI
+        opponent = opponent;
+        // Explicitly tell Svelte the characters array has changed to update player UI
+        characters = characters; 
     }
 
     function getRandomOpenPosition(mazeGen) {
@@ -183,13 +272,20 @@
             let k = Object.keys(Actor.statsLookup);
             let monsterType = k[mazeGen.random.RandIntApprox(0, k.length)];
             let monster = Actor.statsLookup[monsterType];
-            while (monster.level === undefined || monster.level > dungeonLevel) {
+            while (monster.level === undefined || monster.level > dungeonLevel || monster.actorMode > 0) {
                 monsterType = k[mazeGen.random.RandIntApprox(0, k.length)];
                 monster = Actor.statsLookup[monsterType];
             }
             // console.log("Adding monster", monsterType, monster.level);
             const npc = new Actor(xy[0], xy[1], monsterType);
             // map.SetPixel(npc.x, npc.y, 0);
+            if ((monsterType === "tweeger" || monsterType === "pumpkin") && (mazeGen.random.RandFloat() < npc.dropChance)) {
+                npc.drop = "manaPotion";
+            }
+            if ((i === 0) && (npc.actorMode === 0) && (!collectedMonsters.has("artifactFreeze"))) {
+                npc.drop = "artifactFreeze";
+                npc.dropChance = 1.0;
+            }
             characters.push(npc);
         }
         // const npc2 = new Actor(9, 9, "greenSlime");
@@ -227,6 +323,8 @@
             moveTo(characters[0].x + 1, characters[0].y);
         } else if (e.key === " ") {
             if (opponent) attack();
+        } else if (e.key === "f" || e.key === "F") {
+            if (opponent) freezeAttack();
         }
     }
 
@@ -241,12 +339,6 @@
         started = false;
         pop();
     }
-
-    const monsterAlive = tweened(1, {
-        delay: 100,
-		duration: 1500,
-		easing: cubicOut
-	});
 
     handleResize();
     startGame();
@@ -293,9 +385,41 @@
                 {#key characters[0].attackingTrigger}
                     <img in:slideHit|local={{ delay: 0, duration: 1000, dir:-1 }} draggable="false" class="absolute w-[16rem]" style="right:20rem;bottom:8rem;" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
                 {/key}
-                {#key characters[0].attackingTrigger}
-                    <img in:slideHit|local={{ delay: 0, duration: 1000 }} draggable="false" class="absolute w-[16rem] transform -scale-x-100" style="left:20rem;bottom:8rem;opacity:{$monsterAlive}" src="TinyQuest/gamedata/dungeon/{opponent.img}" on:pointerup|preventDefault|stopPropagation={attack} />
-                {/key}
+                {#if !opponent.frozen}
+                    {#key characters[0].attackingTrigger}
+                        <img in:slideHit|local={{ delay: 0, duration: 1000 }} draggable="false" class="absolute w-[16rem] transform -scale-x-100" style="left:20rem;bottom:8rem;opacity:{$monsterAlive}" src="TinyQuest/gamedata/dungeon/{opponent.img}" on:pointerup|preventDefault|stopPropagation={attack} />
+                    {/key}
+                {:else}
+                    <div class="absolute" style="left:20rem;bottom:8rem;opacity:{$monsterAlive};">
+                        <img in:shakeIce|local={{ delay: 0, duration: 400, flip:-1 }} draggable="false" class="w-[16rem] transform -scale-x-100"
+                            style="filter: drop-shadow(0 0 1rem #1090ff) drop-shadow(0 0 2rem #10c0ff);"
+                            src="TinyQuest/gamedata/dungeon/{opponent.img}" on:pointerup|preventDefault|stopPropagation={attack} />
+                        <div class="absolute top-[-5rem] left-1/2 transform -translate-x-1/2 text-8xl text-sky-100 whitespace-nowrap" style="filter: drop-shadow(0 0 1rem #1090ff) drop-shadow(0 0 2rem #10c0ff);">
+                            <i class="fa-solid fa-snowflake"></i>{opponent.frozen}
+                        </div>
+                    </div>
+                {/if}
+                <div class="absolute bottom-12 left-1/2 transform -translate-x-1/2 flex flex-row gap-4">
+                    <!-- Attack Button: Adjusted positioning -->
+                    <button
+                        class="w-20 h-20 flex items-center justify-center
+                               bg-gray-900/80 border border-gray-600 text-white text-4xl rounded-full hover:bg-gray-800"
+                        on:pointerup|preventDefault|stopPropagation={attack}>
+                        <i class="fa-solid fa-hand-fist"></i>
+                    </button>
+                    
+                    <!-- Freeze Button: Only show if player has the freeze artifact -->
+                    {#if collectedMonsters.has("artifactFreeze")}
+                    <button
+                        class="w-20 h-20 flex items-center justify-center
+                               bg-blue-900/80 border border-blue-400 text-white text-4xl rounded-full hover:bg-blue-800
+                               {characters[0].mana < 1 ? 'opacity-50 cursor-not-allowed' : ''}"
+                        disabled={characters[0].mana < 1}
+                        on:pointerup|preventDefault|stopPropagation={freezeAttack}>
+                        <i class="fa-solid fa-snowflake"></i>
+                    </button>
+                    {/if}
+                </div>
                 <div class="absolute w-[25rem] h-[32rem] top-0 right-0 bg-gray-900/80">
                     {#key characters[0].health}
                         <img in:shake|local={{ delay: 250, duration: 700 }} draggable="false" class="w-3/4 mr-0 ml-auto" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
@@ -339,7 +463,7 @@
                                 <!-- <img src="TinyQuest/gamedata/dungeon/tiles.webp" style="width:400%;height:400%; clip-path: inset(63px 1px);"/> -->
                                 <!-- <img src="TinyQuest/gamedata/dungeon/tiles.webp" style="objeXXct-fit: none;margin-left:-20px; oXXbject-position: -128px 0;object-sXXize:0.5; width:512px;height:512px;transfXXorm: scale(0.85,0.5);tranXXsform-origin: top left;"/> -->
                                 {:else if map.GetPixel(x, y) === 2}
-                                <img src="TinyQuest/gamedata/dungeon/stairs01.jpg" draggable="false" class="w-full h-full" />
+                                <!-- <img src="TinyQuest/gamedata/dungeon/stairs01.jpg" draggable="false" class="w-full h-full" /> -->
                                 {:else}
                                 <img src="TinyQuest/gamedata/dungeon/floor01.jpg" draggable="false" class="w-full h-full" />
                                 {/if}
@@ -356,7 +480,7 @@
                                     ? '#ff0000'
                                     : ''};"
                             >
-                                <img src="TinyQuest/gamedata/dungeon/{character.img}" draggable="false" />
+                                <img src="TinyQuest/gamedata/dungeon/{character.img}" draggable="false" class="w-full h-full" />
                             </div>
                         {/if}
                     {/each}
@@ -381,6 +505,17 @@
                     {/each}
                 </div>
             </div>
+            
+            <!-- Render single dying character with tweened animation -->
+            {#if dyingCharacter}
+                <div
+                    class="absolute pointer-events-none"
+                    style="left:{dyingCharacter.x * 4.4}rem;top:{dyingCharacter.y * 4.4}rem;width:4.4rem;height:4.4rem;opacity:{$deathAnim};transform: scale({dyingCharacter.actorMode > 0 ? 8 - $deathAnim*7 : $deathAnim});"
+                >
+                    <img src="TinyQuest/gamedata/dungeon/{dyingCharacter.img}" draggable="false" class="w-full h-full" />
+                </div>
+            {/if}
+            
             <div
                 class="absolute right-0 top-0 cursor-pointer select-none m-1 opacity-80"
                 on:pointerup|preventDefault|stopPropagation={resetToSplashScreen}
