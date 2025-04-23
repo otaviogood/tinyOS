@@ -36,6 +36,7 @@
     let dungeonLevel = 0;
     let prompt = null;
     let collectedMonsters = new Set();
+    let recentlyCollectedMonster = null; // Track the most recently collected monster
     let dyingCharacter = null; // Single dying character instead of array
 
     // Tweened animation values
@@ -101,6 +102,9 @@
                     return;
                 } else if (character.actorMode === 1) {
                     // pick up artifact
+                    if (!collectedMonsters.has(character.monsterType)) {
+                        showMonsterCollectionPopup(character.monsterType);
+                    }
                     collectedMonsters.add(character.monsterType);
                     collectedMonsters = collectedMonsters;
                     playerCharacter.pickup(character);
@@ -126,6 +130,21 @@
         updateFog();
 
         // removeDeadCharacters();
+    }
+
+    // Function to show monster collection popup
+    function showMonsterCollectionPopup(monsterType) {
+        recentlyCollectedMonster = monsterType;
+        prompt = { 
+            isMonsterCollection: true,
+            monsterType: monsterType,
+            msg: `Collected ${Actor.statsLookup[monsterType]?.readableName || monsterType}!`, 
+            btn: "Yay!", 
+            fn: () => {
+                prompt = null;
+                recentlyCollectedMonster = null;
+            }
+        };
     }
 
     // Function to remove dead characters from the characters array
@@ -192,8 +211,12 @@
             opponentCharacter.isDead = true;
             $monsterAlive = 0.0;
             playerCharacter.addXP(opponentCharacter.experience);
-            collectedMonsters.add(opponentCharacter.monsterType);
             setTimeout(() => {
+                if (!collectedMonsters.has(opponentCharacter.monsterType)) {
+                    showMonsterCollectionPopup(opponentCharacter.monsterType);
+                }
+                collectedMonsters.add(opponentCharacter.monsterType);
+                collectedMonsters = collectedMonsters;
                 opponent = null;
             }, 2000);
         }
@@ -297,12 +320,6 @@
         map.SetPixel(stairsPos[0], stairsPos[1], 0);
         const npc1 = new Actor(stairsPos[0], stairsPos[1], "stairs");
         characters.push(npc1);
-
-        // collectedMonsters.add("greenSlime");
-        // collectedMonsters.add("tweeger");
-        // collectedMonsters.add("hairMonster");
-        // collectedMonsters.add("grouch");
-        // collectedMonsters.add("pumpkin");
 
         // opponent = characters[1];
         map = map;
@@ -527,23 +544,35 @@
         {/if}
         {#if prompt}
             <div in:fade={{ duration: 200 }} class="absolute top-0 left-0 w-[75rem] h-full flex-center-all bg-black/30">
-                <div class="flex flex-col bg-blue-800 border-[0.5rem] border-white rounded-2xl p-2">
-                    <div class="text-5xl m-2">{prompt.msg}</div>
-                    <button
-                        
-                        class="bg-black/30 border border-gray-300 text-white text-9xl rounded-3xl p-8 m-2 z-20"
-                        style="maXXrgin-top:25rem"
-                        on:pointerup|preventDefault|stopPropagation={prompt.fn}>{prompt.btn}</button
-                    >
-                    {#if prompt.btn2}
+                {#if prompt.isMonsterCollection}
+                    <div class="flex flex-col bg-indigo-900 border-[0.5rem] border-white rounded-2xl p-6 items-center">
+                        <div class="text-5xl mb-4 text-yellow-200 font-bold">{prompt.msg}</div>
+                        <div class="w-80 h-80 border-4 bg-gray-700 rounded-full overflow-hidden mb-4"
+                            style="border-color:{['#d03030', '#4060ff', '#a09020', '#20b040', '#90c0e0'][['e_fire', 'e_water', 'e_wood', 'e_earth', 'e_air'].indexOf(Actor.statsLookup[prompt.monsterType]?.element)]}">
+                            <img draggable="false" class="w-full h-full" src="TinyQuest/gamedata/dungeon/{Actor.statsLookup[prompt.monsterType].img}" />
+                        </div>
+                        {#if Actor.statsLookup[prompt.monsterType].about}
+                            <div class="text-3xl text-yellow-200 font-bold my-4">{Actor.statsLookup[prompt.monsterType].about}</div>
+                        {/if}
                         <button
-                            
-                            class="bg-black/30 border border-gray-500 text-gray-300 text-9xl rounded-3xl p-8 m-2 z-20"
+                            class="bg-blue-700 hover:bg-blue-600 border-2 border-white text-white text-6xl rounded-3xl px-8 py-2 z-20"
+                            on:pointerup|preventDefault|stopPropagation={prompt.fn}>{prompt.btn}</button>
+                    </div>
+                {:else}
+                    <div class="flex flex-col bg-blue-800 border-[0.5rem] border-white rounded-2xl p-2">
+                        <div class="text-5xl m-2">{prompt.msg}</div>
+                        <button
+                            class="bg-black/30 border border-gray-300 text-white text-9xl rounded-3xl p-8 m-2 z-20"
                             style="maXXrgin-top:25rem"
-                            on:pointerup|preventDefault|stopPropagation={prompt.fn2}>{prompt.btn2}</button
-                        >
-                    {/if}
-                </div>
+                            on:pointerup|preventDefault|stopPropagation={prompt.fn}>{prompt.btn}</button>
+                        {#if prompt.btn2}
+                            <button
+                                class="bg-black/30 border border-gray-500 text-gray-300 text-9xl rounded-3xl p-8 m-2 z-20"
+                                style="maXXrgin-top:25rem"
+                                on:pointerup|preventDefault|stopPropagation={prompt.fn2}>{prompt.btn2}</button>
+                        {/if}
+                    </div>
+                {/if}
             </div>
         {/if}
 

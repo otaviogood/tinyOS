@@ -1,14 +1,14 @@
 export class Actor {
-    static statsCSV = `monsterType	img	actorMode	health	maxHealth	mana	maxMana	attackPower	experience	level	element
-hero	heroic_knight_trans.webp	0	8	8	1	1	1	0		
-greenSlime	green_slime_trans.webp	0	1	1	0	0	1	5	0	e_water
-pumpkin	pumpkin.webp	0	2	2	0	0	1	10	0	e_earth
-tweeger	tweeger_trans.webp	0	4	4	0	0	1	15	1	e_fire
-hairMonster	hairMonster.webp	0	2	2	0	0	2	20	2	e_air
-grouch	grouch.webp	0	7	7	0	0	1	25	3	e_earth
-pizzaMonster	pizzaMonster.webp	0	2	2	0	0	4	30	4	e_fire
-artifactFreeze	artifactFreeze.webp	1	0	0	0	0	0	10	0	e_water
-manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0	`;
+    static statsCSV = `monsterType	img	actorMode	health	maxHealth	mana	maxMana	attackPower	experience	level	element	readableName	about
+hero	heroic_knight_trans.webp	0	8	8	1	1	1	0			Hero	
+greenSlime	green_slime_trans.webp	0	1	1	0	0	1	5	0	e_water	Green Slime	Squash these things!
+pumpkin	pumpkin.webp	0	2	2	0	0	1	10	0	e_earth	Vampumpkin	Vampumpkin's attack will steal your life.
+tweeger	tweeger_trans.webp	0	4	4	0	0	1	15	1	e_fire	Tweeger	A Baflooming Tweeger is a magical tweegy beegy.
+hairMonster	hairMonster.webp	0	2	2	0	0	2	20	2	e_air	Hairbo	Don't be fooled by the cuteness, Hairbo will get you.
+grouch	grouch.webp	0	7	7	0	0	1	25	3	e_earth	Grouch	The grouch is the worst.
+pizzaMonster	pizzaMonster.webp	0	2	2	0	0	4	30	4	e_fire	Pizzattack	This pizza is hot like fire! No frozen pizza here.
+artifactFreeze	artifactFreeze.webp	1	0	0	0	0	0	10	0	e_water	Freeze Artifact	This gives you the freeze spell. Use it in battles!
+manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0		Mana Potion	This fills your mana up by 1 point.`;
     static statsLookup = null;
     constructor(x, y, monsterType) {
         if (Actor.statsLookup === null) {
