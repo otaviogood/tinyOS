@@ -1,13 +1,14 @@
 export class Actor {
     static statsCSV = `monsterType	img	actorMode	health	maxHealth	mana	maxMana	attackPower	experience	level	element	readableName	about
 hero	heroic_knight_trans.webp	0	8	8	1	1	1	0			Hero	
-greenSlime	green_slime_trans.webp	0	1	1	0	0	1	5	0	e_water	Green Slime	Squash these things!
-pumpkin	pumpkin.webp	0	2	2	0	0	1	10	0	e_earth	Vampumpkin	Vampumpkin's attack will steal your life.
-tweeger	tweeger_trans.webp	0	4	4	0	0	1	15	1	e_fire	Tweeger	A Baflooming Tweeger is a magical tweegy beegy.
-hairMonster	hairMonster.webp	0	2	2	0	0	2	20	2	e_air	Hairbo	Don't be fooled by the cuteness, Hairbo will get you.
-grouch	grouch.webp	0	7	7	0	0	1	25	3	e_earth	Grouch	The grouch is the worst.
-pizzaMonster	pizzaMonster.webp	0	2	2	0	0	4	30	4	e_fire	Pizzattack	This pizza is hot like fire! No frozen pizza here.
-artifactFreeze	artifactFreeze.webp	1	0	0	0	0	0	10	0	e_water	Freeze Artifact	This gives you the freeze spell. Use it in battles!
+greenSlime	green_slime_trans.webp	0	1	1	0	0	1	1	0	e_water	Green Slime	Squash these things!
+pumpkin	pumpkin.webp	0	2	2	0	0	1	1	0	e_earth	Vampumpkin	Vampumpkin's attack will steal your life.
+iceMonster	iceMonster.webp	0	2	2	1	1	1	1	1	e_water	Freezle	So chilly cold! Watch out so you don't get frozen.
+tweeger	tweeger_trans.webp	0	4	4	0	0	1	1	1	e_fire	Tweeger	A Baflooming Tweeger is a magical tweegy beegy.
+hairMonster	hairMonster.webp	0	2	2	0	0	2	1	2	e_air	Hairflo	Don't be fooled by the cuteness, Hairflo will get you.
+grouch	grouch.webp	0	7	7	0	0	1	2	3	e_earth	Grouch	The grouch is the worst.
+pizzaMonster	pizzaMonster.webp	0	2	2	0	0	4	2	4	e_fire	Pizzattack	This pizza is hot like fire! No frozen pizza here.
+artifactFreeze	artifactFreeze.webp	1	0	0	0	0	0	1	0	e_water	Freeze Artifact	This gives you the freeze spell. Use it in battles!
 manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0		Mana Potion	This fills your mana up by 1 point.`;
     static statsLookup = null;
     constructor(x, y, monsterType) {
@@ -76,6 +77,9 @@ manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0		Mana Potion	This fills your mana up 
 
         // Initialize frozen state
         this.frozen = 0; // Number of turns the actor remains frozen
+        // Initialize animation trigger for attack moves. Incrementing this value in battle will
+        // create a new key in the Svelte template, ensuring the slideHit animation runs.
+        this.attackingTrigger = 0;
     }
 
     // Get the actor's current position
@@ -89,9 +93,11 @@ manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0		Mana Potion	This fills your mana up 
         this.y = y;
     }
 
+    // dh can be signed to remove health
     addHealth(dh) {
         this.health += dh;
         if (this.health > this.maxHealth) this.health = this.maxHealth;
+        if (this.health < 0) this.health = 0;
     }
 
     addMaxHealth(dMaxHealth) {
@@ -99,9 +105,11 @@ manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0		Mana Potion	This fills your mana up 
         if (this.health > this.maxHealth) this.health = this.maxHealth;
     }
 
+    // dm can be signed to remove mana
     addMana(dm) {
         this.mana += dm;
         if (this.mana > this.maxMana) this.mana = this.maxMana;
+        if (this.mana < 0) this.mana = 0;
     }
 
     addMaxMana(dMaxMana) {
@@ -145,9 +153,10 @@ manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0		Mana Potion	This fills your mana up 
     // Additional methods for turn-based roguelike (e.g., attack, take damage, etc.)
     takeDamage(damage) {
         this.health -= damage;
-        if (this.health <= 0) {
-            this.isDead = true;
-        }
+        // If we check for dead here, we can't get life from XP to save you last second.
+        // if (this.health <= 0) {
+        //     this.isDead = true;
+        // }
     }
 
     attack(target) {

@@ -3,7 +3,7 @@
     import { onMount } from "svelte";
     import { slide, fade } from "svelte/transition";
 	import { tweened } from 'svelte/motion';
-    import { elasticOut, cubicInOut, cubicOut } from "svelte/easing";
+    import { elasticOut, cubicInOut, cubicOut, linear } from "svelte/easing";
     import { shake, slideHit, scalePulse, scalePulse2, shakeIce } from "./AnimSvelte.js";
 
     import { Howl, Howler } from "howler";
@@ -51,6 +51,59 @@
         duration: 1500,
         easing: cubicOut
     });
+
+    // NEW: timer tween to show freeze countdown around the monster
+    const freezeTurnDuration = 3000; // milliseconds per auto-turn while frozen
+    const freezeTimerProgress = tweened(0, {
+        delay: 0,
+        duration: freezeTurnDuration,
+        easing: linear
+    });
+
+    // Hold reference to outstanding timeout so we never double-schedule
+    let freezeTimerId = null;
+
+    // NEW: reactive value for calculating the stroke-dashoffset (full circumference * current progress)
+    const freezeRingCircumference = Math.PI * 2 * 46;
+    $: freezeRingOffset = freezeRingCircumference * $freezeTimerProgress;
+
+    // Helper to schedule the next automatic turn while the hero is frozen
+    function maybeScheduleAutoAttack() {
+        const playerCharacter = characters[0];
+        // If battle finished or hero dead, cancel timer
+        if (!opponent || playerCharacter.isDead) {
+            if (freezeTimerId) {
+                clearTimeout(freezeTimerId);
+                freezeTimerId = null;
+            }
+            freezeTimerProgress.set(0, { duration: 0 });
+            return;
+        }
+
+        if (playerCharacter.isFrozen()) {
+            // Already scheduled? then do nothing
+            if (freezeTimerId !== null) return;
+
+            // Restart visual progress ring
+            freezeTimerProgress.set(1, { duration: 0 });
+            freezeTimerProgress.set(0, { duration: freezeTurnDuration });
+
+            freezeTimerId = setTimeout(() => {
+                console.log("freezeTimerId", freezeTimerId);
+                freezeTimerId = null;
+                // One frozen turn has elapsed
+                playerCharacter.decreaseFrozen();
+                attack(opponent);
+            }, freezeTurnDuration);
+        } else {
+            // Not frozen any more – ensure timer cancelled
+            if (freezeTimerId) {
+                clearTimeout(freezeTimerId);
+                freezeTimerId = null;
+            }
+            freezeTimerProgress.set(0, { duration: 0 });
+        }
+    }
 
     // let imageCache=[];
     onMount(() => {
@@ -133,13 +186,14 @@
     }
 
     // Function to show monster collection popup
-    function showMonsterCollectionPopup(monsterType) {
-        recentlyCollectedMonster = monsterType;
+    function showMonsterCollectionPopup(monsterType, first = true) {
+        recentlyCollectedMonster = first ? monsterType : null;
         prompt = { 
             isMonsterCollection: true,
             monsterType: monsterType,
-            msg: `Collected ${Actor.statsLookup[monsterType]?.readableName || monsterType}!`, 
-            btn: "Yay!", 
+            msg: first ? `Collected ${Actor.statsLookup[monsterType]?.readableName || monsterType}!` : 
+                         `${Actor.statsLookup[monsterType]?.readableName || monsterType}`, 
+            btn: first ? "Yay!" : "OK", 
             fn: () => {
                 prompt = null;
                 recentlyCollectedMonster = null;
@@ -188,19 +242,29 @@
         $monsterAlive = 1.0;
     }
 
-    function attack() {
+    function attack(attacker) {
         const playerCharacter = characters[0];
         const opponentCharacter = opponent;
         if (playerCharacter.isDead) return;
         if (opponentCharacter.isDead) return;
-        
-        // Player always attacks
-        opponentCharacter.health -= playerCharacter.attackPower;
-        playerCharacter.attackingTrigger++;
-        
+
+        if (attacker === playerCharacter && playerCharacter.isFrozen()) return;
+
+        // Do spells first
+        if ((!opponentCharacter.isFrozen()) && (opponentCharacter.monsterType === "iceMonster") && (opponentCharacter.mana > 0)) {
+            freezeAttack(opponentCharacter, playerCharacter);
+        }
+
+        // Player only attacks if not frozen
+        if (!playerCharacter.isFrozen()) {
+            playerCharacter.attack(opponentCharacter);
+            playerCharacter.attackingTrigger++;
+        }
+
         // Opponent only attacks if not frozen
         if (!opponentCharacter.isFrozen()) {
-            playerCharacter.health -= opponentCharacter.attackPower;
+            opponentCharacter.attack(playerCharacter);
+            opponentCharacter.attackingTrigger++;
         } else {
             // Decrease frozen counter after opponent's turn
             opponentCharacter.decreaseFrozen();
@@ -230,29 +294,35 @@
         }
         removeDeadCharacters();
         opponent = opponent;
+        characters = characters;
+
+        // NEW: after resolving turn, maybe set up auto attack if hero still frozen
+        maybeScheduleAutoAttack();
     }
 
     // Add a freeze attack function
-    function freezeAttack() {
-        const playerCharacter = characters[0];
-        const opponentCharacter = opponent;
+    function freezeAttack(attacker, target) {
+        if (attacker.isDead || target.isDead) return;
+        if (attacker.mana < 1) return; // Not enough mana
         
-        if (playerCharacter.isDead || opponentCharacter.isDead) return;
-        if (playerCharacter.mana < 1) return; // Not enough mana
-        
-        // Use mana to freeze the opponent
-        playerCharacter.mana -= 1;
-        
-        // Freeze the opponent for 2 turns
-        opponentCharacter.freeze(2);
+        // Use mana to freeze the target
+        attacker.addMana(-1);
+
+        // Freeze the target for 2 turns
+        target.freeze(2);
         
         // Visual feedback
-        playerCharacter.attackingTrigger++;
-        
+        attacker.attackingTrigger++;
+
         // Update UI
         opponent = opponent;
         // Explicitly tell Svelte the characters array has changed to update player UI
         characters = characters; 
+
+        // If the target is the hero, start the auto-turn schedule
+        if (target === characters[0]) {
+            maybeScheduleAutoAttack();
+        }
     }
 
     function getRandomOpenPosition(mazeGen) {
@@ -328,8 +398,22 @@
     function keyDown(e) {
         if (!e || !e.key) return;
         // console.log(e.key);
+        
+        // Handle prompt buttons with keyboard
+        if (prompt) {
+            if (e.key === "Enter" || e.key === " ") {
+                // Primary button (button1)
+                if (prompt.fn) prompt.fn();
+                return;
+            } else if (e.key === "Escape") {
+                // Secondary button (button2) if it exists
+                if (prompt.fn2) prompt.fn2();
+                return;
+            }
+            return; // Block other keys when prompt is active
+        }
+
         // Directional movement
-        if (prompt) return;
         if (e.key === "ArrowUp") {
             moveTo(characters[0].x, characters[0].y - 1);
         } else if (e.key === "ArrowDown") {
@@ -339,9 +423,9 @@
         } else if (e.key === "ArrowRight") {
             moveTo(characters[0].x + 1, characters[0].y);
         } else if (e.key === " ") {
-            if (opponent) attack();
+            if (opponent) attack(characters[0]);
         } else if (e.key === "f" || e.key === "F") {
-            if (opponent) freezeAttack();
+            if (opponent) freezeAttack(characters[0], opponent);
         }
     }
 
@@ -400,17 +484,30 @@
                     on:pointerup|preventDefault|stopPropagation={()=>(opponent=null)}><i class="fa-solid fa-person-running"></i></button
                 >
                 {#key characters[0].attackingTrigger}
-                    <img in:slideHit|local={{ delay: 0, duration: 1000, dir:-1 }} draggable="false" class="absolute w-[16rem]" style="right:20rem;bottom:8rem;" src="TinyQuest/gamedata/dungeon/{characters[0].img}" />
+                    <img 
+                        in:slideHit|local={{ delay: 0, duration: 1000, dir:-1 }} 
+                        draggable="false" 
+                        class="absolute w-[16rem]" 
+                        style="right:20rem;bottom:8rem;{characters[0].frozen ? 'filter: drop-shadow(0 0 1rem #1090ff) drop-shadow(0 0 2rem #10c0ff);' : ''}" 
+                        src="TinyQuest/gamedata/dungeon/{characters[0].img}" 
+                    />
+                    {#if characters[0].frozen}
+                    <div class="absolute" style="right:20rem;bottom:8rem;">
+                        <div class="absolute top-[-5rem] left-1/2 transform -translate-x-1/2 text-8xl text-sky-100 whitespace-nowrap" style="filter: drop-shadow(0 0 1rem #1090ff) drop-shadow(0 0 2rem #10c0ff);">
+                            <i class="fa-solid fa-snowflake"></i>{characters[0].frozen}
+                        </div>
+                    </div>
+                    {/if}
                 {/key}
                 {#if !opponent.frozen}
-                    {#key characters[0].attackingTrigger}
-                        <img in:slideHit|local={{ delay: 0, duration: 1000 }} draggable="false" class="absolute w-[16rem] transform -scale-x-100" style="left:20rem;bottom:8rem;opacity:{$monsterAlive}" src="TinyQuest/gamedata/dungeon/{opponent.img}" on:pointerup|preventDefault|stopPropagation={attack} />
+                    {#key opponent.attackingTrigger}
+                        <img in:slideHit|local={{ delay: 0, duration: 1000 }} draggable="false" class="absolute w-[16rem] transform -scale-x-100" style="left:20rem;bottom:8rem;opacity:{$monsterAlive}" src="TinyQuest/gamedata/dungeon/{opponent.img}" on:pointerup|preventDefault|stopPropagation={() => attack(characters[0])} />
                     {/key}
                 {:else}
                     <div class="absolute" style="left:20rem;bottom:8rem;opacity:{$monsterAlive};">
                         <img in:shakeIce|local={{ delay: 0, duration: 400, flip:-1 }} draggable="false" class="w-[16rem] transform -scale-x-100"
                             style="filter: drop-shadow(0 0 1rem #1090ff) drop-shadow(0 0 2rem #10c0ff);"
-                            src="TinyQuest/gamedata/dungeon/{opponent.img}" on:pointerup|preventDefault|stopPropagation={attack} />
+                            src="TinyQuest/gamedata/dungeon/{opponent.img}" on:pointerup|preventDefault|stopPropagation={() => attack(characters[0])} />
                         <div class="absolute top-[-5rem] left-1/2 transform -translate-x-1/2 text-8xl text-sky-100 whitespace-nowrap" style="filter: drop-shadow(0 0 1rem #1090ff) drop-shadow(0 0 2rem #10c0ff);">
                             <i class="fa-solid fa-snowflake"></i>{opponent.frozen}
                         </div>
@@ -421,7 +518,7 @@
                     <button
                         class="w-20 h-20 flex items-center justify-center
                                bg-gray-900/80 border border-gray-600 text-white text-4xl rounded-full hover:bg-gray-800"
-                        on:pointerup|preventDefault|stopPropagation={attack}>
+                        on:pointerup|preventDefault|stopPropagation={() => attack(characters[0])}>
                         <i class="fa-solid fa-hand-fist"></i>
                     </button>
                     
@@ -432,7 +529,7 @@
                                bg-blue-900/80 border border-blue-400 text-white text-4xl rounded-full hover:bg-blue-800
                                {characters[0].mana < 1 ? 'opacity-50 cursor-not-allowed' : ''}"
                         disabled={characters[0].mana < 1}
-                        on:pointerup|preventDefault|stopPropagation={freezeAttack}>
+                        on:pointerup|preventDefault|stopPropagation={() => freezeAttack(characters[0], opponent)}>
                         <i class="fa-solid fa-snowflake"></i>
                     </button>
                     {/if}
@@ -449,6 +546,7 @@
                     {#key opponent.health}
                         <img in:shake|local={{ delay: 250, duration: 700, flip:-1 }} draggable="false" class="w-3/4 transform -scale-x-100" src="TinyQuest/gamedata/dungeon/{opponent.img}" />
                     {/key}
+
                     <div class="relative flex flex-row text-4xl text-right h-16 my-1">
                         <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-3 h-16 mx-1"><i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{opponent?.attackPower}</div>
                         <div class="flex-center-all w-min border border-gray-600 bg-black/10 rounded-2xl px-3 h-16 mx-1"><i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{opponent?.experience}</div>
@@ -456,6 +554,52 @@
                     <HealthBar health={opponent.mana} maxHealth={opponent.maxMana} r={29} g={78} b={216} />
                     <HealthBar health={opponent.health} maxHealth={opponent.maxHealth} />
                 </div>
+
+                <!-- NEW: countdown ring when player frozen - moved to center of screen -->
+                {#if characters[0].frozen}
+                    <div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
+                        <svg width="22.5rem" height="22.5rem" viewBox="0 0 360 360" class="filter drop-shadow(0 0 1rem #1090ff)">
+                            <!-- Black semi-transparent background -->
+                            <circle 
+                                cx="180" 
+                                cy="180" 
+                                r="138" 
+                                fill="rgba(0, 0, 0, 0.5)" 
+                            />
+                            <!-- Background circle -->
+                            <circle 
+                                cx="180" 
+                                cy="180" 
+                                r="138" 
+                                fill="none" 
+                                stroke="#1043a080" 
+                                stroke-width="24"
+                            />
+                            <!-- Progress circle -->
+                            <circle 
+                                cx="180" 
+                                cy="180" 
+                                r="138" 
+                                fill="none" 
+                                stroke="#10a0ff" 
+                                stroke-width="24"
+                                stroke-linecap="round"
+                                stroke-dasharray="{freezeRingCircumference * 3}"
+                                stroke-dashoffset="{freezeRingOffset * 3}"
+                                transform="rotate(-90 180 180)"
+                            />
+                            <!-- Freeze icon and turns remaining -->
+                            <text x="180" y="160" text-anchor="middle" dominant-baseline="middle" 
+                                  fill="white" font-size="72" font-weight="bold" class="filter drop-shadow(0 0 0.5rem #000)">
+                                <tspan dy="0">{characters[0].frozen}</tspan>
+                            </text>
+                            <text x="180" y="240" text-anchor="middle" dominant-baseline="middle" 
+                                  fill="white" font-size="48" class="filter drop-shadow(0 0 0.5rem #000)">
+                                FROZEN
+                            </text>
+                        </svg>
+                    </div>
+                {/if}
             </div>
         {:else}
         <div class="flex flex-row h-full w-full">
@@ -515,8 +659,9 @@
                 <HealthBar health={characters[0].health} maxHealth={characters[0].maxHealth} left={false} />
                 <div class="flex flex-wrap w-[25rem] h-40 bg-gray-900">
                     {#each Array.from(collectedMonsters) as monsterType}
-                        <div class="w-[4.5rem] h-[4.5rem] m-1 border-4 bg-gray-700 rounded-full overflow-hidden"
-                        style="border-color:{['#d03030', '#4060ff', '#a09020', '#20b040', '#90c0e0'][['e_fire', 'e_water', 'e_wood', 'e_earth', 'e_air'].indexOf(Actor.statsLookup[monsterType]?.element)]}">
+                        <div class="w-[4.5rem] h-[4.5rem] m-1 border-4 bg-gray-700 rounded-full overflow-hidden cursor-pointer"
+                        style="border-color:{['#d03030', '#4060ff', '#a09020', '#20b040', '#90c0e0'][['e_fire', 'e_water', 'e_wood', 'e_earth', 'e_air'].indexOf(Actor.statsLookup[monsterType]?.element)]}"
+                        on:pointerup|preventDefault|stopPropagation={() => showMonsterCollectionPopup(monsterType, false)}>
                             <img draggable="false" class="w-[4.5rem] h-[4.5rem]" src="TinyQuest/gamedata/dungeon/{Actor.statsLookup[monsterType].img}" />
                         </div>
                     {/each}
@@ -551,8 +696,24 @@
                             style="border-color:{['#d03030', '#4060ff', '#a09020', '#20b040', '#90c0e0'][['e_fire', 'e_water', 'e_wood', 'e_earth', 'e_air'].indexOf(Actor.statsLookup[prompt.monsterType]?.element)]}">
                             <img draggable="false" class="w-full h-full" src="TinyQuest/gamedata/dungeon/{Actor.statsLookup[prompt.monsterType].img}" />
                         </div>
+                        <div class="w-full">
+                            <div class="relative flex flex-row justify-center text-4xl text-right h-16 my-1">
+                                <div class="flex-center-all w-28 border border-gray-400 bg-red-700 rounded-2xl px-3 h-16 mx-1">
+                                    {Actor.statsLookup[prompt.monsterType].maxHealth || 0}
+                                </div>
+                                <div class="flex-center-all w-28 border border-gray-400 bg-blue-800 rounded-2xl px-3 h-16 mx-1">
+                                    {Actor.statsLookup[prompt.monsterType].maxMana || 0}
+                                </div>
+                                <div class="flex-center-all w-min border border-gray-400 bg-black/10 rounded-2xl px-3 h-16 mx-1">
+                                    <i class="fa-solid fa-burst"></i>&nbsp;&nbsp;{Actor.statsLookup[prompt.monsterType].attackPower || 0}
+                                </div>
+                                <div class="flex-center-all w-min border border-gray-400 bg-black/10 rounded-2xl px-3 h-16 mx-1">
+                                    <i class="fa-solid fa-arrow-up-right-dots"></i>&nbsp;&nbsp;{Actor.statsLookup[prompt.monsterType].experience || 0}
+                                </div>
+                            </div>
+                        </div>
                         {#if Actor.statsLookup[prompt.monsterType].about}
-                            <div class="text-3xl text-yellow-200 font-bold my-4">{Actor.statsLookup[prompt.monsterType].about}</div>
+                            <div class="text-3xl text-yellow-200 font-bold my-8">{Actor.statsLookup[prompt.monsterType].about}</div>
                         {/if}
                         <button
                             class="bg-blue-700 hover:bg-blue-600 border-2 border-white text-white text-6xl rounded-3xl px-8 py-2 z-20"
