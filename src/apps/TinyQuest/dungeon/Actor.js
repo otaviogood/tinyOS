@@ -2,14 +2,15 @@ export class Actor {
     static statsCSV = `monsterType	img	actorMode	health	maxHealth	mana	maxMana	attackPower	experience	level	element	readableName	about
 hero	heroic_knight_trans.webp	0	8	8	1	1	1	0			Hero	
 greenSlime	green_slime_trans.webp	0	1	1	0	0	1	1	0	e_water	Green Slime	Squash these things!
-pumpkin	pumpkin.webp	0	2	2	0	0	1	1	0	e_earth	Vampumpkin	Vampumpkin's attack will steal your life.
-iceMonster	iceMonster.webp	0	2	2	1	1	1	1	1	e_water	Freezle	So chilly cold! Watch out so you don't get frozen.
-tweeger	tweeger_trans.webp	0	4	4	0	0	1	1	1	e_fire	Tweeger	A Baflooming Tweeger is a magical tweegy beegy.
-hairMonster	hairMonster.webp	0	2	2	0	0	2	1	2	e_air	Hairflo	Don't be fooled by the cuteness, Hairflo will get you.
+pumpkin	pumpkin.webp	0	2	2	0	0	1	1	0	e_earth	Vampumpkin	Vampumpkin's attack will steal your life. Can drop health potions.
+iceMonster	iceMonster.webp	0	2	2	1	1	1	1	1	e_water	Freezle	So chilly cold! Watch out so you don't get frozen. Can drop mana potions.
+tweeger	tweeger_trans.webp	0	4	4	0	0	1	1	1	e_fire	Tweeger	A Baflooming Tweeger is a magical tweegy beegy. Can drop mana potions.
+hairMonster	hairMonster.webp	0	2	2	0	0	2	1	2	e_air	Hairflo	Don't be fooled by the cuteness, Hairflo will get you. Can drop health potions.
 grouch	grouch.webp	0	7	7	0	0	1	2	3	e_earth	Grouch	The grouch is the worst.
 pizzaMonster	pizzaMonster.webp	0	2	2	0	0	4	2	4	e_fire	Pizzattack	This pizza is hot like fire! No frozen pizza here.
 artifactFreeze	artifactFreeze.webp	1	0	0	0	0	0	1	0	e_water	Freeze Artifact	This gives you the freeze spell. Use it in battles!
-manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0		Mana Potion	This fills your mana up by 1 point.`;
+manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0		Mana Potion	This fills your mana up by 1 point.
+healthPotion	healthPotion.webp	2	4	0	0	0	0	0	0		Health Potion	This heals you for 4 points.`;
     static statsLookup = null;
     constructor(x, y, monsterType) {
         if (Actor.statsLookup === null) {
@@ -188,8 +189,11 @@ manaPotion	manaPotion.webp	2	0	0	1	0	0	0	0		Mana Potion	This fills your mana up 
             this.addXP(character.experience);
             character.setDeadStatus(true);
         } else if (character.actorMode === 2) {
-            // pick up mana potion
-            this.addMana(1);
+            if (character.monsterType === "healthPotion") {
+                this.addHealth(character.health);
+            } else {
+                this.addMana(character.mana);
+            }
             character.setDeadStatus(true);
         }
     }

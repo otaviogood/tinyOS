@@ -120,8 +120,14 @@ export let allMediaAll = {
 "wake me up": ["3JvM-fnpPCU", "", "mp4"],
 "human beat box": ["jJewbFZHI34", "", "mp4"],
 "creator": ["Bfejcxo5_XY", "", "mp4"],
-"disparate youth": ["mIMMZQJ1H6E", "Santigold - Disparate Youth (Official Music Video)", "mp4"],
-"biko": ["jsVieeccpQs", "Biko", "mp4"],
+"disparate youth": ["mIMMZQJ1H6E", "", "mp4"],
+"biko": ["jsVieeccpQs", "", "mp4"],
+"nice sprites": ["WSeNSzJ2-Jw", "", "mp4"],
+"fantasy": ["r58GQYFZeLE", "", "mp4"],
+"around the world": ["K0HSD_i2DvA", "", "mp4"],
+"cracks": ["K1VLaXoRRdk", "", "mp4"],
+"noahs ark": ["5-EvDCGu19o", "Noah's Ark", "mp4"],
+"wa do dem": ["BIfRaPvXTdI", "Wa-Do-Dem", "mp4"],
 };
 // This weird string will be parsed by genSpeech.cjs to generate the speech synthesis files.
 
@@ -248,6 +254,12 @@ export let allMediaAll = {
 "creator",
 "disparate youth",
 "biko",
+"nice sprites",
+"fantasy",
+"around the world",
+"cracks",
+"noahs ark",
+"wa do dem",
 
 ]
     */

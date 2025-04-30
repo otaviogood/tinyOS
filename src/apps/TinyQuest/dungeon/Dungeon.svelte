@@ -372,10 +372,13 @@
             // console.log("Adding monster", monsterType, monster.level);
             const npc = new Actor(xy[0], xy[1], monsterType);
             // map.SetPixel(npc.x, npc.y, 0);
-            if ((monsterType === "tweeger" || monsterType === "pumpkin") && (mazeGen.random.RandFloat() < npc.dropChance)) {
+            if ((monsterType === "tweeger" || monsterType === "iceMonster") && (mazeGen.random.RandFloat() < npc.dropChance)) {
                 npc.drop = "manaPotion";
             }
-            if ((i === 0) && (npc.actorMode === 0) && (!collectedMonsters.has("artifactFreeze"))) {
+            if ((monsterType === "hairMonster" || monsterType === "pumpkin") && (mazeGen.random.RandFloat() < npc.dropChance)) {
+                npc.drop = "healthPotion";
+            }
+            if ((i === 0) && (npc['actorMode'] === 0) && (!collectedMonsters.has("artifactFreeze"))) {
                 npc.drop = "artifactFreeze";
                 npc.dropChance = 1.0;
             }
@@ -690,12 +693,12 @@
         {#if prompt}
             <div in:fade={{ duration: 200 }} class="absolute top-0 left-0 w-[75rem] h-full flex-center-all bg-black/30">
                 {#if prompt.isMonsterCollection}
-                    <div class="flex flex-col bg-indigo-900 border-[0.5rem] border-white rounded-2xl p-6 items-center">
-                        <div class="text-5xl mb-4 text-yellow-200 font-bold">{prompt.msg}</div>
+                    <div class="relative flex flex-col bg-indigo-900 border-[0.5rem] border-white rounded-2xl p-6 items-center">
                         <div class="w-80 h-80 border-4 bg-gray-700 rounded-full overflow-hidden mb-4"
                             style="border-color:{['#d03030', '#4060ff', '#a09020', '#20b040', '#90c0e0'][['e_fire', 'e_water', 'e_wood', 'e_earth', 'e_air'].indexOf(Actor.statsLookup[prompt.monsterType]?.element)]}">
                             <img draggable="false" class="w-full h-full" src="TinyQuest/gamedata/dungeon/{Actor.statsLookup[prompt.monsterType].img}" />
                         </div>
+                        <div class="text-5xl mb-4 text-yellow-200 font-bold">{prompt.msg}</div>
                         <div class="w-full">
                             <div class="relative flex flex-row justify-center text-4xl text-right h-16 my-1">
                                 <div class="flex-center-all w-28 border border-gray-400 bg-red-700 rounded-2xl px-3 h-16 mx-1">
@@ -716,8 +719,12 @@
                             <div class="text-3xl text-yellow-200 font-bold my-8">{Actor.statsLookup[prompt.monsterType].about}</div>
                         {/if}
                         <button
-                            class="bg-blue-700 hover:bg-blue-600 border-2 border-white text-white text-6xl rounded-3xl px-8 py-2 z-20"
-                            on:pointerup|preventDefault|stopPropagation={prompt.fn}>{prompt.btn}</button>
+                            class="absolute top-2 right-2"
+                            on:pointerup|preventDefault|stopPropagation={prompt.fn}>
+                            <i class="fas fa-times bg-gray-300 text-gray-700 rounded-full w-16 h-16 p-9 flex-center-all text-5xl" />
+                            <!-- {prompt.btn} -->
+                        </button>
+
                     </div>
                 {:else}
                     <div class="flex flex-col bg-blue-800 border-[0.5rem] border-white rounded-2xl p-2">

@@ -121,6 +121,12 @@ const allVids = {
     "creator": "Bfejcxo5_XY",
     "disparate youth": "mIMMZQJ1H6E",
     "biko": "jsVieeccpQs",
+    "nice sprites": "WSeNSzJ2-Jw",
+    "fantasy": "r58GQYFZeLE",
+    "around the world": "K0HSD_i2DvA",
+    "cracks": "K1VLaXoRRdk",
+    "noahs ark": "5-EvDCGu19o",
+    "wa do dem": "BIfRaPvXTdI",
 };
 
 async function sleep(ms) {
