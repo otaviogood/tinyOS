@@ -188,7 +188,7 @@ export class MazeGenerator2 {
 export class MazeGenerator {
     constructor(bitmap, seed = 123456789) {
         this.bitmap = bitmap;
-        this.random = new RandomFast(seed + 12);
+        this.random = new RandomFast(seed + 4);
         // console.log("RESETING ", this.random, seed);
     }
 

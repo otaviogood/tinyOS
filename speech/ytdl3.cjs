@@ -127,6 +127,7 @@ const allVids = {
     "cracks": "K1VLaXoRRdk",
     "noahs ark": "5-EvDCGu19o",
     "wa do dem": "BIfRaPvXTdI",
+    "in your eyes": "r-v1NbdPZNs",
 };
 
 async function sleep(ms) {
