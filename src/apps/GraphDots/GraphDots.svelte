@@ -12,6 +12,7 @@
     import { fade, slide, scale } from 'svelte/transition';
     import RandomFast from "../../random-fast";
     import CalcKeyboard from "./CalcKeyboard.svelte";
+    import GraphDotsGraph from "./GraphDotsGraph.svelte";
     import { getDailyDateInfo, getDailySeed } from "../../daily-seed.js";
     import { getOS } from "../../utils";
 
@@ -37,17 +38,11 @@
   
     // Game state variables
     let equationInput = "";
-    let computedPoints = []; // All points computed from the equation
-    let drawnPoints = []; // Points that have been drawn so far (animated)
-    let animationInterval = null;
     let gameInProgress = false;
     let goodHitCount = 0;
     let score = 0;
     let errorMessage = "";
-  
-    // Add these variables for constant speed animation
-    let currentX = X_MIN;
-    let lastProcessedIndex = 0;
+    let polylineSegments = [];
   
     // Our arrays of dots (each dot has an x, y position and for good dots a flag if hit)
     let goodDots = [];
@@ -73,9 +68,6 @@
       yTicks.push(i);
     }
   
-    // Add this new variable to store polyline segments
-    let polylineSegments = [];
-  
     // === NEW: Variables for multiple equation submission ===
     let equationList = [];
     let editingEquationId = null;
@@ -93,6 +85,7 @@
   
     // Add this variable at the top of your script section
     let inputElement;
+    let graphComponent;
   
     // Add these variables to track cursor position
     let cursorPosition = 0;
@@ -143,282 +136,49 @@
         }
       }
   
-      // Reset drawing and game states
-      drawnPoints = [];
-      computedPoints = [];
-      currentX = X_MIN;
-      lastProcessedIndex = 0;
+      // Reset game states
       gameInProgress = false;
       goodHitCount = 0;
       score = 0;
       equationInput = "";
       errorMessage = "";
+      polylineSegments = [];
   
-      if (animationInterval) {
-        clearInterval(animationInterval);
-        animationInterval = null;
-      }
       // Clear our equation submissions as well.
       equationList = [];
       editingEquationId = null;
-    }
-  
-    // Helper: Euclidean distance between two points.
-    function distance(p1, p2) {
-      return Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2);
-    }
-  
-    // Helper: Euclidean distance squared between two points
-    function distanceSq(p1, p2) {
-      return (p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2;
-    }
-  
-    // New helper: Minimum distance squared from point to line segment
-    function distanceToSegmentSq(a, b, p) {
-      const abx = b.x - a.x;
-      const aby = b.y - a.y;
-      const apx = p.x - a.x;
-      const apy = p.y - a.y;
-      const dot = apx * abx + apy * aby;
-      const lenSq = abx * abx + aby * aby;
-      let t = 0;
-      
-      if (lenSq !== 0) {
-        t = Math.max(0, Math.min(1, dot / lenSq));
-      }
-      
-      const closestX = a.x + t * abx;
-      const closestY = a.y + t * aby;
-      const dx = p.x - closestX;
-      const dy = p.y - closestY;
-      return dx * dx + dy * dy;
+      hitPopEffects = [];
     }
   
     // Called when the user clicks the "Submit" button or hits Enter.
     function submitEquation() {
       if (gameInProgress) return; // ignore if an animation is already running
-  
-      // Reset animation tracking variables
-      currentX = X_MIN;
-      lastProcessedIndex = 0;
-      // Reset current drawing state (but NOT the previously submitted equations)
-      drawnPoints = [];
-      computedPoints = [];
-      polylineSegments = [];
-      goodHitCount = 0;
       errorMessage = "";
-      currentEquationHits = [];  // Reset hits for new equation
-  
-      // Parse and compile the player's equation.
-      let f;
-      try {
-        // The player types just the math expression.
-        // We prepend "with(Math) { return ... }" so that common functions (sin, cos, etc.) work.
-        f = new Function("x", "with (Math) { return " + equationInput + " }");
-        // Test the function with a sample value
-        const testVal = f(0.1234567);
-        if (isNaN(testVal)) throw new Error("Function returned NaN");
-      } catch (e) {
-        errorMessage = "Invalid equation!";
-        snd_blocker.play();
-        return;
-      }
-  
-      // Compute a list of points along the curve.
-      const step = (X_MAX - X_MIN) / 6000;
-      let lastValidY = null;
-      let clipDirection = null; // 'top', 'bottom', or null
-      for (let x = X_MIN; x <= X_MAX; x += step) {
-        let y;
-        try {
-          y = f(x);
-        } catch (err) {
-          y = null;
-        }
-  
-        // Handle clipping at boundaries
-        if (y !== null) {
-          // Track if we're coming from out-of-bounds
-          const wasClipped = clipDirection !== null;
-          
-          if (y > Y_MAX) {
-            if (clipDirection === 'top') {
-              y = null; // Already clipped top, continue null
-            } else {
-              y = Y_MAX; // First top out-of-bounds - clip to edge
-              clipDirection = 'top';
-            }
-          } else if (y < Y_MIN) {
-            if (clipDirection === 'bottom') {
-              y = null; // Already clipped bottom, continue null
-            } else {
-              y = Y_MIN; // First bottom out-of-bounds - clip to edge
-              clipDirection = 'bottom';
-            }
-          } else {
-            // Coming back in bounds from clip
-            if (wasClipped) {
-              // Insert boundary point before valid point
-              const boundaryY = clipDirection === 'top' ? Y_MAX : Y_MIN;
-              computedPoints.push({ x, y: boundaryY });
-            }
-            clipDirection = null;
-          }
-        }
-  
-        // New: Boundary intersection detection between samples
-        if (lastValidY !== null && y !== null) {
-          const prev = computedPoints[computedPoints.length - 1];
-          
-          // Check for boundary crossings between previous and current point
-          const crossings = [];
-          if ((prev.y > Y_MAX && y < Y_MAX) || (prev.y < Y_MAX && y > Y_MAX)) {
-            const t = (Y_MAX - prev.y) / (y - prev.y);
-            const crossX = prev.x + t * (x - prev.x);
-            crossings.push({ x: crossX, y: Y_MAX });
-          }
-          if ((prev.y > Y_MIN && y < Y_MIN) || (prev.y < Y_MIN && y > Y_MIN)) {
-            const t = (Y_MIN - prev.y) / (y - prev.y);
-            const crossX = prev.x + t * (x - prev.x);
-            crossings.push({ x: crossX, y: Y_MIN });
-          }
-  
-          // Add boundary crossings in X order
-          crossings.sort((a, b) => a.x - b.x);
-          for (const cross of crossings) {
-            computedPoints.push(cross);
-          }
-        }
-  
-        if (isNaN(y) || !isFinite(y) || (y === null)) {
-          y = null;
-          clipDirection = null;
-          if (computedPoints.length > 0 && computedPoints[computedPoints.length - 1].y !== null) {
-            computedPoints.push({ x, y }); // Break line with null
-          }
-          lastValidY = null;
-          continue;
-        }
-  
-        const currentPoint = { x, y };
-        if (
-          computedPoints.length === 0 ||
-          computedPoints[computedPoints.length - 1].y === null ||
-          distance(computedPoints[computedPoints.length - 1], currentPoint) > .05
-        ) {
-          computedPoints.push(currentPoint);
-          lastValidY = y;
-        }
-      }
-  
-      // Always add the final point to ensure the curve reaches the end
-      const finalX = X_MAX;
-      try {
-        const finalY = f(finalX);
-        if (!isNaN(finalY) && isFinite(finalY)) {
-          computedPoints.push({ x: finalX, y: finalY });
-        }
-      } catch (err) {}
-  
-      gameInProgress = true;
-      // Begin drawing the curve gradually (changed from 4ms to 16ms for smoother animation)
-      animationInterval = setInterval(animateDrawing, 16);
+      goodHitCount = 0;
+      
+      // Use the GraphDotsGraph component to process and animate the equation
+      gameInProgress = graphComponent.submitEquation();
     }
   
-    // Modified animateDrawing function with segment-based collision
-    function animateDrawing() {
-      const SPEED = 0.2;
-      currentX += SPEED;
+    // Called when an animation finishes, store (or update) the equation
+    function finishEquation(hitDotIndices, segments) {
+      // New scoring: 2^(n-1) for n>0 hits, 0 for n=0 hits
+      const entry = {
+        id: editingEquationId ? editingEquationId : nextEquationId++,
+        equation: equationInput,
+        polylineSegments: segments.map(segment => [...segment]),
+        score: goodHitCount,
+        goodHitCount,
+        hitDotIndices
+      };
       
-      // Find all points that fall within the new X range
-      const newPoints = [];
-      while (lastProcessedIndex < computedPoints.length && 
-             computedPoints[lastProcessedIndex].x <= currentX) {
-        newPoints.push(computedPoints[lastProcessedIndex]);
-        lastProcessedIndex++;
+      if (editingEquationId) {
+        equationList = equationList.map(e => e.id === editingEquationId ? entry : e);
+      } else {
+        equationList = [...equationList, entry];
       }
-
-      // If we passed the end of the graph
-      if (currentX >= X_MAX || lastProcessedIndex >= computedPoints.length) {
-        clearInterval(animationInterval);
-        animationInterval = null;
-        gameInProgress = false;
-        finishEquation();
-        return;
-      }
-
-      // Process all new points in this frame
-      let previousPoint = drawnPoints.length > 0 ? drawnPoints[drawnPoints.length - 1] : null;
-      for (const point of newPoints) {
-        drawnPoints = [...drawnPoints, point];
-        
-        // Update polyline segments
-        if (point.y === null) {
-          // Do nothing - wait for next valid point
-        } else {
-          // If we have no segments or the previous point was null,
-          // start a new segment
-          if (polylineSegments.length === 0 || 
-              drawnPoints[drawnPoints.length - 2]?.y === null) {
-            polylineSegments = [...polylineSegments, [point]];
-          } else {
-            // Add to the current segment
-            const lastSegment = polylineSegments[polylineSegments.length - 1];
-            const currentSegment = [...lastSegment, point];
-            polylineSegments = [...polylineSegments.slice(0, -1), currentSegment];
-          }
-        }
-
-        if (previousPoint && previousPoint.y !== null && point.y !== null) {
-          // Check blocker dots using line segment
-          for (const blocker of blockerDots) {
-            if (distanceToSegmentSq(previousPoint, point, blocker) <= DOT_RADIUS * DOT_RADIUS) {
-              snd_blocker.play();
-              clearInterval(animationInterval);
-              animationInterval = null;
-              gameInProgress = false;
-              finishEquation();
-              return;
-            }
-          }
-
-          // Check good dots using line segment
-          for (let i = 0; i < goodDots.length; i++) {
-            const dot = goodDots[i];
-            if (distanceToSegmentSq(previousPoint, point, dot) <= DOT_RADIUS * DOT_RADIUS) {
-              if (!currentEquationHits.includes(i)) {
-                currentEquationHits.push(i);
-              }
-              
-              if (!dot.hit) {
-                goodDots = [
-                  ...goodDots.slice(0, i),
-                  { ...dot, hit: true },
-                  ...goodDots.slice(i + 1)
-                ];
-                goodHitCount++;
-                snd_good.play();
-                
-                const scoreValue = currentEquationHits.length > 0 
-                  ? Math.pow(2, currentEquationHits.length - 1)
-                  : 0;
-
-                hitPopEffects = [
-                  ...hitPopEffects, 
-                  { 
-                    id: Date.now() + Math.random(),
-                    x: dot.x, 
-                    y: -dot.y,
-                    value: scoreValue
-                  }
-                ];
-              }
-            }
-          }
-        }
-        
-        previousPoint = point;
-      }
+      editingEquationId = null;
+      updateDotIntersections();
     }
   
     // Add this helper function to calculate score based on new hits
@@ -464,33 +224,49 @@
       }));
     }
   
-    // Called when an animation finishes, store (or update) the equation
-    function finishEquation() {
-      // New scoring: 2^(n-1) for n>0 hits, 0 for n=0 hits
-      const eqScore = goodHitCount;
-      
-      const entry = {
-        id: editingEquationId ? editingEquationId : nextEquationId++,
-        equation: equationInput,
-        polylineSegments: polylineSegments.map(segment => [...segment]),
-        score: eqScore,
-        goodHitCount,
-        hitDotIndices: currentEquationHits  // Store all hits for this equation
-      };
-      
-      if (editingEquationId) {
-        equationList = equationList.map(e => e.id === editingEquationId ? entry : e);
-      } else {
-        equationList = [...equationList, entry];
-      }
-      editingEquationId = null;
-      updateDotIntersections();
-    }
-  
     // === Allow deletion from the list (like WordHex's removeWord) ===
     function removeEquation(equationId) {
       equationList = equationList.filter(e => e.id !== equationId);
       updateDotIntersections();
+    }
+  
+    // Handle events from the graph component
+    function handleEquationError(event) {
+      errorMessage = event.detail.message;
+      snd_blocker.play(undefined, undefined);
+    }
+    
+    function handleGoodDotHit(event) {
+      const { dotIndex, dotX, dotY, scoreValue } = event.detail;
+      goodHitCount++;
+      snd_good.play(undefined, undefined);
+      
+      // Mark the dot as hit
+      goodDots = [
+        ...goodDots.slice(0, dotIndex),
+        { ...goodDots[dotIndex], hit: true },
+        ...goodDots.slice(dotIndex + 1)
+      ];
+      
+      // Add hit pop effect
+      hitPopEffects = [
+        ...hitPopEffects, 
+        { 
+          id: Date.now() + Math.random(),
+          x: dotX, 
+          y: -dotY,
+          value: scoreValue
+        }
+      ];
+    }
+    
+    function handleBlockerHit() {
+      snd_blocker.play(undefined, undefined);
+    }
+    
+    function handleAnimationComplete(event) {
+      gameInProgress = false;
+      finishEquation(event.detail.hitDotIndices, event.detail.polylineSegments);
     }
   
     // Modify handleKeyDown to prevent duplicate input
@@ -622,148 +398,31 @@
 
       <!-- Updated SVG container with fixed size and centered positioning -->
       <div class="absolute inset-0 flex m-4">
-        <svg 
-          class="w-[64rem] h-[64rem]" 
-          viewBox="-10 -10 20 20"
-        >
-          <g transform="scale(1,-1)">
-            <!-- Grid Lines -->
-            <g id="grid-lines">
-              {#each xTicks as x}
-                <line x1="{x}" y1="{Y_MIN}" x2="{x}" y2="{Y_MAX}" stroke="gray" stroke-width="0.05" opacity="0.1" />
-              {/each}
-              {#each yTicks as y}
-                <line x1="{X_MIN}" y1="{y}" x2="{X_MAX}" y2="{y}" stroke="gray" stroke-width="0.05" opacity="0.1" />
-              {/each}
-            </g>
-  
-            <!-- Tick Marks -->
-            <g id="x-ticks">
-              {#each xTicks as x}
-                <line x1="{x}" y1="-0.2" x2="{x}" y2="0.2" stroke="#333" stroke-width="0.1" />
-              {/each}
-            </g>
-            <g id="y-ticks">
-              {#each yTicks as y}
-                <line x1="-0.2" y1="{y}" x2="0.2" y2="{y}" stroke="#333" stroke-width="0.1" />
-              {/each}
-            </g>
-  
-            <!-- Axis Lines -->
-            <line x1="{X_MIN}" y1="0" x2="{X_MAX}" y2="0" stroke="#444" stroke-width="0.1" />
-            <line x1="0" y1="{Y_MIN}" x2="0" y2="{Y_MAX}" stroke="#444" stroke-width="0.1" />
-  
-            <!-- X-axis labels -->
-            {#each xTicks as x}
-              {#if x !== 0} <!-- Skip 0 to avoid cluttering the origin -->
-                <text
-                  x="{x}"
-                  y=".5"
-                  text-anchor="middle"
-                  fill="#888"
-                  font-size="0.3"
-                  transform="scale(1,-1)"
-                >
-                  {x}
-                </text>
-              {/if}
-            {/each}
-
-            <!-- Y-axis labels -->
-            {#each yTicks as y}
-              {#if y !== 0} <!-- Skip 0 to avoid cluttering the origin -->
-                <text
-                  x="-.5"
-                  y="{-y}"
-                  text-anchor="end"
-                  alignment-baseline="middle"
-                  fill="#888"
-                  font-size="0.3"
-                  transform="scale(1,-1)"
-                >
-                  {y}
-                </text>
-              {/if}
-            {/each}
-
-            <!-- Draw good dots; if hit, display in gold -->
-            {#each goodDots as dot}
-              {#if dot.hit}
-                <circle 
-                  cx="{dot.x}" 
-                  cy="{dot.y}" 
-                  r="{DOT_RADIUS}" 
-                  fill="#FFD700"
-                  class="hit-animation"
-                  transform-origin="{dot.x} {dot.y}"
-                />
-              {:else}
-                <circle 
-                  cx="{dot.x}" 
-                  cy="{dot.y}" 
-                  r="{DOT_RADIUS}" 
-                  fill="#20b010" 
-                />
-              {/if}
-            {/each}
-  
-            <!-- Draw blocker dots in red -->
-            {#each blockerDots as dot}
-              <circle cx="{dot.x}" cy="{dot.y}" r="{DOT_RADIUS}" fill="#d03020" />
-            {/each}
-  
-            <!-- Render stored curves from submitted equations -->
-            {#each equationList as eq (eq.id)}
-              {#each eq.polylineSegments as segment}
-                {#if segment.length > 0}
-                  <polyline
-                    points={segment.map(p => `${p.x},${p.y}`).join(' ')}
-                    fill="none"
-                    stroke="#20c0ff"
-                    stroke-width="0.05"
-                  />
-                {/if}
-              {/each}
-            {/each}
-  
-            <!-- Render current animated curve (if any) -->
-            {#if gameInProgress && polylineSegments.length > 0}
-              {#each polylineSegments as segment}
-                {#if segment.length > 0}
-                  <polyline
-                    points={segment.map(p => `${p.x},${p.y}`).join(' ')}
-                    fill="none"
-                    stroke="#20c0ff"
-                    stroke-width="0.05"
-                  />
-                {/if}
-              {/each}
-            {/if}
-
-            <!-- Add this new group for score pop-ups -->
-            <g id="score-popups">
-                {#each hitPopEffects as effect (effect.id)}
-                    <text
-                        x={effect.x}
-                        y={effect.y + 0.95}
-                        text-anchor="middle"
-                        fill="#ffb010"
-                        font-size="0.95"
-                        transform="scale(1,-1)"
-                        in:scale={{ start: 0.5, duration: 600 }}
-                        out:fade={{ duration: 600 }}
-                        on:introend={() => {
-                            setTimeout(() => {
-                                hitPopEffects = hitPopEffects.filter(e => e.id !== effect.id);
-                            }, 3000);
-                        }}
-                    >
-                        +{effect.value}
-                    </text>
-                {/each}
-            </g>
-          </g>
-        </svg>
+        <GraphDotsGraph
+          {X_MIN}
+          {X_MAX}
+          {Y_MIN}
+          {Y_MAX}
+          {DOT_RADIUS}
+          {xTicks}
+          {yTicks}
+          {goodDots}
+          {blockerDots}
+          {equationList}
+          {gameInProgress}
+          {polylineSegments}
+          {hitPopEffects}
+          {equationInput}
+          bind:this={graphComponent}
+          on:removeHitPop={e => {
+            const id = e.detail.id;
+            hitPopEffects = hitPopEffects.filter(effect => effect.id !== id);
+          }}
+          on:equationError={handleEquationError}
+          on:goodDotHit={handleGoodDotHit}
+          on:blockerHit={handleBlockerHit}
+          on:animationComplete={handleAnimationComplete}
+        />
       </div>
 
 
