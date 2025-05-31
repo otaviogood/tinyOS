@@ -1,6 +1,6 @@
 <script>
     import { onMount } from "svelte";
-    import { handleResize } from "../../screen";
+    import { handleResize, bigScale, bigWidth, bigHeight } from "../../screen";
     import FourByThreeScreen from "../../components/FourByThreeScreen.svelte";
     import Line from "../../components/Line.svelte";
     import SVGArcDeg from "../../components/SVGArcDeg.svelte";
@@ -65,17 +65,33 @@
         fuselageRad: {v:0.35, min:0.2, max:4.0, label:"thickness"},
     };
 
+    // Function to update renderer and camera size
+    function updateSize() {
+        if (!elem || !renderer || !camera) return;
+        
+        const width = elem.clientWidth;
+        const height = elem.clientHeight;
+        
+        renderer.setSize(width, height);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+    }
 
     function init() {
         scene = new THREE.Scene();
         // scene.background = new THREE.Color( 0xffffff );
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+        
+        // Get container dimensions
+        const width = elem?.clientWidth || 800;
+        const height = elem?.clientHeight || 600;
+        
+        camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 10000);
         // let camScale = 0.025;
         // let zoff = 5;
         // camera = new THREE.OrthographicCamera( window.innerWidth * camScale / - 2, window.innerWidth * camScale / 2, window.innerHeight * camScale / 2 + zoff, window.innerHeight * camScale / - 2 + zoff, 1, 1000 );
 
         renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setSize(width, height);
 
         camera.position.x = 4;
         camera.position.y = 8;
@@ -149,6 +165,7 @@
             simWorld = new THREE.Group();
             const geometry = generateWorldGeometry();
             const material = new THREE.MeshLambertMaterial({ color: 0x30b050, flatShading: true });
+            // @ts-ignore - Three.js runtime compatibility
             const ground = new THREE.Mesh(geometry, material);
             // ground.position.copy(planeGroup.position);
             simWorld.add(ground);
@@ -323,10 +340,12 @@
         controls?.update();
         renderer.render(scene, camera);
     }
-    init();
-    animate();
 
     onMount(() => {
+        // Initialize Three.js after the element is mounted
+        init();
+        animate();
+        
         elem.appendChild(renderer.domElement);
         controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
@@ -340,7 +359,17 @@
 
         // controls.screenSpacePanning = false;
 
+        // Add resize listener
+        const resizeHandler = () => {
+            updateSize();
+        };
+        window.addEventListener('resize', resizeHandler);
+
+        // Initial size update
+        updateSize();
+
         return () => {
+            window.removeEventListener('resize', resizeHandler);
             renderer?.renderLists.dispose();
             renderer?.dispose();
             renderer = null;
@@ -468,9 +497,11 @@
         on:pointerleave={(e) => pointerUp(-1)}
     />
     {#if areYouAParentModal != 0}
-        <div class="absolute fit-full-space bg-pink-800 z-20 p-4 flex-col text-4xl" on:pointerdown={() => {areYouAParentModal = 0; typed=""}}>
-            This will download an stl file so you can 3d print the airplane. The download operation escapes the app's sandbox, so I will ask you this silly question to see if you are a parent.
-            <div class="text-7xl pt-8">What is 2 to the 8th power?</div>
+        <div class="absolute fit-full-space bg-pink-800 z-20 p-4 flex-col text-4xl">
+            <div class="w-full" on:pointerdown={() => {areYouAParentModal = 0; typed=""}}>
+                This will download an stl file so you can 3d print the airplane. The download operation escapes the app's sandbox, so I will ask you this silly question to see if you are a parent.
+                <div class="text-7xl pt-8">What is 2 to the 8th power?</div>
+            </div>
             <pre class="border border-pink-500 bg-pink-900 text-white text-7xl p-2 my-2 rounded-2xl">{typed}{'_'}&nbsp;</pre>
             <Keyboard on:pressed={keyPressed} enterEnabled={true} extraKeys={["numbers", "backspace", "music"]} />
         </div>
@@ -530,6 +561,6 @@
     .coolbutton {
         @apply bg-blue-400/50 border-blue-400 border-4 w-20 h-20 rounded-full p-2 text-white text-4xl;
         @apply active:scale-150 transform transition-all duration-75;
-        @apply flex-center-all;
+        @apply flex items-center justify-center;
     }
 </style>
