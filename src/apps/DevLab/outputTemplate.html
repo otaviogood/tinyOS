@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            overflow: auto;
+        }
+        #output {
+            white-space: pre-wrap;
+            margin-bottom: 20px;
+        }
+        #canvas {
+            border: 2px solid #333;
+            background: white;
+            display: block;
+            margin-top: 20px;
+        }
+        .error {
+            color: #ff6b6b;
+            background: #2d1515;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="output"></div>
+    <canvas id="canvas" width="600" height="400"></canvas>
+    <script>
+        const output = document.getElementById('output');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        window.addEventListener('message', (e) => {
+            if (e.data.type === 'clear') {
+                output.innerHTML = '';
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            } else if (e.data.type === 'print') {
+                output.innerHTML += e.data.text + '\n';
+            } else if (e.data.type === 'error') {
+                output.innerHTML += '<div class="error">Error: ' + e.data.text + '</div>';
+            } else if (e.data.type === 'draw') {
+                const cmd = e.data.command;
+                ctx.fillStyle = cmd.color || 'black';
+                ctx.strokeStyle = cmd.color || 'black';
+                
+                switch (cmd.type) {
+                    case 'clear':
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        break;
+                    case 'circle':
+                        ctx.beginPath();
+                        ctx.arc(cmd.x, cmd.y, cmd.radius, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                    case 'rect':
+                        ctx.fillRect(cmd.x, cmd.y, cmd.width, cmd.height);
+                        break;
+                    case 'line':
+                        ctx.lineWidth = cmd.width;
+                        ctx.beginPath();
+                        ctx.moveTo(cmd.x1, cmd.y1);
+                        ctx.lineTo(cmd.x2, cmd.y2);
+                        ctx.stroke();
+                        break;
+                }
+            }
+        });
+    </script>
+</body>
+</html> 

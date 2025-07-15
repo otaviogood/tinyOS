@@ -53,7 +53,7 @@
     let visWidth = width;
     let visHeight = height;
 
-    onMount(async () => {
+    onMount(() => {
         var rect = document.getElementById("canvasholder").getBoundingClientRect();
         // console.log("Paint mount", rect.width, rect.height);
         // convert rem to px units
@@ -78,12 +78,15 @@
         bmpBottom.Clear(0xff707070);
         // bmpBottom.DrawCircle(200, 200, 50, 0xffa0a0ff);
 
-        await tick();
-        bmpBottom.DrawImage(0, 0);
-        bmpTop.DrawImage(0, 0);
+        tick().then(() => {
+            bmpBottom.DrawImage(0, 0);
+            bmpTop.DrawImage(0, 0);
+        });
 
-        // This is the same as onDestroy, but it's easier because these vars are in scope.
-        return () => {};
+        // Return a cleanup function immediately, not in a Promise
+        return () => {
+            console.log("Paint cleanup from mount");
+        };
     });
 
     onDestroy(() => {
@@ -240,6 +243,29 @@
         return (await dbPromise).getAllKeys("keyval_paint");
     }
 
+    // Function to generate a simple hash from image data
+    async function generateImageHash(data) {
+        // Convert the string to an array buffer
+        const encoder = new TextEncoder();
+        const dataBuffer = encoder.encode(data);
+        
+        // Use SubtleCrypto to create a hash
+        const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+        
+        // Convert the hash to a hex string
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        return hashHex;
+    }
+
+    // Function to check if an image hash already exists
+    async function imageExists(hash) {
+        const hashKey = "hash_" + hash;
+        const existingHash = await get(hashKey);
+        return !!existingHash;
+    }
+
     // console.log("keys", keys());
     function dataURItoBlob(dataURI) {
         // convert base64/URLEncoded data component to raw binary data held in a string
@@ -260,32 +286,49 @@
     }
 
     let saving = false;
+    let lastSavedHash = null;
+    
     async function takeSnapshot() {
         saving = true;
         canvasThumb.getContext("2d").drawImage(canvasBottom, 0, 0, canvasThumb.width, canvasThumb.height);
+        
+        // Get the full-size image data for hashing
+        const fullImageData = canvasBottom.toDataURL("image/png");
+        const imageHash = await generateImageHash(fullImageData);
+        
+        // Check if this image (or one very similar) was already saved
+        if (await imageExists(imageHash)) {
+            console.log("Duplicate image detected, not saving");
+            saving = false;
+            return;
+        }
+        
+        // Store the hash to mark this image as saved
+        await set("hash_" + imageHash, true);
+        lastSavedHash = imageHash;
+        
         let timestamp = Date.now().toString(); // Use current time as id since kids won't be able to type a name.
-        await save(canvasThumb, timestamp + "_thumb", "jpg");
-        // canvas.width = camWidth;
-        // canvas.height = camHeight;
-        // canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-        // const img = canvasThumb.toDataURL("image/jpeg");
-        // make a circular buffer of 3 images
-        // if (photos.length >= 3) photos.shift();
-        // photos.push(img);
-        // photos = photos;
-        await save(canvasBottom, timestamp + "_camera", "png");
+        await save(canvasThumb, timestamp + "_thumb", "jpg", imageHash);
+        await save(canvasBottom, timestamp + "_camera", "png", imageHash);
+        
         saving = false;
     }
 
-    async function save(canvas, str = "camera", ext = "png") {
+    async function save(canvas, str = "camera", ext = "png", imageHash = null) {
         // Save to indexedDB using idb
         let data = canvas.toDataURL("image/" + ext);
         let blob = dataURItoBlob(data);
         let name = str + "." + ext;
         let file = new File([blob], name, { type: "image/" + ext });
-        // let store = db.transaction("files", "readwrite").objectStore("files");
-        // store.put(file, id);
+        
+        // Save the file with its key
         await set(str, file);
+        
+        // If we have a hash but haven't stored it yet, store it
+        if (imageHash && !(await imageExists(imageHash))) {
+            await set("hash_" + imageHash, true);
+        }
+        
         console.log("Saved to indexedDB", name);
     }
 

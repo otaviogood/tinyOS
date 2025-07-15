@@ -1,6 +1,7 @@
 <script>
     import { onMount } from "svelte";
     import { createEventDispatcher } from "svelte";
+    import { tick } from "svelte";
 
     import { BitmapABGR } from "./BitmapABGR";
     import { ColorABGR } from "./ColorABGR";
@@ -40,9 +41,14 @@
     $: if (size) {
         if (canvas) {
             console.log("size changed");
-            let ctx = canvas.getContext("2d");
-            bmp = new BitmapABGR(canvas.width, canvas.height, ctx);
-            draw();
+            // Explicitly update canvas dimensions
+            canvas.width = size;
+            canvas.height = size;
+            tick().then(() => {
+                let ctx = canvas.getContext("2d");
+                bmp = new BitmapABGR(canvas.width, canvas.height, ctx);
+                draw();
+            });
         }
     }
 
@@ -121,15 +127,15 @@
         alphaX = alphaX * 2 - 1;
         alphaY = alphaY * 2 - 1;
 
-        if (alphaX >= -boxExt && alphaX <= boxExt && alphaY >= -boxExt && alphaY <= boxExt) {
-            selectMode = 0;
-        }
+        // if (alphaX >= -boxExt && alphaX <= boxExt && alphaY >= -boxExt && alphaY <= boxExt) {
+        //     selectMode = 0;
+        // }
 
         let radSquared = alphaX * alphaX + alphaY * alphaY;
 
-        if (radSquared > innerRad * innerRad) {
+        if (radSquared > (innerRad-.05) * (innerRad-.05)) {
             selectMode = 1;
-        }
+        } else selectMode = 0;
 
         pickColor(mXY[0], mXY[1]);
     }
