@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Test outputs
+*.gltf
+*.bin
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# Log files
+*.log 

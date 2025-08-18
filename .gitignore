@@ -27,3 +27,7 @@ src/secrets.js
 speech/tinyos-7c514-a8428deb9354.json
 public/youtube/*
 originals/*
+public/apps/ldraw/*
+public/apps/LDCadShadowLibrary-main/*
+public/speech/*
+brickserver/world-state.json

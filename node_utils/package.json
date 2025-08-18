@@ -1,0 +1,27 @@
+{
+  "name": "ldraw-to-gltf",
+  "version": "1.0.0",
+  "description": "Convert LDraw files to GLTF format with stud position information",
+  "main": "ldraw-to-gltf.js",
+  "scripts": {
+    "start": "node ldraw-to-gltf.js",
+    "batch": "node ldraw-to-gltf-batch.js",
+    "convert-all": "node ldraw-to-gltf-batch.js piece_list_auto.csv all_pieces.gltf"
+  },
+  "keywords": [
+    "ldraw",
+    "gltf",
+    "lego",
+    "three.js",
+    "converter"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.159.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+} 

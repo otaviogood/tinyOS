@@ -1,3 +1,4 @@
+// @ts-nocheck
 /*******************************************************************************************************
 A simple dynamic router that uses Vite's import.meta.glob to auto-discover *.svelte files in /apps and
 /apps/TinyQuest. It implements push() and pop() for navigation and listens to hash changes so that any
@@ -63,6 +64,7 @@ export function pop() {
  If there's a subfolder containing an identically named component, e.g. "./apps/MusicSequencer/MusicSequencer.svelte",
  then going to "/musicsequencer" will load that.
 *******************************************************************************************************/
+// @ts-nocheck
 const discoveredModules = import.meta.glob([
   './apps/**/*.svelte',  // This catches everything including subfolders
 ]);

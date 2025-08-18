@@ -1,0 +1,1161 @@
+// @ts-nocheck
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { SSAOPass } from "three/examples/jsm/postprocessing/SSAOPass.js";
+import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { GammaCorrectionShader } from "three/examples/jsm/shaders/GammaCorrectionShader.js";
+
+export function createBrickQuestRenderer(container, options = {}) {
+	const { colorPalette = [], onLoadingTextChange = () => {}, onError = () => {} } = options;
+
+	// Core three.js objects
+	let scene = null;
+	let camera = null;
+	let renderer = null;
+	let composer = null;
+	let gltfLoader = null;
+
+	// Post-processing feature flags
+	let ssaoEnabled = false;
+	let ssaoDebugView = false;
+	let ssaoDebugForcedEnable = false;
+	let ssaoPassRef = null;
+	let smaaPassRef = null;
+	let gammaPassRef = null;
+	let outputPassRef = null;
+
+	// Preview scene objects
+	let previewScene = null;
+	let previewCamera = null;
+	let previewRenderer = null;
+	let previewContainer = null;
+	let previewComposer = null;
+
+	// Last render stats (aggregated across composer passes per frame)
+	let lastDrawCalls = 0;
+	let lastTriangles = 0;
+
+	// Resources
+	let brickMaterials = null; // array of MeshStandardMaterial
+	const brickGeometries = new Map(); // pieceId -> BufferGeometry
+	const collisionGeometries = new Map(); // pieceId -> BufferGeometry (nostuds)
+
+	// Instance maps
+	const playerMeshes = new Map(); // playerId -> Mesh
+	const brickMeshes = new Map(); // brickId -> Mesh
+	const playerNameSprites = new Map(); // playerId -> Sprite
+	// Cached raycast targets to avoid per-frame allocations
+	const raycastTargets = [];
+
+	// UI helpers
+	let studHighlightMesh = null;
+	let skyboxMesh = null;
+
+	// Data refs provided by host
+	let pieceList = [];
+	let piecesData = {};
+	let selectedPieceIndex = 0;
+	let selectedColorIndex = 0;
+	let getGameStateRef = null; // function returning latest gameState
+
+	// Ghost placement state
+	let ghostMesh = null;
+	let ghostMaterial = null;
+	let ghostIsColliding = false;
+	let ghostTargetPos = null;
+	let ghostPieceId = null;
+	let ghostYaw = 0;
+	let ghostRotationEuler = { x: 0, y: 0, z: 0 };
+	let lastMouseWorldPos = { x: 0, y: 0, z: 0 };
+	let closestStudInfo = null; // { position: Vector3, brickId: string, direction?: Vector3 }
+	const PLACEMENT_MAX_DISTANCE = 1400;
+	let lastRayHitValid = false;
+	let lastHitBrickId = null; // brickId from most recent successful raycast hit
+
+	// Preview state
+	let previewMesh = null;
+	let previewMaterial = null;
+	let previewRotationSpeed = 0.01;
+
+	// Helper to dispose any Mesh(es) contained in an Object3D
+	function disposeObject(object3d) {
+		if (!object3d) return;
+		object3d.traverse((child) => {
+			if (child && child.isMesh) {
+				if (child.geometry && child.geometry.dispose) try { child.geometry.dispose(); } catch (_) {}
+				if (child.material) {
+					const mat = child.material;
+					if (Array.isArray(mat)) {
+						for (const m of mat) { if (m && m.dispose) try { m.dispose(); } catch (_) {} }
+					} else if (mat.dispose) {
+						try { mat.dispose(); } catch (_) {}
+					}
+				}
+			}
+		});
+	}
+
+	function setLoading(text) {
+		onLoadingTextChange(text || "");
+	}
+
+	function setupPBRLighting() {
+		const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x3e5765, 0.6);
+		hemiLight.position.set(0, 50, 0);
+		scene.add(hemiLight);
+
+		const sunLight = new THREE.DirectionalLight(0xffffff, 2.5);
+		sunLight.position.set(200, 300, 100);
+		sunLight.castShadow = true;
+		sunLight.shadow.mapSize.width = 2048;
+		sunLight.shadow.mapSize.height = 2048;
+		sunLight.shadow.camera.near = 1;
+		sunLight.shadow.camera.far = 1500;
+		sunLight.shadow.camera.left = -800;
+		sunLight.shadow.camera.right = 800;
+		sunLight.shadow.camera.top = 800;
+		sunLight.shadow.camera.bottom = -800;
+		sunLight.shadow.bias = -0.0001;
+		scene.add(sunLight);
+		scene.add(sunLight.target);
+
+		const fillLight = new THREE.DirectionalLight(0x4a90e2, 0.8);
+		fillLight.position.set(-100, 100, -100);
+		scene.add(fillLight);
+
+		const rimLight = new THREE.DirectionalLight(0xffffff, 0.5);
+		rimLight.position.set(0, 0, -200);
+		scene.add(rimLight);
+	}
+
+	function setupEquirectangularSkybox() {
+		const textureLoader = new THREE.TextureLoader();
+		textureLoader.load(
+			'/apps/lego_sky2.png',
+			function(texture) {
+				// Create sphere geometry for the skybox
+				const skyboxGeometry = new THREE.SphereGeometry(2000, 64, 32);
+				
+				// Create material with the equirectangular texture
+				const skyboxMaterial = new THREE.MeshBasicMaterial({
+					map: texture,
+					side: THREE.BackSide, // Render inside of sphere
+					fog: false
+				});
+				
+				// Create skybox mesh
+				skyboxMesh = new THREE.Mesh(skyboxGeometry, skyboxMaterial);
+				skyboxMesh.renderOrder = -1; // Render behind everything else
+				
+				// Add to scene
+				scene.add(skyboxMesh);
+				
+				// Remove the solid background color since we now have a skybox
+				scene.background = null;
+			},
+			function(progress) {
+				// Optional: handle loading progress
+				console.log('Skybox loading progress:', (progress.loaded / progress.total * 100) + '%');
+			},
+			function(error) {
+				console.error('Error loading skybox texture:', error);
+				// Fallback to original background color
+				scene.background = new THREE.Color(0x0cbeff);
+			}
+		);
+	}
+
+	function getSSAOPass() { return ssaoPassRef; }
+
+	function setupPostProcessing() {
+		composer = new EffectComposer(renderer);
+		const renderPass = new RenderPass(scene, camera);
+		composer.addPass(renderPass);
+		ssaoPassRef = new SSAOPass(scene, camera, container.clientWidth, container.clientHeight);
+		// Tune for BrickQuest world scale (stud spacing ~20 units)
+		ssaoPassRef.kernelRadius = 14;
+		ssaoPassRef.minDistance = 2.0;
+		ssaoPassRef.maxDistance = 80.0;
+		ssaoPassRef.output = ssaoDebugView ? SSAOPass.OUTPUT.SSAO : SSAOPass.OUTPUT.Default;
+		ssaoPassRef.enabled = !!ssaoEnabled;
+		composer.addPass(ssaoPassRef);
+		smaaPassRef = new SMAAPass(container.clientWidth, container.clientHeight);
+		composer.addPass(smaaPassRef);
+		gammaPassRef = new ShaderPass(GammaCorrectionShader);
+		composer.addPass(gammaPassRef);
+		outputPassRef = new OutputPass();
+		composer.addPass(outputPassRef);
+	}
+
+	function setSSAOEnabled(enabled) {
+		ssaoEnabled = !!enabled;
+		if (!composer) return;
+		const ssaoPass = getSSAOPass();
+		if (ssaoPass) ssaoPass.enabled = ssaoEnabled;
+		// Move SSAO pass to the end (before output) when enabled to maximize visual impact
+		if (ssaoPass && outputPassRef && gammaPassRef) {
+			const passes = composer.passes;
+			// Remove existing references
+			passes.splice(passes.indexOf(ssaoPass), 1);
+			// Insert before gamma and output
+			const gammaIdx = passes.indexOf(gammaPassRef);
+			const insertIdx = gammaIdx >= 0 ? gammaIdx : passes.length - 1;
+			passes.splice(insertIdx, 0, ssaoPass);
+		}
+	}
+
+	function toggleSSAO() {
+		setSSAOEnabled(!ssaoEnabled);
+	}
+
+	function getSSAOEnabled() {
+		return !!ssaoEnabled;
+	}
+
+	function setSSAODebugView(enabled) {
+		ssaoDebugView = !!enabled;
+		const ssaoPass = getSSAOPass();
+		if (!ssaoPass) return;
+		ssaoPass.output = ssaoDebugView ? SSAOPass.OUTPUT.SSAO : SSAOPass.OUTPUT.Default;
+		if (ssaoDebugView) {
+			// Ensure SSAO is enabled while in debug view
+			if (!ssaoEnabled) {
+				ssaoDebugForcedEnable = true;
+				setSSAOEnabled(true);
+			}
+			// Disable downstream passes that could hide the raw output
+			if (gammaPassRef) gammaPassRef.enabled = false;
+		} else {
+			if (ssaoDebugForcedEnable) {
+				// Restore previous disabled state when leaving debug if we forced it on
+				ssaoDebugForcedEnable = false;
+				setSSAOEnabled(false);
+			}
+			if (gammaPassRef) gammaPassRef.enabled = true;
+		}
+	}
+
+	function toggleSSAODebugView() {
+		setSSAODebugView(!ssaoDebugView);
+	}
+
+	function getSSAODebugView() {
+		return !!ssaoDebugView;
+	}
+
+	async function fetchPieceIdsFromCSV() {
+		try {
+			const res = await fetch('/apps/bricks/exported_pieces.csv', { cache: 'no-cache' });
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const text = await res.text();
+			const lines = text.split(/\r?\n/);
+			const ids = [];
+			const seen = new Set();
+			for (const raw of lines) {
+				if (!raw) continue;
+				const line = raw.trim();
+				if (!line) continue;
+				const parts = line.split(',');
+				if (!parts.length) continue;
+				const id = (parts[0] || '').trim();
+				if (!id || seen.has(id)) continue;
+				ids.push(id);
+				seen.add(id);
+			}
+			if (!seen.has('41539')) ids.push('41539');
+			return ids;
+		} catch (e) {
+			console.warn('Failed to load exported_pieces.csv, falling back to minimal piece set', e);
+			return [
+				'3001','3002','3003','3004','3005','3008','3009','3010',
+				'3020','3021','3022','3023','3024','3029','3030','3031',
+				'3032','3034','3035','3460','3623','3666','3710','3795',
+				'3832','4070','41539'
+			];
+		}
+	}
+
+	function setupBrickMaterials() {
+		const colors = colorPalette.map((hex) => new THREE.Color(hex).convertSRGBToLinear());
+		brickMaterials = colors.map((color) => new THREE.MeshStandardMaterial({
+			color,
+			roughness: 0.2,
+			envMapIntensity: 0.8,
+		}));
+	}
+
+	function ensureStudHighlight() {
+		if (studHighlightMesh) return;
+		const geometry = new THREE.CylinderGeometry(6.5, 6.5, 4, 16);
+		const material = new THREE.MeshBasicMaterial({
+			color: 0xdf8f00,
+			emissiveIntensity: 1,
+			transparent: true,
+			opacity: 0.7,
+			depthTest: false,
+		});
+		studHighlightMesh = new THREE.Mesh(geometry, material);
+		studHighlightMesh.renderOrder = 999;
+		studHighlightMesh.visible = false;
+		scene.add(studHighlightMesh);
+	}
+
+	function setupGhostMaterial() {
+		if (ghostMaterial) return;
+		ghostMaterial = new THREE.MeshStandardMaterial({
+			color: 0x00ffc8,
+			transparent: true,
+			opacity: 0.15,
+			depthWrite: false,
+			roughness: 0.3,
+			metalness: 0.0,
+		});
+		ghostMaterial.shadowSide = null;
+	}
+
+	function setupPreview(previewContainerElement) {
+		if (!previewContainerElement) return;
+		
+		previewContainer = previewContainerElement;
+		
+		// Create preview scene
+		previewScene = new THREE.Scene();
+		previewScene.background = null; // Transparent background
+		
+		// Create preview camera
+		previewCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+		previewCamera.position.set(100, 80, 100);
+		previewCamera.lookAt(0, 0, 0);
+		
+		// Create preview renderer
+		previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+		previewRenderer.setSize(150, 150);
+		previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+		previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
+		previewRenderer.shadowMap.enabled = true;
+		previewRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+		previewRenderer.setClearColor(0x000000, 0); // Transparent clear color
+		
+		previewContainer.appendChild(previewRenderer.domElement);
+		
+		// Setup preview post-processing with gamma correction
+		previewComposer = new EffectComposer(previewRenderer);
+		const previewRenderPass = new RenderPass(previewScene, previewCamera);
+		previewComposer.addPass(previewRenderPass);
+		const previewGammaCorrectionPass = new ShaderPass(GammaCorrectionShader);
+		previewComposer.addPass(previewGammaCorrectionPass);
+		const previewOutputPass = new OutputPass();
+		previewComposer.addPass(previewOutputPass);
+		
+		// Add lighting to preview scene
+		const ambientLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+		previewScene.add(ambientLight);
+		
+		const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+		directionalLight.position.set(50, 100, 50);
+		directionalLight.castShadow = true;
+		directionalLight.shadow.mapSize.width = 512;
+		directionalLight.shadow.mapSize.height = 512;
+		previewScene.add(directionalLight);
+		
+		// Create preview material
+		previewMaterial = new THREE.MeshStandardMaterial({
+			roughness: 0.2,
+			envMapIntensity: 0.8,
+		});
+		
+		// Create initial preview mesh
+		updatePreviewMesh();
+	}
+
+	function updatePreviewMesh() {
+		if (!previewScene || !brickMaterials) return;
+		
+		// Remove existing preview mesh
+		if (previewMesh) {
+			previewScene.remove(previewMesh);
+			previewMesh = null;
+		}
+		
+		// Get current selected piece
+		const selectedPiece = pieceList[selectedPieceIndex];
+		if (!selectedPiece) return;
+		
+		// Get geometry for selected piece
+		let geometry = brickGeometries.get(selectedPiece.id);
+		if (!geometry) {
+			if (brickGeometries.size > 0) {
+				geometry = brickGeometries.values().next().value;
+			}
+		}
+		if (!geometry) return;
+		
+		// Get material for selected color
+		const material = brickMaterials[selectedColorIndex] || brickMaterials[0];
+		if (!material) return;
+		
+		// Create new preview mesh
+		previewMesh = new THREE.Mesh(geometry, material);
+		previewMesh.castShadow = true;
+		previewMesh.receiveShadow = true;
+		
+		// Center the piece (optional - adjust based on piece dimensions)
+		geometry.computeBoundingBox();
+		if (geometry.boundingBox) {
+			const center = geometry.boundingBox.getCenter(new THREE.Vector3());
+			previewMesh.position.set(-center.x, -center.y, -center.z);
+		}
+		
+		previewScene.add(previewMesh);
+	}
+
+	function renderPreview() {
+		if (!previewComposer || !previewMesh) return;
+		
+		// Rotate the preview mesh
+		previewMesh.rotation.y += previewRotationSpeed;
+		
+		// Render the preview with gamma correction
+		previewComposer.render();
+	}
+
+	function setGhostCollisionVisual(colliding) {
+		ghostIsColliding = !!colliding;
+		if (!ghostMaterial) return;
+		const target = colliding ? 0xff0000 : 0x00ffc8;
+		ghostMaterial.color.setHex(target).convertSRGBToLinear();
+		ghostMaterial.opacity = colliding ? 0.22 : 0.15;
+	}
+
+	function ensureGhostMesh(forceGeometryUpdate = false) {
+		if (!scene) return;
+		setupGhostMaterial();
+		const selectedPiece = pieceList[selectedPieceIndex];
+		const selectedPieceId = selectedPiece ? selectedPiece.id : null;
+		if (!selectedPieceId) {
+			if (ghostMesh) ghostMesh.visible = false;
+			return;
+		}
+		let geometry = brickGeometries.get(selectedPieceId);
+		if (!geometry) {
+			if (brickGeometries.size > 0) geometry = brickGeometries.values().next().value;
+		}
+		if (!geometry) {
+			if (ghostMesh) ghostMesh.visible = false;
+			return;
+		}
+		if (!ghostMesh) {
+			ghostMesh = new THREE.Mesh(geometry, ghostMaterial);
+			ghostMesh.castShadow = false;
+			ghostMesh.receiveShadow = false;
+			ghostMesh.renderOrder = 998;
+			scene.add(ghostMesh);
+		} else if (forceGeometryUpdate || ghostMesh.geometry !== geometry) {
+			ghostMesh.geometry = geometry;
+		}
+
+		const pieceData = piecesData[selectedPieceId];
+		let targetPos = null;
+		let finalQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ghostYaw, 0));
+		if (closestStudInfo && pieceData && Array.isArray(pieceData.antiStuds) && pieceData.antiStuds.length > 0) {
+			const studDirWorld = (closestStudInfo.direction && closestStudInfo.direction.clone()) || new THREE.Vector3(0, 1, 0);
+			studDirWorld.normalize();
+			const targetAxis = studDirWorld.clone();
+			let chosenAnti = null;
+			let chosenAngle = Infinity;
+			for (const anti of pieceData.antiStuds) {
+				const antiDirLocal = new THREE.Vector3(
+					Number.isFinite(anti.dx) ? anti.dx : 0,
+					Number.isFinite(anti.dy) ? anti.dy : 1,
+					Number.isFinite(anti.dz) ? anti.dz : 0,
+				).normalize();
+				const antiDirWorld0 = antiDirLocal.clone().applyQuaternion(finalQuat).normalize();
+				const angle = Math.acos(Math.max(-1, Math.min(1, antiDirWorld0.dot(targetAxis))));
+				if (angle < chosenAngle) {
+					chosenAngle = angle;
+					chosenAnti = anti;
+				}
+			}
+			const usedAnti = chosenAnti || pieceData.antiStuds[0];
+			const antiDirLocal = new THREE.Vector3(
+				Number.isFinite(usedAnti.dx) ? usedAnti.dx : 0,
+				Number.isFinite(usedAnti.dy) ? usedAnti.dy : 1,
+				Number.isFinite(usedAnti.dz) ? usedAnti.dz : 0,
+			).normalize();
+			const antiDirWorld0 = antiDirLocal.clone().applyQuaternion(finalQuat).normalize();
+			const alignQuat = new THREE.Quaternion().setFromUnitVectors(antiDirWorld0, targetAxis);
+			finalQuat = alignQuat.clone().multiply(finalQuat);
+			const antiPosLocal = new THREE.Vector3(usedAnti.x, usedAnti.y, usedAnti.z);
+			const antiPosWorldOffset = antiPosLocal.clone().applyQuaternion(finalQuat);
+			targetPos = {
+				x: closestStudInfo.position.x - antiPosWorldOffset.x,
+				y: closestStudInfo.position.y - antiPosWorldOffset.y,
+				z: closestStudInfo.position.z - antiPosWorldOffset.z,
+			};
+		} else if (lastMouseWorldPos && lastRayHitValid) {
+			const snapSize = 20;
+			targetPos = {
+				x: Math.round(lastMouseWorldPos.x / snapSize) * snapSize,
+				y: Math.round(lastMouseWorldPos.y / snapSize) * snapSize + 8,
+				z: Math.round(lastMouseWorldPos.z / snapSize) * snapSize,
+			};
+		}
+		if (targetPos) {
+			ghostMesh.position.set(targetPos.x, targetPos.y, targetPos.z);
+			ghostMesh.setRotationFromQuaternion(finalQuat);
+			ghostMesh.visible = true;
+			ghostTargetPos = { ...targetPos };
+			const selectedPiece = pieceList[selectedPieceIndex];
+			ghostPieceId = selectedPiece ? selectedPiece.id : null;
+			const e = new THREE.Euler().setFromQuaternion(finalQuat, "XYZ");
+			ghostRotationEuler = { x: e.x, y: e.y, z: e.z };
+		} else {
+			ghostMesh.visible = false;
+			ghostTargetPos = null;
+			ghostPieceId = null;
+		}
+	}
+
+	function updateClosestStud(raycaster, intersects) {
+		if (!studHighlightMesh) return;
+		let closestStud = null;
+		let closestDistance = Infinity;
+		let closestBrickId = null;
+		let closestStudDir = null;
+
+		for (const intersect of intersects) {
+			// Prefer brickId from mesh userData to avoid O(n) map scans per hit
+			let brickId = (intersect && intersect.object && intersect.object.userData) ? intersect.object.userData.brickId : null;
+			if (!brickId) continue;
+			const gameState = getGameStateRef ? getGameStateRef() : null;
+			const brick = gameState && gameState.bricks ? gameState.bricks[brickId] : null;
+			if (!brick) continue;
+			const brickQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(brick.rotation.x, brick.rotation.y, brick.rotation.z));
+			const brickMatrix = new THREE.Matrix4();
+			brickMatrix.compose(new THREE.Vector3(brick.position.x, brick.position.y, brick.position.z), brickQuat, new THREE.Vector3(1, 1, 1));
+			const thisBrickStuds = (piecesData[brick.pieceId] && piecesData[brick.pieceId].studs) || [];
+			for (const stud of thisBrickStuds) {
+				const studWorldPos = new THREE.Vector3(stud.x, stud.y, stud.z);
+				studWorldPos.applyMatrix4(brickMatrix);
+				let studWorldDir = new THREE.Vector3(0, 1, 0);
+				if (typeof stud.dx === "number" && typeof stud.dy === "number" && typeof stud.dz === "number") {
+					studWorldDir = new THREE.Vector3(stud.dx, stud.dy, stud.dz).normalize().applyQuaternion(brickQuat);
+				} else {
+					studWorldDir.applyQuaternion(brickQuat);
+				}
+				const distance = intersect.point.distanceTo(studWorldPos);
+				if (distance < closestDistance && distance < 50) {
+					closestDistance = distance;
+					closestStud = studWorldPos;
+					closestBrickId = brickId;
+					closestStudDir = studWorldDir.clone().normalize();
+				}
+			}
+		}
+
+		if (closestStud) {
+			studHighlightMesh.position.copy(closestStud);
+			studHighlightMesh.position.y += 2;
+			const up = new THREE.Vector3(0, 1, 0);
+			const dir = (closestStudDir && closestStudDir.length() > 0.0001) ? closestStudDir.clone().normalize() : up;
+			const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
+			studHighlightMesh.setRotationFromQuaternion(q);
+			studHighlightMesh.visible = true;
+			closestStudInfo = { position: closestStud, brickId: closestBrickId, direction: dir };
+		} else {
+			studHighlightMesh.visible = false;
+			closestStudInfo = null;
+		}
+	}
+
+	async function loadBrickModel() {
+		const pieceIds = await fetchPieceIdsFromCSV();
+		return new Promise((resolve, reject) => {
+			setLoading("Loading LEGO parts library...");
+			gltfLoader.load(
+				"/apps/bricks/all_pieces.gltf",
+				function (gltf) {
+					const legoPartsLibrary = gltf.scene.getObjectByName("LegoPartsLibrary");
+					if (!legoPartsLibrary) {
+						reject(new Error("LegoPartsLibrary not found in GLTF"));
+						return;
+					}
+					setupBrickMaterials();
+					let loadedCount = 0;
+					for (const pieceId of pieceIds) {
+						const piece = legoPartsLibrary.getObjectByName(pieceId);
+						if (!piece) {
+							console.warn(`Piece ${pieceId} not found in GLTF`);
+							continue;
+						}
+						let partMesh = null;
+						const partNode = piece.getObjectByName("part");
+						if (partNode) {
+							if (partNode.isMesh || partNode.isSkinnedMesh) partMesh = partNode; else {
+								partNode.traverse((child) => { if (!partMesh && (child.isMesh || child.isSkinnedMesh)) partMesh = child; });
+							}
+						} else {
+							piece.traverse((child) => {
+								if (!partMesh && (child.isMesh || child.isSkinnedMesh)) {
+									const ud = child.userData || {};
+									const typeTag = ud.type || (ud.extras && ud.extras.type);
+									if (typeTag === "part") partMesh = child;
+								}
+							});
+						}
+						if (!partMesh) {
+							console.warn(`Piece ${pieceId}: 'part' node not found; using first mesh as fallback`);
+							piece.traverse((child) => { if (!partMesh && (child.isMesh || child.isSkinnedMesh)) partMesh = child; });
+						}
+						if (partMesh && partMesh.geometry) {
+							const geometry = partMesh.geometry.clone();
+							try {
+								piece.updateWorldMatrix(true, false);
+								partMesh.updateWorldMatrix(true, false);
+								const pieceWorld = piece.matrixWorld;
+								const partWorld = partMesh.matrixWorld;
+								const pieceWorldInv = new THREE.Matrix4().copy(pieceWorld).invert();
+								const localToPiece = new THREE.Matrix4().multiplyMatrices(pieceWorldInv, partWorld);
+								geometry.applyMatrix4(localToPiece);
+							} catch (e) {
+								console.warn(`Failed to bake transform for piece ${pieceId}:`, e);
+							}
+							if (!geometry.attributes.normal) geometry.computeVertexNormals();
+							geometry.normalizeNormals();
+							// Build BVH once per unique piece geometry to accelerate raycasting
+							try { geometry.computeBoundsTree(); } catch (_) {}
+							brickGeometries.set(pieceId, geometry);
+							loadedCount++;
+						}
+						let partNoStudsMesh = null;
+						const pnsNode = piece.getObjectByName("partnostuds");
+						if (pnsNode) {
+							if (pnsNode.isMesh || pnsNode.isSkinnedMesh) partNoStudsMesh = pnsNode; else {
+								pnsNode.traverse((child) => { if (!partNoStudsMesh && (child.isMesh || child.isSkinnedMesh)) partNoStudsMesh = child; });
+							}
+						}
+						if (!partNoStudsMesh) {
+							piece.traverse((child) => {
+								if (!partNoStudsMesh && (child.isMesh || child.isSkinnedMesh)) {
+									const ud = child.userData || {};
+									const typeTag = ud.type || (ud.extras && ud.extras.type);
+									if (typeTag === "partnostuds") partNoStudsMesh = child;
+								}
+							});
+						}
+						if (partNoStudsMesh && partNoStudsMesh.geometry) {
+							const colGeom = partNoStudsMesh.geometry.clone();
+							try {
+								piece.updateWorldMatrix(true, false);
+								partNoStudsMesh.updateWorldMatrix(true, false);
+								const pieceWorld = piece.matrixWorld;
+								const pnsWorld = partNoStudsMesh.matrixWorld;
+								const pieceWorldInv = new THREE.Matrix4().copy(pieceWorld).invert();
+								const localToPiece = new THREE.Matrix4().multiplyMatrices(pieceWorldInv, pnsWorld);
+								colGeom.applyMatrix4(localToPiece);
+							} catch (e) {
+								console.warn(`Failed to bake transform for partnostuds ${pieceId}:`, e);
+							}
+							if (!colGeom.attributes.normal) colGeom.computeVertexNormals();
+							colGeom.normalizeNormals();
+							// Optional: BVH for potential collision/picking with nostuds if used for picking later
+							try { colGeom.computeBoundsTree(); } catch (_) {}
+							collisionGeometries.set(pieceId, colGeom);
+						}
+					}
+					setLoading("");
+					resolve();
+				},
+				function (progress) {
+					if (progress.lengthComputable) {
+						const percentComplete = (progress.loaded / progress.total) * 100;
+						setLoading(`Loading: ${Math.round(percentComplete)}%`);
+					}
+				},
+				function (error) {
+					console.error("Error loading GLTF model:", error);
+					setLoading("Error loading model");
+					reject(error);
+				}
+			);
+		});
+	}
+
+	function createMinifigureGroup(colors) {
+		// Require the three part geometries
+		const geomLegs = brickGeometries.get("73200");
+		const geomTorso = brickGeometries.get("76382");
+		const geomHead = brickGeometries.get("3626");
+		if (!geomLegs || !geomTorso || !geomHead) return null;
+
+		// Expect per-part colors object { legs, torso }
+		const legsColor = (colors && typeof colors.legs === 'number') ? colors.legs : 0x0e78cf;
+		const torsoColor = (colors && typeof colors.torso === 'number') ? colors.torso : 0x0e78cf;
+
+		const legsLinear = new THREE.Color(legsColor).convertSRGBToLinear();
+		const torsoLinear = new THREE.Color(torsoColor).convertSRGBToLinear();
+		const headLinear = new THREE.Color(0xffd804).convertSRGBToLinear();
+		const legsMaterial = new THREE.MeshStandardMaterial({ color: legsLinear, roughness: 0.35, metalness: 0.0 });
+		const torsoMaterial = new THREE.MeshStandardMaterial({ color: torsoLinear, roughness: 0.35, metalness: 0.0 });
+		const headMaterial = new THREE.MeshStandardMaterial({ color: headLinear, roughness: 0.35, metalness: 0.0 });
+		const group = new THREE.Group();
+
+		// Clone geometries to avoid bounding box mutation side-effects across instances
+		const legsGeom = geomLegs.clone();
+		const torsoGeom = geomTorso.clone();
+		const headGeom = geomHead.clone();
+
+		const legs = new THREE.Mesh(legsGeom, legsMaterial);
+		const torso = new THREE.Mesh(torsoGeom, torsoMaterial);
+		const head = new THREE.Mesh(headGeom, headMaterial);
+
+		legs.castShadow = legs.receiveShadow = true;
+		torso.castShadow = torso.receiveShadow = true;
+		head.castShadow = head.receiveShadow = true;
+
+
+		// Hardcoded placement: legs at y=0, torso +48, head +32 above torso
+		legs.position.set(0, -12, 0);
+		torso.position.set(0, 20, 0);
+		head.position.set(0, 20 + 24, 0);
+
+		group.add(legs);
+		group.add(torso);
+		group.add(head);
+
+		return group;
+	}
+
+	function getMouseWorldPosition() {
+		const raycaster = new THREE.Raycaster();
+		raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+		// Only raycast against bricks (exclude players) using cached list
+		// Limit effective ray length for picking to reduce broad-phase work
+		raycaster.far = PLACEMENT_MAX_DISTANCE;
+		// With BVH, return only the closest hit for speed
+		raycaster.firstHitOnly = true;
+		const intersects = raycaster.intersectObjects(raycastTargets, false);
+		let result;
+		if (intersects.length > 0) {
+			const intersection = intersects[0];
+			lastRayHitValid = (typeof intersection.distance === 'number') ? (intersection.distance <= PLACEMENT_MAX_DISTANCE) : true;
+			if (lastRayHitValid) {
+				// Capture the brickId from the intersected mesh if available
+				lastHitBrickId = (intersection && intersection.object && intersection.object.userData) ? (intersection.object.userData.brickId || null) : null;
+				updateClosestStud(raycaster, intersects);
+				result = { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z };
+				lastMouseWorldPos = result;
+			} else {
+				// Out of range - clear stud highlight and invalidate placement
+				if (studHighlightMesh) studHighlightMesh.visible = false;
+				closestStudInfo = null;
+				lastMouseWorldPos = null;
+				lastHitBrickId = null;
+				result = { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z };
+			}
+		} else {
+			lastRayHitValid = false;
+			// No hit - clear stud highlight and keep a ground-plane projection for cursor, but disable placement
+			if (studHighlightMesh) studHighlightMesh.visible = false;
+			closestStudInfo = null;
+			lastHitBrickId = null;
+			const vector = new THREE.Vector3(0, 0, 0.5);
+			vector.unproject(camera);
+			const dir = vector.sub(camera.position).normalize();
+			const distance = -camera.position.y / dir.y;
+			const pos = camera.position.clone().add(dir.multiplyScalar(distance));
+			result = { x: pos.x, y: pos.y, z: pos.z };
+			lastMouseWorldPos = null;
+		}
+		ensureGhostMesh(false);
+		return result;
+	}
+
+	function createBrickMesh(brick) {
+		if (!brickMaterials) return;
+		const pieceId = brick.pieceId || "3022";
+		let geometry = brickGeometries.get(pieceId);
+		if (!geometry) {
+			if (brickGeometries.size > 0) geometry = brickGeometries.values().next().value; else return;
+		}
+		const material = brickMaterials[brick.colorIndex] || brickMaterials[0];
+		const mesh = new THREE.Mesh(geometry, material);
+		// Attach brickId to mesh for fast picking lookup
+		if (!mesh.userData) mesh.userData = {};
+		mesh.userData.brickId = brick.id;
+		mesh.position.set(brick.position.x, brick.position.y, brick.position.z);
+		
+		// Add tiny random rotation (±1 degree) on all axes
+		const randomRotationRange = (Math.PI / 180) * 0.125; // 1 degree in radians
+		const randomX = (Math.random() - 0.5) * 2 * randomRotationRange;
+		const randomY = (Math.random() - 0.5) * 2 * randomRotationRange;
+		const randomZ = (Math.random() - 0.5) * 2 * randomRotationRange;
+		
+		mesh.rotation.set(
+			brick.rotation.x + randomX, 
+			brick.rotation.y + randomY, 
+			brick.rotation.z + randomZ
+		);
+		mesh.castShadow = true;
+		mesh.receiveShadow = true;
+		scene.add(mesh);
+		brickMeshes.set(brick.id, mesh);
+		// Maintain cached raycast array
+		raycastTargets.push(mesh);
+	}
+
+	function removeBrickMesh(brickId) {
+		const mesh = brickMeshes.get(brickId);
+		if (mesh) {
+			scene.remove(mesh);
+			// Clear identifier to avoid stale picks
+			if (mesh.userData) delete mesh.userData.brickId;
+			brickMeshes.delete(brickId);
+			// Remove from raycast cache
+			const idx = raycastTargets.indexOf(mesh);
+			if (idx !== -1) raycastTargets.splice(idx, 1);
+		}
+	}
+
+	function createPlayerMesh(playerData) {
+		const existing = playerMeshes.get(playerData.id);
+		if (existing) {
+			scene.remove(existing);
+			disposeObject(existing);
+			playerMeshes.delete(playerData.id);
+		}
+		// Try to build a minifigure group from parts; fall back to capsule if unavailable
+		let figure = createMinifigureGroup({
+			legs: playerData.colorLegs,
+			torso: playerData.colorTorso,
+		});
+		if (!figure) {
+			const radius = 24; // keep in sync with server capsule for collisions
+			const length = 28 * 2;
+			const geometry = new THREE.CapsuleGeometry(radius, length, 6, 12);
+			const material = new THREE.MeshStandardMaterial({ color: playerData.colorLegs || 0x0e78cf, roughness: 0.7, metalness: 0.1 });
+			figure = new THREE.Mesh(geometry, material);
+		}
+		figure.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
+		// Initialize facing to server-provided yaw so remote players look correct immediately
+		if (playerData.rotation && typeof playerData.rotation.y === 'number') {
+			figure.rotation.set(0, playerData.rotation.y, 0);
+		}
+		figure.castShadow = true;
+		figure.receiveShadow = true;
+		scene.add(figure);
+		playerMeshes.set(playerData.id, figure);
+
+		// Create or update name sprite
+		createOrUpdateNameSprite(playerData);
+	}
+
+	function updatePlayerMesh(playerData) {
+		const mesh = playerMeshes.get(playerData.id);
+		if (mesh) {
+			mesh.position.x += (playerData.position.x - mesh.position.x) * 0.2;
+			mesh.position.y += (playerData.position.y - mesh.position.y) * 0.2;
+			mesh.position.z += (playerData.position.z - mesh.position.z) * 0.2;
+			// Apply yaw from server for remote players; local player is handled in renderTick
+			if (playerData.rotation && typeof playerData.rotation.y === 'number') {
+				mesh.rotation.y = playerData.rotation.y;
+			}
+		}
+		// Update name sprite position and text if changed
+		createOrUpdateNameSprite(playerData);
+	}
+
+	function removePlayerMesh(playerId) {
+		const mesh = playerMeshes.get(playerId);
+		if (mesh) {
+			scene.remove(mesh);
+			disposeObject(mesh);
+			playerMeshes.delete(playerId);
+		}
+		const sprite = playerNameSprites.get(playerId);
+		if (sprite) {
+			scene.remove(sprite);
+			if (sprite.material && sprite.material.map && sprite.material.map.dispose) try { sprite.material.map.dispose(); } catch (_) {}
+			if (sprite.material && sprite.material.dispose) try { sprite.material.dispose(); } catch (_) {}
+			playerNameSprites.delete(playerId);
+		}
+	}
+
+	function resetAllMeshes() {
+		playerMeshes.forEach((mesh) => {
+			scene.remove(mesh);
+			disposeObject(mesh);
+		});
+		playerMeshes.clear();
+		playerNameSprites.forEach((sprite) => {
+			scene.remove(sprite);
+			if (sprite.material && sprite.material.map && sprite.material.map.dispose) try { sprite.material.map.dispose(); } catch (_) {}
+			if (sprite.material && sprite.material.dispose) try { sprite.material.dispose(); } catch (_) {}
+		});
+		playerNameSprites.clear();
+		brickMeshes.forEach((mesh) => {
+			scene.remove(mesh);
+		});
+		brickMeshes.clear();
+	}
+
+	function onWindowResize() {
+		if (!camera || !renderer || !container || !composer) return;
+		const width = container.clientWidth;
+		const height = container.clientHeight;
+		camera.aspect = width / height;
+		camera.updateProjectionMatrix();
+		renderer.setSize(width, height);
+		composer.setSize(width, height);
+		if (ssaoPassRef) ssaoPassRef.setSize(width, height);
+	}
+
+	function applyAuthoritativeGhostPose(gp) {
+		if (!gp || !ghostMesh) return;
+		ghostMesh.visible = true;
+		ghostMesh.position.set(gp.position.x, gp.position.y, gp.position.z);
+		const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(gp.rotation.x || 0, gp.rotation.y || 0, gp.rotation.z || 0));
+		ghostMesh.setRotationFromQuaternion(q);
+		ghostTargetPos = { ...gp.position };
+		ghostRotationEuler = { ...gp.rotation };
+	}
+
+	function renderTick(localPlayer, yaw, pitch, isThirdPerson) {
+		if (!composer || !scene || !camera) return;
+		
+		// Update skybox position to follow camera (makes it appear infinitely far away)
+		if (skyboxMesh) {
+			skyboxMesh.position.copy(camera.position);
+		}
+		
+		if (studHighlightMesh && studHighlightMesh.visible) {
+			const time = Date.now() * 0.003;
+			const scale = 1 + Math.sin(time) * 0.07;
+			studHighlightMesh.scale.set(scale, scale, scale);
+			studHighlightMesh.rotation.y = time * 0.5;
+		}
+		
+		// Render preview
+		renderPreview();
+		if (localPlayer && localPlayer.position) {
+			const eyeHeight = 30;
+			const playerEye = new THREE.Vector3(localPlayer.position.x, localPlayer.position.y + eyeHeight, localPlayer.position.z);
+			if (isThirdPerson) {
+				const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)).normalize();
+				const desiredPos = playerEye.clone().add(dir.multiplyScalar(-160));
+				desiredPos.y += 30;
+				camera.position.copy(desiredPos);
+				camera.lookAt(playerEye);
+			} else {
+				camera.position.copy(playerEye);
+				const lookDirection = new THREE.Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
+				const lookTarget = camera.position.clone().add(lookDirection);
+				camera.lookAt(lookTarget);
+			}
+			// Local player mesh visibility in third-person
+			for (const [pid, mesh] of playerMeshes) {
+				if (localPlayer.id && pid === localPlayer.id) {
+					mesh.visible = !!isThirdPerson;
+					mesh.position.set(localPlayer.position.x, localPlayer.position.y, localPlayer.position.z);
+					mesh.rotation.set(0, yaw, 0);
+				}
+			}
+			// Keep name sprites above the player heads
+			for (const [pid, sprite] of playerNameSprites) {
+				const playerMesh = playerMeshes.get(pid);
+				if (playerMesh) {
+					const baseY = (playerMesh.position.y || 0);
+					sprite.position.set(playerMesh.position.x, baseY + 65, playerMesh.position.z);
+					// Hide local player's label in first-person view
+					sprite.visible = !(localPlayer && localPlayer.id === pid && !isThirdPerson);
+				}
+			}
+		}
+		// Capture all composer passes by disabling autoReset and resetting once before render
+		if (renderer && renderer.info) {
+			renderer.info.autoReset = false;
+			if (typeof renderer.info.reset === 'function') renderer.info.reset();
+		}
+		composer.render();
+		// Update per-frame stats for HUD
+		if (renderer && renderer.info) {
+			lastDrawCalls = renderer.info.render.calls | 0;
+			lastTriangles = renderer.info.render.triangles | 0;
+		}
+	}
+
+	// -------- Name label helpers --------
+	function createTextSprite(text) {
+		const canvas = document.createElement('canvas');
+		canvas.width = 512;
+		canvas.height = 128;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return null;
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		// Background (transparent) and text
+		ctx.font = 'bold 64px Inter, system-ui, Arial, sans-serif';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		const x = canvas.width / 2;
+		const y = canvas.height / 2;
+		ctx.lineWidth = 10;
+		ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+		ctx.strokeText(text, x, y);
+		ctx.fillStyle = 'white';
+		ctx.fillText(text, x, y);
+		const texture = new THREE.CanvasTexture(canvas);
+		texture.colorSpace = THREE.SRGBColorSpace;
+		texture.needsUpdate = true;
+		const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+		const sprite = new THREE.Sprite(material);
+		// World size for readability
+		const worldHeight = 28; // tune as needed
+		const aspect = canvas.width / canvas.height;
+		sprite.scale.set(worldHeight * aspect, worldHeight, 1);
+		sprite.renderOrder = 1000;
+		sprite.userData.labelText = text;
+		return sprite;
+	}
+
+	function createOrUpdateNameSprite(playerData) {
+		const id = playerData.id;
+		const nameText = (typeof playerData.name === 'string' && playerData.name.trim()) ? playerData.name.trim() : '';
+		let sprite = playerNameSprites.get(id);
+		// If we have no sprite yet, create one
+		if (!sprite) {
+			const s = createTextSprite(nameText || '');
+			if (!s) return;
+			playerNameSprites.set(id, s);
+			s.position.set(playerData.position.x, playerData.position.y + 90, playerData.position.z);
+			scene.add(s);
+			return;
+		}
+		// If text changed, rebuild texture
+		if ((sprite.userData.labelText || '') !== nameText) {
+			scene.remove(sprite);
+			if (sprite.material && sprite.material.map && sprite.material.map.dispose) try { sprite.material.map.dispose(); } catch (_) {}
+			if (sprite.material && sprite.material.dispose) try { sprite.material.dispose(); } catch (_) {}
+			const s2 = createTextSprite(nameText || '');
+			if (!s2) return;
+			s2.position.copy(sprite.position);
+			playerNameSprites.set(id, s2);
+			scene.add(s2);
+			sprite = s2;
+		}
+		// Always keep sprite above current position
+		sprite.position.set(playerData.position.x, playerData.position.y + 90, playerData.position.z);
+	}
+
+	return {
+		async init() {
+			try {
+				// Enable BVH accelerated raycasting globally
+				THREE.Mesh.prototype.raycast = acceleratedRaycast;
+				THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+				THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color(0x0cbeff);
+                
+				camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 2500);
+				camera.position.set(0, 50, 0);
+				camera.lookAt(0, 50, -1);
+				renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+				renderer.setSize(container.clientWidth, container.clientHeight);
+				renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+				renderer.outputColorSpace = THREE.SRGBColorSpace;
+				renderer.toneMapping = THREE.NoToneMapping;
+				renderer.toneMappingExposure = 1.0;
+				renderer.shadowMap.enabled = true;
+				renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+				// Prevent per-pass auto reset so we can accumulate draw calls across EffectComposer passes
+				if (renderer.info && typeof renderer.info.autoReset === 'boolean') {
+					renderer.info.autoReset = false;
+				}
+				container.appendChild(renderer.domElement);
+				// Hint to the browser compositor for stable fps
+				if (renderer.domElement && renderer.domElement.style) {
+					renderer.domElement.style.contain = 'layout paint';
+					renderer.domElement.style.touchAction = 'none';
+				}
+				setupPBRLighting();
+				setupEquirectangularSkybox();
+				setupPostProcessing();
+				gltfLoader = new GLTFLoader();
+				ensureStudHighlight();
+				await loadBrickModel();
+				setLoading("");
+			} catch (e) {
+				onError(e);
+				throw e;
+			}
+		},
+		dispose() {
+			if (renderer) renderer.dispose();
+			if (composer) composer.dispose();
+			if (previewRenderer) previewRenderer.dispose();
+			if (previewComposer) previewComposer.dispose();
+			// Clean up brick meshes
+			brickMeshes.forEach((mesh) => {
+				scene.remove(mesh);
+			});
+			playerMeshes.forEach((mesh) => {
+				scene.remove(mesh);
+				if (mesh.geometry && mesh.geometry.dispose) mesh.geometry.dispose();
+				if (mesh.material && mesh.material.dispose) mesh.material.dispose();
+			});
+			playerNameSprites.forEach((sprite) => {
+				scene.remove(sprite);
+				if (sprite.material && sprite.material.map && sprite.material.map.dispose) try { sprite.material.map.dispose(); } catch (_) {}
+				if (sprite.material && sprite.material.dispose) try { sprite.material.dispose(); } catch (_) {}
+			});
+		},
+		onResize: onWindowResize,
+		// Data/config
+		setGameStateProvider(fn) { getGameStateRef = fn; },
+		setData({ pieceList: pl, piecesData: pd }) { pieceList = pl || []; piecesData = pd || {}; },
+		setSelectedPieceIndex(i) { selectedPieceIndex = Math.max(0, Math.min(pieceList.length - 1, i | 0)); ensureGhostMesh(true); updatePreviewMesh(); },
+		setSelectedColorIndex(i) { selectedColorIndex = Math.max(0, Math.min((colorPalette.length || 1) - 1, i | 0)); updatePreviewMesh(); },
+		setGhostYaw(y) { ghostYaw = y || 0; ensureGhostMesh(false); },
+		getGhostRotationEuler() { return { ...ghostRotationEuler }; },
+		getGhostTargetPos() { return ghostTargetPos ? { ...ghostTargetPos } : null; },
+		getGhostPieceId() { return ghostPieceId; },
+		setGhostCollisionVisual,
+		applyAuthoritativeGhostPose,
+		// Simple render stats for HUD
+		getRenderStats() { return { drawCalls: lastDrawCalls | 0, triangles: lastTriangles | 0 }; },
+		// Picking
+		getMouseWorldPosition,
+		getPickedBrickId() { return (lastRayHitValid && lastHitBrickId) ? lastHitBrickId : null; },
+		getClosestStudInfo() { return (lastRayHitValid && closestStudInfo) ? {
+			position: { x: closestStudInfo.position.x, y: closestStudInfo.position.y, z: closestStudInfo.position.z },
+			brickId: closestStudInfo.brickId,
+			direction: closestStudInfo.direction ? { x: closestStudInfo.direction.x, y: closestStudInfo.direction.y, z: closestStudInfo.direction.z } : undefined,
+		} : null; },
+		canPlaceNow() { return !!lastRayHitValid; },
+		// Mesh management
+		createBrickMesh,
+		removeBrickMesh,
+		createPlayerMesh,
+		updatePlayerMesh,
+		removePlayerMesh,
+		resetAllMeshes,
+		// Render
+		renderTick,
+		// Post-processing toggles
+		setSSAOEnabled,
+		toggleSSAO,
+		getSSAOEnabled,
+		setSSAODebugView,
+		toggleSSAODebugView,
+		getSSAODebugView,
+		// Preview
+		setupPreview,
+	};
+}
+
+

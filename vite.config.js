@@ -37,5 +37,14 @@ export default defineConfig({
     ],
     server: {
         port: 8011,
+        host: true, // expose on LAN
+        proxy: {
+            // Proxy Socket.IO (websocket + polling) to the game server on 3001
+            '/socket.io': {
+                target: 'http://localhost:3001',
+                ws: true,
+                changeOrigin: true,
+            },
+        },
     },
 });
