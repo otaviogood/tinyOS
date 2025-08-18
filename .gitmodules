@@ -1,0 +1,4 @@
+[submodule "public/apps/LDCadShadowLibrary"]
+	path = public/apps/LDCadShadowLibrary
+	url = https://github.com/RolandMelkert/LDCadShadowLibrary.git
+	branch = main
