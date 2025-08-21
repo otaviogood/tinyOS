@@ -466,19 +466,8 @@ io.on('connection', (socket) => {
                     rotation: (inputDiff.ghost.rotation && typeof inputDiff.ghost.rotation.x === 'number') ? inputDiff.ghost.rotation : undefined,
                     closestStud: inputDiff.ghost.closestStud || null,
                     closestAntiStud: inputDiff.ghost.closestAntiStud || null,
-                    anchorMode: (typeof inputDiff.ghost.anchorMode === 'string') ? inputDiff.ghost.anchorMode : undefined,
-                    selectedAntiStudIndex: Number.isFinite(inputDiff.ghost.selectedAntiStudIndex) ? (inputDiff.ghost.selectedAntiStudIndex | 0) : undefined,
-                    selectedStudIndex: Number.isFinite(inputDiff.ghost.selectedStudIndex) ? (inputDiff.ghost.selectedStudIndex | 0) : undefined,
                 };
 
-                // Do not mutate persistent selection from transient ghost; use ghostInputs inline during placement computation
-                // if (ghostInputs.anchorMode || Number.isFinite(ghostInputs.selectedAntiStudIndex) || Number.isFinite(ghostInputs.selectedStudIndex)) {
-                //     console.log(`[ghostSync] ${socket.id} transient ${JSON.stringify({
-                //         mode: ghostInputs.anchorMode,
-                //         anti: ghostInputs.selectedAntiStudIndex,
-                //         stud: ghostInputs.selectedStudIndex,
-                //     })}`);
-                // }
                 let placement = computeGhostPlacement(player, ghostInputs, inputDiff.mouse);
                 if (!placement && inputDiff.ghost.position && (ghostInputs.rotation || typeof inputDiff.ghost.rotationY === 'number')) {
                     placement = {
@@ -593,7 +582,7 @@ function computeGhostPlacement(player, inputs, mouseRay) {
     let position = null;
 
     // Two anchor modes: 'anti' (piece anti-stud -> hovered stud), 'stud' (piece stud -> hovered anti-stud)
-    const mode = (inputs && typeof inputs.anchorMode === 'string') ? inputs.anchorMode : ((player && typeof player.anchorMode === 'string') ? player.anchorMode : 'anti');
+    const mode = (player && typeof player.anchorMode === 'string') ? player.anchorMode : 'anti';
     const studInfoLocal = inputs && inputs.closestStud;
     const antiInfoLocal = inputs && inputs.closestAntiStud;
     if (mode === 'anti' && studInfoLocal && studInfoLocal.position && pieceData && Array.isArray(pieceData.antiStuds) && pieceData.antiStuds.length > 0) {
@@ -605,7 +594,7 @@ function computeGhostPlacement(player, inputs, mouseRay) {
 
         // Choose anti-stud based on player's selected index with wrap-around
         const antiList = pieceData.antiStuds;
-        let antiIndex = Number.isFinite(inputs && inputs.selectedAntiStudIndex) ? (inputs.selectedAntiStudIndex | 0) : (Number.isFinite(player && player.selectedAntiStudIndex) ? player.selectedAntiStudIndex : 0);
+        let antiIndex = Number.isFinite(player && player.selectedAntiStudIndex) ? (player.selectedAntiStudIndex | 0) : 0;
         if (antiList.length > 0) {
             antiIndex = ((antiIndex % antiList.length) + antiList.length) % antiList.length;
         } else {
@@ -636,7 +625,7 @@ function computeGhostPlacement(player, inputs, mouseRay) {
             : new THREE.Vector3(0, 1, 0);
         const targetAxis = antiDirWorld.clone();
         const studList = pieceData.studs;
-        let studIndex = Number.isFinite(inputs && inputs.selectedStudIndex) ? (inputs.selectedStudIndex | 0) : (Number.isFinite(player && player.selectedStudIndex) ? player.selectedStudIndex : 0);
+        let studIndex = Number.isFinite(player && player.selectedStudIndex) ? (player.selectedStudIndex | 0) : 0;
         if (studList.length > 0) {
             studIndex = ((studIndex % studList.length) + studList.length) % studList.length;
         } else {
