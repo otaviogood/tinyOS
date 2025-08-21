@@ -38,6 +38,9 @@
     let piecesData = {}; // pieceId -> { studs: [], antiStuds: [] }
     let selectedPieceIndex = 0; // Currently selected piece for placement
     let selectedColorIndex = 0; // Currently selected color for placement
+    let selectedAntiStudIndex = 0; // Which anti-stud to align to when snapping
+    let selectedStudIndex = 0; // Which stud to align when anchoring to anti-stud
+    let anchorMode = 'anti'; // 'anti' or 'stud'
     // Ghost (preview) brick state routed via renderer3d
     let ghostYaw = 0; // Yaw rotation for current ghost/piece placement (radians)
     // Default stud positions for 2x2 brick (piece 3022)
@@ -237,6 +240,32 @@
                 ghostYaw = 0;
                 renderer3d.setSelectedPieceIndex(selectedPieceIndex);
                 renderer3d.setGhostYaw(ghostYaw);
+                // Sync anti-stud index if present
+                if (Number.isFinite(localPlayer.selectedAntiStudIndex)) {
+                    selectedAntiStudIndex = Math.max(0, localPlayer.selectedAntiStudIndex | 0);
+                    renderer3d.setSelectedAntiStudIndex(selectedAntiStudIndex);
+                } else {
+                    selectedAntiStudIndex = 0;
+                    renderer3d.setSelectedAntiStudIndex(0);
+                }
+                // Sync stud index and anchor mode if present
+                if (Number.isFinite(localPlayer.selectedStudIndex)) {
+                    selectedStudIndex = Math.max(0, localPlayer.selectedStudIndex | 0);
+                } else {
+                    selectedStudIndex = 0;
+                }
+                if (typeof localPlayer.anchorMode === 'string') {
+                    anchorMode = localPlayer.anchorMode;
+                } else {
+                    anchorMode = 'anti';
+                }
+                // Apply renderer sync for stud index and anchor mode
+                if (renderer3d && renderer3d.setSelectedStudIndex) {
+                    renderer3d.setSelectedStudIndex(selectedStudIndex);
+                }
+                if (renderer3d && renderer3d.setAnchorMode) {
+                    renderer3d.setAnchorMode(anchorMode);
+                }
             }
             // Sync selected color index
             if (localPlayer && localPlayer.selectedColorIndex !== undefined) {
@@ -288,11 +317,40 @@
                                 ghostYaw = 0;
                                 // Keep ghost in sync when server changes our selected piece
                                 renderer3d.setSelectedPieceIndex(selectedPieceIndex);
+                                renderer3d.setGhostYaw(ghostYaw);
+                                // Reset anchor state and indices when piece changes on server
+                                const p = pieceList[selectedPieceIndex];
+                                const pdata = p ? piecesData[p.id] : null;
+                                const antiCount = (pdata && Array.isArray(pdata.antiStuds)) ? pdata.antiStuds.length : 0;
+                                const studCount = (pdata && Array.isArray(pdata.studs)) ? pdata.studs.length : 0;
+                                if (antiCount > 0) {
+                                    anchorMode = 'anti';
+                                } else if (studCount > 0) {
+                                    anchorMode = 'stud';
+                                } else {
+                                    anchorMode = 'anti';
+                                }
+                                selectedStudIndex = 0;
+                                selectedAntiStudIndex = 0;
+                                if (renderer3d && renderer3d.setAnchorMode) renderer3d.setAnchorMode('anti');
+                                if (renderer3d && renderer3d.setSelectedStudIndex) renderer3d.setSelectedStudIndex(0);
+                                renderer3d.setSelectedAntiStudIndex(0);
                             }
                             // Update selected color if changed on server
                             if (player.selectedColorIndex !== undefined && player.selectedColorIndex !== selectedColorIndex) {
                                 selectedColorIndex = Math.max(0, Math.min(brickColorHexes.length - 1, player.selectedColorIndex));
                                 renderer3d && renderer3d.setSelectedColorIndex(selectedColorIndex);
+                            }
+                            // Sync indices and mode from server if changed
+                            if (Number.isFinite(player.selectedAntiStudIndex) && player.selectedAntiStudIndex !== selectedAntiStudIndex) {
+                                selectedAntiStudIndex = Math.max(0, player.selectedAntiStudIndex | 0);
+                                renderer3d.setSelectedAntiStudIndex(selectedAntiStudIndex);
+                            }
+                            if (Number.isFinite(player.selectedStudIndex) && player.selectedStudIndex !== selectedStudIndex) {
+                                selectedStudIndex = Math.max(0, player.selectedStudIndex | 0);
+                            }
+                            if (typeof player.anchorMode === 'string' && player.anchorMode !== anchorMode) {
+                                anchorMode = player.anchorMode;
                             }
                             
                             // RTT calculation
@@ -377,6 +435,110 @@
                 ghostYaw += Math.PI / 2;
                 if (ghostYaw > Math.PI) ghostYaw -= Math.PI * 2;
                 renderer3d.setGhostYaw(ghostYaw);
+            } else if (e.key === "'" || e.code === 'Quote') {
+                // Cycle anchor only among existing anchors, with wrap when single type exists
+                const antiList = (brickStudData && Array.isArray(brickStudData.antiStuds)) ? brickStudData.antiStuds : [];
+                const studList = (brickStudData && Array.isArray(brickStudData.studs)) ? brickStudData.studs : [];
+                if (anchorMode === 'anti') {
+                    if (antiList.length <= 0) {
+                        if (studList.length > 0) {
+                            anchorMode = 'stud';
+                            selectedStudIndex = 0;
+                            renderer3d.setAnchorMode('stud');
+                            if (renderer3d && renderer3d.setSelectedStudIndex) renderer3d.setSelectedStudIndex(0);
+                        }
+                    } else if (selectedAntiStudIndex + 1 < antiList.length) {
+                        selectedAntiStudIndex++;
+                        renderer3d.setSelectedAntiStudIndex(selectedAntiStudIndex);
+                    } else {
+                        if (studList.length > 0) {
+                            anchorMode = 'stud';
+                            selectedStudIndex = 0;
+                            renderer3d.setAnchorMode('stud');
+                            if (renderer3d && renderer3d.setSelectedStudIndex) renderer3d.setSelectedStudIndex(0);
+                        } else {
+                            selectedAntiStudIndex = 0; // wrap within anti list
+                            renderer3d.setSelectedAntiStudIndex(0);
+                        }
+                    }
+                } else {
+                    // stud mode
+                    if (studList.length <= 0) {
+                        if (antiList.length > 0) {
+                            anchorMode = 'anti';
+                            selectedAntiStudIndex = 0;
+                            selectedStudIndex = 0;
+                            renderer3d.setAnchorMode('anti');
+                            renderer3d.setSelectedAntiStudIndex(0);
+                        }
+                    } else if (selectedStudIndex + 1 < studList.length) {
+                        selectedStudIndex++;
+                        if (renderer3d && renderer3d.setSelectedStudIndex) renderer3d.setSelectedStudIndex(selectedStudIndex);
+                    } else {
+                        if (antiList.length > 0) {
+                            anchorMode = 'anti';
+                            selectedAntiStudIndex = 0;
+                            selectedStudIndex = 0;
+                            renderer3d.setAnchorMode('anti');
+                            renderer3d.setSelectedAntiStudIndex(0);
+                        } else {
+                            selectedStudIndex = 0; // wrap within stud list
+                            if (renderer3d && renderer3d.setSelectedStudIndex) renderer3d.setSelectedStudIndex(0);
+                        }
+                    }
+                }
+                // Notify server so authoritative placement matches
+                inputState.events.push({ type: 'cycleAnchor', delta: 1 });
+            } else if (e.key === ';' || e.code === 'Semicolon') {
+                // Reverse cycle with wrap when single type exists
+                const antiList = (brickStudData && Array.isArray(brickStudData.antiStuds)) ? brickStudData.antiStuds : [];
+                const studList = (brickStudData && Array.isArray(brickStudData.studs)) ? brickStudData.studs : [];
+                if (anchorMode === 'stud') {
+                    if (studList.length <= 0) {
+                        if (antiList.length > 0) {
+                            anchorMode = 'anti';
+                            selectedAntiStudIndex = Math.max(0, antiList.length - 1);
+                            renderer3d.setAnchorMode('anti');
+                            renderer3d.setSelectedAntiStudIndex(selectedAntiStudIndex);
+                        }
+                    } else if (selectedStudIndex - 1 >= 0) {
+                        selectedStudIndex--;
+                        if (renderer3d && renderer3d.setSelectedStudIndex) renderer3d.setSelectedStudIndex(selectedStudIndex);
+                    } else {
+                        if (antiList.length > 0) {
+                            anchorMode = 'anti';
+                            selectedAntiStudIndex = Math.max(0, antiList.length - 1);
+                            renderer3d.setAnchorMode('anti');
+                            renderer3d.setSelectedAntiStudIndex(selectedAntiStudIndex);
+                        } else {
+                            selectedStudIndex = Math.max(0, studList.length - 1); // wrap within stud list
+                            if (renderer3d && renderer3d.setSelectedStudIndex) renderer3d.setSelectedStudIndex(selectedStudIndex);
+                        }
+                    }
+                } else {
+                    if (antiList.length <= 0) {
+                        if (studList.length > 0) {
+                            anchorMode = 'stud';
+                            selectedStudIndex = Math.max(0, studList.length - 1);
+                            renderer3d.setAnchorMode('stud');
+                            if (renderer3d && renderer3d.setSelectedStudIndex) renderer3d.setSelectedStudIndex(selectedStudIndex);
+                        }
+                    } else if (selectedAntiStudIndex - 1 >= 0) {
+                        selectedAntiStudIndex--;
+                        renderer3d.setSelectedAntiStudIndex(selectedAntiStudIndex);
+                    } else {
+                        if (studList.length > 0) {
+                            anchorMode = 'stud';
+                            selectedStudIndex = Math.max(0, studList.length - 1);
+                            renderer3d.setAnchorMode('stud');
+                            if (renderer3d && renderer3d.setSelectedStudIndex) renderer3d.setSelectedStudIndex(selectedStudIndex);
+                        } else {
+                            selectedAntiStudIndex = Math.max(0, antiList.length - 1); // wrap within anti list
+                            renderer3d.setSelectedAntiStudIndex(selectedAntiStudIndex);
+                        }
+                    }
+                }
+                inputState.events.push({ type: 'cycleAnchor', delta: -1 });
             } else if (key === 'q' && !e.shiftKey) {
                 // Toggle SSAO
                 if (renderer3d && renderer3d.toggleSSAO) {
@@ -417,6 +579,23 @@
         ghostYaw = 0;
         renderer3d.setSelectedPieceIndex(selectedPieceIndex);
         renderer3d.setGhostYaw(ghostYaw);
+        // Reset anchor state and indices on piece change
+        const p = pieceList[selectedPieceIndex];
+        const pdata = p ? piecesData[p.id] : null;
+        const antiCount = (pdata && Array.isArray(pdata.antiStuds)) ? pdata.antiStuds.length : 0;
+        const studCount = (pdata && Array.isArray(pdata.studs)) ? pdata.studs.length : 0;
+        if (antiCount > 0) {
+            anchorMode = 'anti';
+        } else if (studCount > 0) {
+            anchorMode = 'stud';
+        } else {
+            anchorMode = 'anti';
+        }
+        selectedStudIndex = 0;
+        selectedAntiStudIndex = 0;
+        if (renderer3d && renderer3d.setAnchorMode) renderer3d.setAnchorMode(anchorMode);
+        if (renderer3d && renderer3d.setSelectedStudIndex) renderer3d.setSelectedStudIndex(0);
+        renderer3d.setSelectedAntiStudIndex(0);
         
         // Update current stud data
         if (pieceList.length > 0) {
@@ -472,6 +651,10 @@
                     pieceId: pieceList[selectedPieceIndex].id,
                     yaw: ghostYaw,
                     closestStud: (renderer3d.getClosestStudInfo && renderer3d.getClosestStudInfo()) || null,
+                    closestAntiStud: (renderer3d.getClosestAntiStudInfo && renderer3d.getClosestAntiStudInfo()) || null,
+                    anchorMode,
+                    selectedAntiStudIndex,
+                    selectedStudIndex,
                 };
                 const gr = renderer3d.getGhostRotationEuler && renderer3d.getGhostRotationEuler();
                 if (gr && typeof gr.x === 'number') {
@@ -575,6 +758,7 @@
             type: 'click',
             button: event.button, // 0 = left, 2 = right
             closestStud: (renderer3d.getClosestStudInfo && renderer3d.getClosestStudInfo()) || null,
+            closestAntiStud: (renderer3d.getClosestAntiStudInfo && renderer3d.getClosestAntiStudInfo()) || null,
             rotation: (() => { const r = renderer3d.getGhostRotationEuler && renderer3d.getGhostRotationEuler(); return r ? { x: r.x, y: r.y, z: r.z } : { x: 0, y: 0, z: 0 }; })(),
             rotationY: ghostYaw,
             brickId: (renderer3d.getPickedBrickId && renderer3d.getPickedBrickId()) || null,
@@ -654,6 +838,7 @@
 				<div>- / = : Switch Piece</div>
 				<div>Z / X : Rotate Piece</div>
 				<div>, / . : Switch Color</div>
+				<div>' : Cycle anti-stud</div>
 				<!-- <div>Q: Toggle SSAO</div> -->
 				<!-- <div>Shift+Q: SSAO Debug Output</div> -->
 			</div>
@@ -681,10 +866,10 @@
                     style="contain: layout paint;"
                 />
                 {#if pieceList.length > 0 && pieceList[selectedPieceIndex]}
-                    <div class="text-white text-xl text-center -mt-8 max-w-[13rem] truncate">
+                    <div class="text-white text-lg text-center -mt-8 max-w-[13rem] truncate">
                         {pieceList[selectedPieceIndex].name}
                     </div>
-                    <div class="absolute text-gray-500 text-xs text-center  max-w-[13rem] truncate">
+                    <div class="absolute text-gray-500 text-sm text-center -mt-12 max-w-[13rem] truncate">
                         {pieceList[selectedPieceIndex].id}
                     </div>
                 {/if}

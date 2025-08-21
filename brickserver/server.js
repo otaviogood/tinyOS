@@ -242,6 +242,9 @@ io.on('connection', (socket) => {
         name: playerName,
         selectedPieceIndex: 0,
         selectedColorIndex: 0,
+        selectedAntiStudIndex: 0,
+        selectedStudIndex: 0,
+        anchorMode: 'anti',
         lastFrameCounter: null,
         lastHeardAt: Date.now()
     };
@@ -311,6 +314,7 @@ io.on('connection', (socket) => {
                             handleBrickInteraction(player, {
                                 button: event.button,
                                 closestStud: event.closestStud,
+                                closestAntiStud: event.closestAntiStud || null,
                                 brickId: (typeof event.brickId === 'string') ? event.brickId : null,
                                 rotation: (event.rotation && typeof event.rotation.x === 'number') ? event.rotation : undefined,
                                 rotationY: typeof event.rotationY === 'number' ? event.rotationY : 0
@@ -319,6 +323,20 @@ io.on('connection', (socket) => {
                             player.selectedPieceIndex = Math.max(0, Math.min(PIECE_LIST.length - 1, 
                                 player.selectedPieceIndex + event.delta));
                             console.log(`Player ${socket.id} selected piece: ${PIECE_LIST[player.selectedPieceIndex].id}`);
+                            // Reset anchor state when switching pieces to keep authoritative behavior consistent
+                            const newPieceId = (PIECE_LIST[player.selectedPieceIndex] && PIECE_LIST[player.selectedPieceIndex].id) || null;
+                            const pdata = newPieceId ? brickPiecesData.get(newPieceId) : null;
+                            const antiCount = (pdata && Array.isArray(pdata.antiStuds)) ? pdata.antiStuds.length : 0;
+                            const studCount = (pdata && Array.isArray(pdata.studs)) ? pdata.studs.length : 0;
+                            if (antiCount > 0) {
+                                player.anchorMode = 'anti';
+                            } else if (studCount > 0) {
+                                player.anchorMode = 'stud';
+                            } else {
+                                player.anchorMode = 'anti';
+                            }
+                            player.selectedStudIndex = 0;
+                            player.selectedAntiStudIndex = 0;
                         } else if (event.type === 'colorChange') {
                             const next = Math.max(0, Math.min(MAX_COLOR_INDEX, (player.selectedColorIndex || 0) + (event.delta || 0)));
                             player.selectedColorIndex = next;
@@ -333,6 +351,98 @@ io.on('connection', (socket) => {
                             if (typeof event.torso === 'number' && Number.isFinite(event.torso)) {
                                 player.colorTorso = event.torso | 0;
                             }
+                        } else if (event.type === 'cycleAnchor') {
+                            // Cycle through anti-studs then studs; supports delta = +1 forward, -1 backward
+                            const pieceId = (PIECE_LIST[player.selectedPieceIndex] && PIECE_LIST[player.selectedPieceIndex].id) || null;
+                            const pdata = pieceId ? brickPiecesData.get(pieceId) : null;
+                            const antiCount = (pdata && Array.isArray(pdata.antiStuds)) ? pdata.antiStuds.length : 0;
+                            const studCount = (pdata && Array.isArray(pdata.studs)) ? pdata.studs.length : 0;
+                            const delta = (Number.isFinite(event.delta) ? (event.delta | 0) : 1);
+                            // const before = { mode: player.anchorMode, anti: player.selectedAntiStudIndex|0, stud: player.selectedStudIndex|0, antiCount, studCount, delta };
+                            if (delta >= 0) {
+                                if (player.anchorMode !== 'stud') {
+                                    const cur = Number.isFinite(player.selectedAntiStudIndex) ? player.selectedAntiStudIndex : 0;
+                                    if (antiCount <= 0) {
+                                        if (studCount > 0) {
+                                            player.anchorMode = 'stud';
+                                            player.selectedStudIndex = 0;
+                                        }
+                                    } else if ((cur + 1) < antiCount) {
+                                        player.selectedAntiStudIndex = (cur + 1) | 0;
+                                    } else {
+                                        // reached end of anti list
+                                        if (studCount > 0) {
+                                            player.anchorMode = 'stud';
+                                            player.selectedStudIndex = 0;
+                                        } else {
+                                            // wrap within anti list
+                                            player.selectedAntiStudIndex = 0;
+                                        }
+                                    }
+                                } else {
+                                    const curS = Number.isFinite(player.selectedStudIndex) ? player.selectedStudIndex : 0;
+                                    if (studCount <= 0) {
+                                        if (antiCount > 0) {
+                                            player.anchorMode = 'anti';
+                                            player.selectedAntiStudIndex = 0;
+                                        }
+                                    } else if ((curS + 1) < studCount) {
+                                        player.selectedStudIndex = (curS + 1) | 0;
+                                    } else {
+                                        // reached end of stud list
+                                        if (antiCount > 0) {
+                                            player.anchorMode = 'anti';
+                                            player.selectedAntiStudIndex = 0;
+                                        } else {
+                                            // wrap within stud list
+                                            player.selectedStudIndex = 0;
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Reverse
+                                if (player.anchorMode === 'stud') {
+                                    const curS = Number.isFinite(player.selectedStudIndex) ? player.selectedStudIndex : 0;
+                                    if (studCount <= 0) {
+                                        if (antiCount > 0) {
+                                            player.anchorMode = 'anti';
+                                            player.selectedAntiStudIndex = Math.max(0, antiCount - 1);
+                                        }
+                                    } else if ((curS - 1) >= 0) {
+                                        player.selectedStudIndex = (curS - 1) | 0;
+                                    } else {
+                                        // at start of stud list
+                                        if (antiCount > 0) {
+                                            player.anchorMode = 'anti';
+                                            player.selectedAntiStudIndex = Math.max(0, antiCount - 1);
+                                        } else {
+                                            // wrap within stud list
+                                            player.selectedStudIndex = Math.max(0, studCount - 1);
+                                        }
+                                    }
+                                } else {
+                                    const cur = Number.isFinite(player.selectedAntiStudIndex) ? player.selectedAntiStudIndex : 0;
+                                    if (antiCount <= 0) {
+                                        if (studCount > 0) {
+                                            player.anchorMode = 'stud';
+                                            player.selectedStudIndex = Math.max(0, studCount - 1);
+                                        }
+                                    } else if ((cur - 1) >= 0) {
+                                        player.selectedAntiStudIndex = (cur - 1) | 0;
+                                    } else {
+                                        // at start of anti list
+                                        if (studCount > 0) {
+                                            player.anchorMode = 'stud';
+                                            player.selectedStudIndex = Math.max(0, studCount - 1);
+                                        } else {
+                                            // wrap within anti list
+                                            player.selectedAntiStudIndex = Math.max(0, antiCount - 1);
+                                        }
+                                    }
+                                }
+                            }
+                            // const after = { mode: player.anchorMode, anti: player.selectedAntiStudIndex|0, stud: player.selectedStudIndex|0 };
+                            // console.log(`[cycleAnchor] ${socket.id} piece=${pieceId} before=${JSON.stringify(before)} after=${JSON.stringify(after)}`);
                         }
                     }
                 }
@@ -355,7 +465,20 @@ io.on('connection', (socket) => {
                     yaw: (typeof inputDiff.ghost.yaw === 'number') ? inputDiff.ghost.yaw : undefined,
                     rotation: (inputDiff.ghost.rotation && typeof inputDiff.ghost.rotation.x === 'number') ? inputDiff.ghost.rotation : undefined,
                     closestStud: inputDiff.ghost.closestStud || null,
+                    closestAntiStud: inputDiff.ghost.closestAntiStud || null,
+                    anchorMode: (typeof inputDiff.ghost.anchorMode === 'string') ? inputDiff.ghost.anchorMode : undefined,
+                    selectedAntiStudIndex: Number.isFinite(inputDiff.ghost.selectedAntiStudIndex) ? (inputDiff.ghost.selectedAntiStudIndex | 0) : undefined,
+                    selectedStudIndex: Number.isFinite(inputDiff.ghost.selectedStudIndex) ? (inputDiff.ghost.selectedStudIndex | 0) : undefined,
                 };
+
+                // Do not mutate persistent selection from transient ghost; use ghostInputs inline during placement computation
+                // if (ghostInputs.anchorMode || Number.isFinite(ghostInputs.selectedAntiStudIndex) || Number.isFinite(ghostInputs.selectedStudIndex)) {
+                //     console.log(`[ghostSync] ${socket.id} transient ${JSON.stringify({
+                //         mode: ghostInputs.anchorMode,
+                //         anti: ghostInputs.selectedAntiStudIndex,
+                //         stud: ghostInputs.selectedStudIndex,
+                //     })}`);
+                // }
                 let placement = computeGhostPlacement(player, ghostInputs, inputDiff.mouse);
                 if (!placement && inputDiff.ghost.position && (ghostInputs.rotation || typeof inputDiff.ghost.rotationY === 'number')) {
                     placement = {
@@ -469,15 +592,26 @@ function computeGhostPlacement(player, inputs, mouseRay) {
     let finalQuat = baseQuat.clone();
     let position = null;
 
-    const studInfo = inputs && inputs.closestStud;
-    if (studInfo && studInfo.position && pieceData && Array.isArray(pieceData.antiStuds) && pieceData.antiStuds.length > 0) {
+    // Two anchor modes: 'anti' (piece anti-stud -> hovered stud), 'stud' (piece stud -> hovered anti-stud)
+    const mode = (inputs && typeof inputs.anchorMode === 'string') ? inputs.anchorMode : ((player && typeof player.anchorMode === 'string') ? player.anchorMode : 'anti');
+    const studInfoLocal = inputs && inputs.closestStud;
+    const antiInfoLocal = inputs && inputs.closestAntiStud;
+    if (mode === 'anti' && studInfoLocal && studInfoLocal.position && pieceData && Array.isArray(pieceData.antiStuds) && pieceData.antiStuds.length > 0) {
         // Align using the FIRST anti-stud only (legacy server behavior)
-        const studDirWorld = (studInfo.direction)
-            ? new THREE.Vector3(studInfo.direction.x, studInfo.direction.y, studInfo.direction.z).normalize()
+        const studDirWorld = (studInfoLocal.direction)
+            ? new THREE.Vector3(studInfoLocal.direction.x, studInfoLocal.direction.y, studInfoLocal.direction.z).normalize()
             : new THREE.Vector3(0, 1, 0);
         const targetAxis = studDirWorld.clone();
 
-        const usedAnti = pieceData.antiStuds[0];
+        // Choose anti-stud based on player's selected index with wrap-around
+        const antiList = pieceData.antiStuds;
+        let antiIndex = Number.isFinite(inputs && inputs.selectedAntiStudIndex) ? (inputs.selectedAntiStudIndex | 0) : (Number.isFinite(player && player.selectedAntiStudIndex) ? player.selectedAntiStudIndex : 0);
+        if (antiList.length > 0) {
+            antiIndex = ((antiIndex % antiList.length) + antiList.length) % antiList.length;
+        } else {
+            antiIndex = 0;
+        }
+        const usedAnti = antiList[antiIndex] || antiList[0];
         const antiDirLocal = new THREE.Vector3(
             Number.isFinite(usedAnti.dx) ? usedAnti.dx : 0,
             Number.isFinite(usedAnti.dy) ? usedAnti.dy : 1,
@@ -490,11 +624,40 @@ function computeGhostPlacement(player, inputs, mouseRay) {
         // Compute world-space offset of anti stud position and align to target stud center
         const antiPosLocal = new THREE.Vector3(usedAnti.x || 0, usedAnti.y || 0, usedAnti.z || 0);
         const antiPosWorld = antiPosLocal.clone().applyQuaternion(finalQuat);
-        const targetStudPos = studInfo.position;
+        const targetStudPos = studInfoLocal.position;
         position = {
             x: targetStudPos.x - antiPosWorld.x,
             y: targetStudPos.y - antiPosWorld.y,
             z: targetStudPos.z - antiPosWorld.z,
+        };
+    } else if (mode === 'stud' && antiInfoLocal && antiInfoLocal.position && pieceData && Array.isArray(pieceData.studs) && pieceData.studs.length > 0) {
+        const antiDirWorld = (antiInfoLocal.direction)
+            ? new THREE.Vector3(antiInfoLocal.direction.x, antiInfoLocal.direction.y, antiInfoLocal.direction.z).normalize()
+            : new THREE.Vector3(0, 1, 0);
+        const targetAxis = antiDirWorld.clone();
+        const studList = pieceData.studs;
+        let studIndex = Number.isFinite(inputs && inputs.selectedStudIndex) ? (inputs.selectedStudIndex | 0) : (Number.isFinite(player && player.selectedStudIndex) ? player.selectedStudIndex : 0);
+        if (studList.length > 0) {
+            studIndex = ((studIndex % studList.length) + studList.length) % studList.length;
+        } else {
+            studIndex = 0;
+        }
+        const usedStud = studList[studIndex] || studList[0];
+        const studDirLocal = new THREE.Vector3(
+            Number.isFinite(usedStud.dx) ? usedStud.dx : 0,
+            Number.isFinite(usedStud.dy) ? usedStud.dy : 1,
+            Number.isFinite(usedStud.dz) ? usedStud.dz : 0,
+        ).normalize();
+        const studDirWorld0 = studDirLocal.clone().applyQuaternion(finalQuat).normalize();
+        const alignQuat = new THREE.Quaternion().setFromUnitVectors(studDirWorld0, targetAxis);
+        finalQuat = alignQuat.multiply(finalQuat);
+        const studPosLocal = new THREE.Vector3(usedStud.x || 0, usedStud.y || 0, usedStud.z || 0);
+        const studPosWorld = studPosLocal.clone().applyQuaternion(finalQuat);
+        const targetAntiPos = antiInfoLocal.position;
+        position = {
+            x: targetAntiPos.x - studPosWorld.x,
+            y: targetAntiPos.y - studPosWorld.y,
+            z: targetAntiPos.z - studPosWorld.z,
         };
     } else if (mouseRay) {
         // Grid snap fallback when not snapping to a stud
@@ -520,21 +683,27 @@ function computeGhostPlacement(player, inputs, mouseRay) {
 // Handle brick placement/removal
 function handleBrickInteraction(player, click, mouseRay) {
     if (click.button === 0) { // Left click - place brick
-        const placement = computeGhostPlacement(player, {
+        let placement = computeGhostPlacement(player, {
             pieceId: (PIECE_LIST[player.selectedPieceIndex] && PIECE_LIST[player.selectedPieceIndex].id),
             yaw: (typeof click.rotationY === 'number' ? click.rotationY : 0),
             rotation: (click.rotation && typeof click.rotation.x === 'number') ? click.rotation : undefined,
             closestStud: click.closestStud || null,
+            closestAntiStud: click.closestAntiStud || null,
         }, mouseRay);
+        // Fallback to last authoritative ghost pose if immediate recompute fails
+        if (!placement && player && player.ghostPose && player.ghostPose.position && player.ghostPose.rotation) {
+            placement = {
+                pieceId: player.ghostPose.pieceId || ((PIECE_LIST[player.selectedPieceIndex] && PIECE_LIST[player.selectedPieceIndex].id) || null),
+                position: player.ghostPose.position,
+                rotation: player.ghostPose.rotation,
+            };
+        }
         if (!placement) return;
         const { pieceId, position, rotation } = placement;
         
         // Authoritative collision check before placing (include rotation)
         const colliding = testGhostCollision({ pieceId, position, rotation }, gameState);
-        if (colliding) {
-            console.log(`Blocked placement of ${pieceId} at (${position.x}, ${position.y}, ${position.z}) due to collision`);
-            return;
-        }
+        if (colliding) return;
 
         const newBrickId = String(gameState.nextBrickId++);
         const newBrick = {

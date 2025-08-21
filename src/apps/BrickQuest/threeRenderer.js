@@ -55,6 +55,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 	// UI helpers
 	let studHighlightMesh = null;
 	let skyboxMesh = null;
+	let ghostArrow = null; // Arrow showing selected connector direction on ghost piece
 
 	// Data refs provided by host
 	let pieceList = [];
@@ -71,8 +72,12 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let ghostPieceId = null;
 	let ghostYaw = 0;
 	let ghostRotationEuler = { x: 0, y: 0, z: 0 };
+	let selectedAntiStudIndex = 0;
+	let selectedStudIndex = 0;
+	let selectedAnchorMode = 'anti'; // 'anti' to snap anti-stud to hovered stud; 'stud' to snap stud to hovered anti-stud
 	let lastMouseWorldPos = { x: 0, y: 0, z: 0 };
 	let closestStudInfo = null; // { position: Vector3, brickId: string, direction?: Vector3 }
+	let closestAntiStudInfo = null; // { position: Vector3, brickId: string, direction?: Vector3 }
 	const PLACEMENT_MAX_DISTANCE = 1400;
 	let lastRayHitValid = false;
 	let lastHitBrickId = null; // brickId from most recent successful raycast hit
@@ -138,8 +143,10 @@ export function createBrickQuestRenderer(container, options = {}) {
 		textureLoader.load(
 			'/apps/lego_sky2.png',
 			function(texture) {
-				// Create sphere geometry for the skybox
-				const skyboxGeometry = new THREE.SphereGeometry(2000, 64, 32);
+				// Create sphere geometry for the skybox sized near the far clip plane
+				const farDistance = (camera && typeof camera.far === 'number') ? camera.far : 5000;
+				const radius = Math.max(10, farDistance * 0.98);
+				const skyboxGeometry = new THREE.SphereGeometry(radius, 64, 32);
 				
 				// Create material with the equirectangular texture
 				const skyboxMaterial = new THREE.MeshBasicMaterial({
@@ -310,8 +317,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 		ghostMaterial = new THREE.MeshStandardMaterial({
 			color: 0x00ffc8,
 			transparent: true,
-			opacity: 0.15,
-			depthWrite: false,
+			blending: THREE.NormalBlending,
+			opacity: 0.95,
+			depthWrite: true,
 			roughness: 0.3,
 			metalness: 0.0,
 		});
@@ -429,7 +437,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		if (!ghostMaterial) return;
 		const target = colliding ? 0xff0000 : 0x00ffc8;
 		ghostMaterial.color.setHex(target).convertSRGBToLinear();
-		ghostMaterial.opacity = colliding ? 0.22 : 0.15;
+		// Opacity is animated per-frame; do not override here
 	}
 
 	function ensureGhostMesh(forceGeometryUpdate = false) {
@@ -455,6 +463,15 @@ export function createBrickQuestRenderer(container, options = {}) {
 			ghostMesh.receiveShadow = false;
 			ghostMesh.renderOrder = 998;
 			scene.add(ghostMesh);
+			// Create arrow helper once
+			if (!ghostArrow) {
+				const dir = new THREE.Vector3(0, 1, 0);
+				const origin = new THREE.Vector3(0, 0, 0);
+				ghostArrow = new THREE.ArrowHelper(dir, origin, 40, 0xffaa00);
+				ghostArrow.visible = false;
+				ghostArrow.renderOrder = 999;
+				scene.add(ghostArrow);
+			}
 		} else if (forceGeometryUpdate || ghostMesh.geometry !== geometry) {
 			ghostMesh.geometry = geometry;
 		}
@@ -462,26 +479,14 @@ export function createBrickQuestRenderer(container, options = {}) {
 		const pieceData = piecesData[selectedPieceId];
 		let targetPos = null;
 		let finalQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ghostYaw, 0));
-		if (closestStudInfo && pieceData && Array.isArray(pieceData.antiStuds) && pieceData.antiStuds.length > 0) {
+		if (selectedAnchorMode === 'anti' && closestStudInfo && pieceData && Array.isArray(pieceData.antiStuds) && pieceData.antiStuds.length > 0) {
 			const studDirWorld = (closestStudInfo.direction && closestStudInfo.direction.clone()) || new THREE.Vector3(0, 1, 0);
 			studDirWorld.normalize();
 			const targetAxis = studDirWorld.clone();
-			let chosenAnti = null;
-			let chosenAngle = Infinity;
-			for (const anti of pieceData.antiStuds) {
-				const antiDirLocal = new THREE.Vector3(
-					Number.isFinite(anti.dx) ? anti.dx : 0,
-					Number.isFinite(anti.dy) ? anti.dy : 1,
-					Number.isFinite(anti.dz) ? anti.dz : 0,
-				).normalize();
-				const antiDirWorld0 = antiDirLocal.clone().applyQuaternion(finalQuat).normalize();
-				const angle = Math.acos(Math.max(-1, Math.min(1, antiDirWorld0.dot(targetAxis))));
-				if (angle < chosenAngle) {
-					chosenAngle = angle;
-					chosenAnti = anti;
-				}
-			}
-			const usedAnti = chosenAnti || pieceData.antiStuds[0];
+			// Choose anti-stud strictly by selectedAntiStudIndex to match server
+			const antiList = pieceData.antiStuds;
+			let idx = antiList.length > 0 ? ((selectedAntiStudIndex % antiList.length) + antiList.length) % antiList.length : 0;
+			const usedAnti = antiList[idx] || antiList[0];
 			const antiDirLocal = new THREE.Vector3(
 				Number.isFinite(usedAnti.dx) ? usedAnti.dx : 0,
 				Number.isFinite(usedAnti.dy) ? usedAnti.dy : 1,
@@ -496,6 +501,32 @@ export function createBrickQuestRenderer(container, options = {}) {
 				x: closestStudInfo.position.x - antiPosWorldOffset.x,
 				y: closestStudInfo.position.y - antiPosWorldOffset.y,
 				z: closestStudInfo.position.z - antiPosWorldOffset.z,
+			};
+		} else if (selectedAnchorMode === 'stud' && closestAntiStudInfo && pieceData && Array.isArray(pieceData.studs) && pieceData.studs.length > 0) {
+			const antiDirWorld = (closestAntiStudInfo.direction && closestAntiStudInfo.direction.clone()) || new THREE.Vector3(0, 1, 0);
+			antiDirWorld.normalize();
+			const targetAxis = antiDirWorld.clone();
+			const studList = pieceData.studs;
+			let idx2 = studList.length > 0 ? ((selectedStudIndex % studList.length) + studList.length) % studList.length : 0;
+			const usedStud = studList[idx2] || studList[0];
+			const studDirLocal = new THREE.Vector3(
+				Number.isFinite(usedStud.dx) ? usedStud.dx : 0,
+				Number.isFinite(usedStud.dy) ? usedStud.dy : 1,
+				Number.isFinite(usedStud.dz) ? usedStud.dz : 0,
+			).normalize();
+			const studDirWorld0 = studDirLocal.clone().applyQuaternion(finalQuat).normalize();
+			const alignQuat2 = new THREE.Quaternion().setFromUnitVectors(studDirWorld0, targetAxis);
+			finalQuat = alignQuat2.clone().multiply(finalQuat);
+			const studPosLocal = new THREE.Vector3(
+				Number.isFinite(usedStud.x) ? usedStud.x : 0,
+				Number.isFinite(usedStud.y) ? usedStud.y : 0,
+				Number.isFinite(usedStud.z) ? usedStud.z : 0,
+			);
+			const studPosWorldOffset = studPosLocal.clone().applyQuaternion(finalQuat);
+			targetPos = {
+				x: closestAntiStudInfo.position.x - studPosWorldOffset.x,
+				y: closestAntiStudInfo.position.y - studPosWorldOffset.y,
+				z: closestAntiStudInfo.position.z - studPosWorldOffset.z,
 			};
 		} else if (lastMouseWorldPos && lastRayHitValid) {
 			const snapSize = 20;
@@ -514,19 +545,62 @@ export function createBrickQuestRenderer(container, options = {}) {
 			ghostPieceId = selectedPiece ? selectedPiece.id : null;
 			const e = new THREE.Euler().setFromQuaternion(finalQuat, "XYZ");
 			ghostRotationEuler = { x: e.x, y: e.y, z: e.z };
+			// Update ghost connector arrow (origin and direction)
+			if (ghostArrow) {
+				const pieceData = ghostPieceId ? piecesData[ghostPieceId] : null;
+				let useStud = (selectedAnchorMode === 'stud');
+				let connector = null;
+				if (useStud && pieceData && Array.isArray(pieceData.studs) && pieceData.studs.length > 0) {
+					let idx = pieceData.studs.length > 0 ? ((selectedStudIndex % pieceData.studs.length) + pieceData.studs.length) % pieceData.studs.length : 0;
+					connector = pieceData.studs[idx] || pieceData.studs[0];
+				} else if (!useStud && pieceData && Array.isArray(pieceData.antiStuds) && pieceData.antiStuds.length > 0) {
+					let idx = pieceData.antiStuds.length > 0 ? ((selectedAntiStudIndex % pieceData.antiStuds.length) + pieceData.antiStuds.length) % pieceData.antiStuds.length : 0;
+					connector = pieceData.antiStuds[idx] || pieceData.antiStuds[0];
+				}
+				if (connector) {
+					const localPos = new THREE.Vector3(
+						Number.isFinite(connector.x) ? connector.x : 0,
+						Number.isFinite(connector.y) ? connector.y : 0,
+						Number.isFinite(connector.z) ? connector.z : 0,
+					);
+					const worldOffset = localPos.clone().applyQuaternion(finalQuat);
+					const origin = new THREE.Vector3(targetPos.x + worldOffset.x, targetPos.y + worldOffset.y, targetPos.z + worldOffset.z);
+					let localDir = new THREE.Vector3(
+						Number.isFinite(connector.dx) ? connector.dx : 0,
+						Number.isFinite(connector.dy) ? connector.dy : 1,
+						Number.isFinite(connector.dz) ? connector.dz : 0,
+					).normalize();
+					let worldDir = localDir.applyQuaternion(finalQuat).normalize();
+					// If anti-stud selected, arrow goes opposite direction
+					if (!useStud) worldDir.multiplyScalar(-1);
+					ghostArrow.position.copy(origin);
+					ghostArrow.setDirection(worldDir);
+					// Scale arrow length to world units (stud spacing ~20)
+					const baseLen = 40; // 2 studs
+					ghostArrow.setLength(baseLen, baseLen * 0.3, baseLen * 0.2);
+					ghostArrow.visible = true;
+				} else {
+					ghostArrow.visible = false;
+				}
+			}
 		} else {
 			ghostMesh.visible = false;
 			ghostTargetPos = null;
 			ghostPieceId = null;
+			if (ghostArrow) ghostArrow.visible = false;
 		}
 	}
 
 	function updateClosestStud(raycaster, intersects) {
 		if (!studHighlightMesh) return;
 		let closestStud = null;
-		let closestDistance = Infinity;
-		let closestBrickId = null;
+		let closestAnti = null;
+		let closestDistanceStud = Infinity;
+		let closestDistanceAnti = Infinity;
+		let closestStudBrickId = null;
+		let closestAntiBrickId = null;
 		let closestStudDir = null;
+		let closestAntiDir = null;
 
 		for (const intersect of intersects) {
 			// Prefer brickId from mesh userData to avoid O(n) map scans per hit
@@ -538,7 +612,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 			const brickQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(brick.rotation.x, brick.rotation.y, brick.rotation.z));
 			const brickMatrix = new THREE.Matrix4();
 			brickMatrix.compose(new THREE.Vector3(brick.position.x, brick.position.y, brick.position.z), brickQuat, new THREE.Vector3(1, 1, 1));
-			const thisBrickStuds = (piecesData[brick.pieceId] && piecesData[brick.pieceId].studs) || [];
+			const pieceData = piecesData[brick.pieceId] || {};
+			const thisBrickStuds = Array.isArray(pieceData.studs) ? pieceData.studs : [];
 			for (const stud of thisBrickStuds) {
 				const studWorldPos = new THREE.Vector3(stud.x, stud.y, stud.z);
 				studWorldPos.applyMatrix4(brickMatrix);
@@ -548,28 +623,51 @@ export function createBrickQuestRenderer(container, options = {}) {
 				} else {
 					studWorldDir.applyQuaternion(brickQuat);
 				}
-				const distance = intersect.point.distanceTo(studWorldPos);
-				if (distance < closestDistance && distance < 50) {
-					closestDistance = distance;
+				// Use distance to the actual intersection point
+				const distanceS = intersect.point.distanceTo(studWorldPos);
+				if (distanceS < closestDistanceStud && distanceS < 60) {
+					closestDistanceStud = distanceS;
 					closestStud = studWorldPos;
-					closestBrickId = brickId;
+					closestStudBrickId = brickId;
 					closestStudDir = studWorldDir.clone().normalize();
+				}
+			}
+			const thisBrickAntiStuds = Array.isArray(pieceData.antiStuds) ? pieceData.antiStuds : [];
+			for (const anti of thisBrickAntiStuds) {
+				const antiWorldPos = new THREE.Vector3(anti.x, anti.y, anti.z);
+				antiWorldPos.applyMatrix4(brickMatrix);
+				let antiWorldDir = new THREE.Vector3(0, 1, 0);
+				if (typeof anti.dx === "number" && typeof anti.dy === "number" && typeof anti.dz === "number") {
+					antiWorldDir = new THREE.Vector3(anti.dx, anti.dy, anti.dz).normalize().applyQuaternion(brickQuat);
+				} else {
+					antiWorldDir.applyQuaternion(brickQuat);
+				}
+				const distanceA = intersect.point.distanceTo(antiWorldPos);
+				if (distanceA < closestDistanceAnti && distanceA < 80) {
+					closestDistanceAnti = distanceA;
+					closestAnti = antiWorldPos;
+					closestAntiBrickId = brickId;
+					closestAntiDir = antiWorldDir.clone().normalize();
 				}
 			}
 		}
 
-		if (closestStud) {
-			studHighlightMesh.position.copy(closestStud);
+		if (closestStud || closestAnti) {
+			const chosenPos = (selectedAnchorMode === 'anti') ? (closestStud || closestAnti) : (closestAnti || closestStud);
+			const chosenDir = (selectedAnchorMode === 'anti') ? (closestStudDir || closestAntiDir) : (closestAntiDir || closestStudDir);
+			studHighlightMesh.position.copy(chosenPos);
 			studHighlightMesh.position.y += 2;
 			const up = new THREE.Vector3(0, 1, 0);
-			const dir = (closestStudDir && closestStudDir.length() > 0.0001) ? closestStudDir.clone().normalize() : up;
+			const dir = (chosenDir && chosenDir.length() > 0.0001) ? chosenDir.clone().normalize() : up;
 			const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
 			studHighlightMesh.setRotationFromQuaternion(q);
 			studHighlightMesh.visible = true;
-			closestStudInfo = { position: closestStud, brickId: closestBrickId, direction: dir };
+			closestStudInfo = closestStud ? { position: closestStud, brickId: closestStudBrickId, direction: dir } : null;
+			closestAntiStudInfo = closestAnti ? { position: closestAnti, brickId: closestAntiBrickId, direction: dir } : null;
 		} else {
 			studHighlightMesh.visible = false;
 			closestStudInfo = null;
+			closestAntiStudInfo = null;
 		}
 	}
 
@@ -933,6 +1031,14 @@ export function createBrickQuestRenderer(container, options = {}) {
 			skyboxMesh.position.copy(camera.position);
 		}
 		
+		// Animate ghost opacity with a 1 Hz sine wave between 0.1 and 1.0
+		if (ghostMaterial) {
+			const tSec = Date.now() * 0.001;
+			const phase = Math.sin(2 * Math.PI * 1.0 * tSec); // 1 Hz
+			const minA = 0.1, maxA = 1.0;
+			ghostMaterial.opacity = ((phase + 1) * 0.5) * (maxA - minA) + minA;
+		}
+		
 		if (studHighlightMesh && studHighlightMesh.visible) {
 			const time = Date.now() * 0.003;
 			const scale = 1 + Math.sin(time) * 0.07;
@@ -1061,7 +1167,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color(0x0cbeff);
                 
-				camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 2500);
+				camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.5, 10000);
 				camera.position.set(0, 50, 0);
 				camera.lookAt(0, 50, -1);
 				renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -1099,6 +1205,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 			if (composer) composer.dispose();
 			if (previewRenderer) previewRenderer.dispose();
 			if (previewComposer) previewComposer.dispose();
+			if (ghostArrow) {
+				scene.remove(ghostArrow);
+				disposeObject(ghostArrow);
+				ghostArrow = null;
+			}
 			// Clean up brick meshes
 			brickMeshes.forEach((mesh) => {
 				scene.remove(mesh);
@@ -1126,6 +1237,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 		getGhostPieceId() { return ghostPieceId; },
 		setGhostCollisionVisual,
 		applyAuthoritativeGhostPose,
+		setSelectedAntiStudIndex(i) { selectedAntiStudIndex = Math.max(0, i | 0); ensureGhostMesh(false); },
+		setSelectedStudIndex(i) { selectedStudIndex = Math.max(0, i | 0); ensureGhostMesh(false); },
+		setAnchorMode(m) { selectedAnchorMode = (m === 'stud') ? 'stud' : 'anti'; ensureGhostMesh(false); },
 		// Simple render stats for HUD
 		getRenderStats() { return { drawCalls: lastDrawCalls | 0, triangles: lastTriangles | 0 }; },
 		// Picking
@@ -1135,6 +1249,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 			position: { x: closestStudInfo.position.x, y: closestStudInfo.position.y, z: closestStudInfo.position.z },
 			brickId: closestStudInfo.brickId,
 			direction: closestStudInfo.direction ? { x: closestStudInfo.direction.x, y: closestStudInfo.direction.y, z: closestStudInfo.direction.z } : undefined,
+		} : null; },
+		getClosestAntiStudInfo() { return (lastRayHitValid && closestAntiStudInfo) ? {
+			position: { x: closestAntiStudInfo.position.x, y: closestAntiStudInfo.position.y, z: closestAntiStudInfo.position.z },
+			brickId: closestAntiStudInfo.brickId,
+			direction: closestAntiStudInfo.direction ? { x: closestAntiStudInfo.direction.x, y: closestAntiStudInfo.direction.y, z: closestAntiStudInfo.direction.z } : undefined,
 		} : null; },
 		canPlaceNow() { return !!lastRayHitValid; },
 		// Mesh management
