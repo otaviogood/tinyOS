@@ -377,6 +377,11 @@
                 // Prevent page scroll on space
                 e.preventDefault();
             }
+            // Map arrow keys to WASD for left-handed players
+            if (key === 'arrowup') key = 'w';
+            else if (key === 'arrowdown') key = 's';
+            else if (key === 'arrowleft') key = 'a';
+            else if (key === 'arrowright') key = 'd';
             if (inputState.keys.hasOwnProperty(key)) {
                 inputState.keys[key] = true;
             }
@@ -440,6 +445,11 @@
                 key = 'space';
                 e.preventDefault();
             }
+            // Map arrow keys to WASD for left-handed players
+            if (key === 'arrowup') key = 'w';
+            else if (key === 'arrowdown') key = 's';
+            else if (key === 'arrowleft') key = 'a';
+            else if (key === 'arrowright') key = 'd';
             if (inputState.keys.hasOwnProperty(key)) {
                 inputState.keys[key] = false;
             }
@@ -554,7 +564,8 @@
 		sendInput();
 		const localPlayer = gameState.players[playerId];
 		const localWithId = localPlayer ? { id: playerId, ...localPlayer } : null;
-		renderer3d.renderTick(localWithId, yaw, pitch, isThirdPerson);
+		const isMoving = !!(inputState.keys.w || inputState.keys.a || inputState.keys.s || inputState.keys.d);
+		renderer3d.renderTick(localWithId, yaw, pitch, isThirdPerson, isMoving);
 		const dt = performance.now() - t0;
 
 		// Update last frame time only

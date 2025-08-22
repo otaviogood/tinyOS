@@ -83,6 +83,17 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let lastRayHitValid = false;
 	let lastHitBrickId = null; // brickId from most recent successful raycast hit
 
+	// Ghost drop-in animation state
+	let ghostDropAnimActive = false;
+	let ghostDropStartTime = 0;
+	let ghostDropDurationMs = 300; // ease-out duration
+	let ghostDropStartDistance = 40; // how far back from target to start (world units)
+	let ghostDropDir = new THREE.Vector3(0, 1, 0);
+	let lastSnapKey = null; // signature of last highlighted snap target
+	let isPlayerMoving = false; // updated each frame by host render call
+	let ghostArrowFadeStartTime = 0;
+	const ghostArrowFadeDurationMs = 3000;
+
 	// Preview state
 	let previewMesh = null;
 	let previewMaterial = null;
@@ -439,11 +450,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 		ghostMaterial.color.setHex(target).convertSRGBToLinear();
 		// Keep arrow color in sync with ghost piece
 		if (ghostArrow) {
-			if (ghostArrow.cone && ghostArrow.cone.material && ghostArrow.cone.material.color) {
-				ghostArrow.cone.material.color.copy(ghostMaterial.color);
-			}
-			if (ghostArrow.line && ghostArrow.line.material && ghostArrow.line.material.color) {
-				ghostArrow.line.material.color.copy(ghostMaterial.color);
+			if (ghostArrow.material && ghostArrow.material.color) {
+				ghostArrow.material.color.copy(ghostMaterial.color);
 			}
 		}
 		// Opacity is animated per-frame; do not override here
@@ -474,19 +482,15 @@ export function createBrickQuestRenderer(container, options = {}) {
 			scene.add(ghostMesh);
 			// Create arrow helper once
 			if (!ghostArrow) {
-				const dir = new THREE.Vector3(0, 1, 0);
-				const origin = new THREE.Vector3(0, 0, 0);
-				ghostArrow = new THREE.ArrowHelper(dir, origin, 40, 0xffaa00);
+				// Fixed-size cone (head only): radius=12, height=16
+				const coneGeom = new THREE.ConeGeometry(6, 16, 16);
+				const coneMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+				ghostArrow = new THREE.Mesh(coneGeom, coneMat);
 				ghostArrow.visible = false;
 				ghostArrow.renderOrder = 999;
 				// Match arrow color to ghost piece color on creation
-				if (ghostMaterial) {
-					if (ghostArrow.cone && ghostArrow.cone.material && ghostArrow.cone.material.color) {
-						ghostArrow.cone.material.color.copy(ghostMaterial.color);
-					}
-					if (ghostArrow.line && ghostArrow.line.material && ghostArrow.line.material.color) {
-						ghostArrow.line.material.color.copy(ghostMaterial.color);
-					}
+				if (ghostMaterial && ghostArrow.material && ghostArrow.material.color) {
+					ghostArrow.material.color.copy(ghostMaterial.color);
 				}
 				scene.add(ghostArrow);
 			}
@@ -548,7 +552,68 @@ export function createBrickQuestRenderer(container, options = {}) {
 			};
 		}
 		if (targetPos) {
-			ghostMesh.position.set(targetPos.x, targetPos.y, targetPos.z);
+			// Compute arrow direction to use for drop animation and arrow helper
+			let animArrowDir = null;
+			let animConnectorOrigin = null;
+			const pieceDataAnim = (function() {
+				const selectedPieceLocal = pieceList[selectedPieceIndex];
+				const selectedPieceIdLocal = selectedPieceLocal ? selectedPieceLocal.id : null;
+				return selectedPieceIdLocal ? piecesData[selectedPieceIdLocal] : null;
+			})();
+			let useStudAnim = (selectedAnchorMode === 'stud');
+			let connectorAnim = null;
+			if (useStudAnim && pieceDataAnim && Array.isArray(pieceDataAnim.studs) && pieceDataAnim.studs.length > 0) {
+				let idx = pieceDataAnim.studs.length > 0 ? ((selectedStudIndex % pieceDataAnim.studs.length) + pieceDataAnim.studs.length) % pieceDataAnim.studs.length : 0;
+				connectorAnim = pieceDataAnim.studs[idx] || pieceDataAnim.studs[0];
+			} else if (!useStudAnim && pieceDataAnim && Array.isArray(pieceDataAnim.antiStuds) && pieceDataAnim.antiStuds.length > 0) {
+				let idx = pieceDataAnim.antiStuds.length > 0 ? ((selectedAntiStudIndex % pieceDataAnim.antiStuds.length) + pieceDataAnim.antiStuds.length) % pieceDataAnim.antiStuds.length : 0;
+				connectorAnim = pieceDataAnim.antiStuds[idx] || pieceDataAnim.antiStuds[0];
+			}
+			if (connectorAnim) {
+				const localPos = new THREE.Vector3(
+					Number.isFinite(connectorAnim.x) ? connectorAnim.x : 0,
+					Number.isFinite(connectorAnim.y) ? connectorAnim.y : 0,
+					Number.isFinite(connectorAnim.z) ? connectorAnim.z : 0,
+				);
+				const worldOffset = localPos.clone().applyQuaternion(finalQuat);
+				animConnectorOrigin = new THREE.Vector3(targetPos.x + worldOffset.x, targetPos.y + worldOffset.y, targetPos.z + worldOffset.z);
+				let localDir = new THREE.Vector3(
+					Number.isFinite(connectorAnim.dx) ? connectorAnim.dx : 0,
+					Number.isFinite(connectorAnim.dy) ? connectorAnim.dy : 1,
+					Number.isFinite(connectorAnim.dz) ? connectorAnim.dz : 0,
+				).normalize();
+				let worldDir = localDir.applyQuaternion(finalQuat).normalize();
+				if (!useStudAnim) worldDir.multiplyScalar(-1);
+				animArrowDir = worldDir.clone().normalize();
+			}
+
+			// Detect highlighted snap target change and start one-shot drop animation
+			const snapInfo = (selectedAnchorMode === 'stud') ? closestAntiStudInfo : closestStudInfo;
+			const snapBrickId = snapInfo && snapInfo.brickId ? snapInfo.brickId : 'none';
+			const sx = snapInfo && snapInfo.position ? snapInfo.position.x : targetPos.x;
+			const sy = snapInfo && snapInfo.position ? snapInfo.position.y : targetPos.y;
+			const sz = snapInfo && snapInfo.position ? snapInfo.position.z : targetPos.z;
+			const newSnapKey = `${selectedAnchorMode}|${snapBrickId}|${sx.toFixed(1)},${sy.toFixed(1)},${sz.toFixed(1)}`;
+			if (newSnapKey !== lastSnapKey) {
+				lastSnapKey = newSnapKey;
+				ghostDropAnimActive = !isPlayerMoving;
+				ghostDropStartTime = Date.now();
+				ghostDropDir = (animArrowDir && animArrowDir.length() > 0.0001) ? animArrowDir.clone().normalize() : new THREE.Vector3(0, 1, 0);
+				ghostArrowFadeStartTime = Date.now();
+			}
+
+			// Position ghost, possibly offset by active drop animation along the arrow direction
+			let posX = targetPos.x, posY = targetPos.y, posZ = targetPos.z;
+			if (ghostDropAnimActive && ghostDropDir) {
+				const t = Math.max(0, Math.min(1, (Date.now() - ghostDropStartTime) / ghostDropDurationMs));
+				const easeOut = 1 - Math.pow(1 - t, 3); // cubic ease-out
+				const remaining = (1 - easeOut) * ghostDropStartDistance;
+				posX = targetPos.x + ghostDropDir.x * remaining;
+				posY = targetPos.y + ghostDropDir.y * remaining;
+				posZ = targetPos.z + ghostDropDir.z * remaining;
+				if (t >= 1) ghostDropAnimActive = false;
+			}
+			ghostMesh.position.set(posX, posY, posZ);
 			ghostMesh.setRotationFromQuaternion(finalQuat);
 			ghostMesh.visible = true;
 			ghostTargetPos = { ...targetPos };
@@ -584,13 +649,23 @@ export function createBrickQuestRenderer(container, options = {}) {
 					let worldDir = localDir.applyQuaternion(finalQuat).normalize();
 					// If anti-stud selected, arrow goes opposite direction
 					if (!useStud) worldDir.multiplyScalar(-1);
+					// Reverse arrow direction globally for consistency with ghost animation
+					worldDir.multiplyScalar(-1);
 					ghostArrow.position.copy(origin);
 					ghostArrowBaseOrigin = origin.clone();
-					ghostArrow.setDirection(worldDir);
-					// Scale arrow length to world units (stud spacing ~20)
-					const baseLen = 40; // 2 studs
-					ghostArrow.setLength(baseLen, baseLen * 0.3, baseLen * 0.2);
-					ghostArrow.visible = true;
+					{
+						const up = new THREE.Vector3(0, 1, 0);
+						const n = worldDir.clone().normalize();
+						ghostArrow.quaternion.setFromUnitVectors(up, n);
+					}
+					ghostArrow.visible = !isPlayerMoving;
+					if (ghostArrow.material) {
+						const t = Math.max(0, Math.min(1, (Date.now() - ghostArrowFadeStartTime) / ghostArrowFadeDurationMs));
+						const alpha = 1 - t;
+						ghostArrow.material.transparent = true;
+						ghostArrow.material.opacity = alpha;
+					}
+					// line part is disabled by user preference
 				} else {
 					ghostArrow.visible = false;
 				}
@@ -1044,7 +1119,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 		ghostRotationEuler = { ...gp.rotation };
 	}
 
-	function renderTick(localPlayer, yaw, pitch, isThirdPerson) {
+	function renderTick(localPlayer, yaw, pitch, isThirdPerson, isMoving) {
+		isPlayerMoving = !!isMoving;
 		if (!composer || !scene || !camera) return;
 		
 		// Update skybox position to follow camera (makes it appear infinitely far away)
@@ -1058,16 +1134,22 @@ export function createBrickQuestRenderer(container, options = {}) {
 			const phase = Math.sin(2 * Math.PI * 1.0 * tSec); // 1 Hz
 			const minA = 0.1, maxA = 1.0;
 			ghostMaterial.opacity = ((phase + 1) * 0.5) * (maxA - minA) + minA;
-			// Animate ghostArrow sliding along its axis at 1 Hz
+			// Animate ghostArrow sliding along its axis at 1 Hz and fade over time
 			if (ghostArrow && ghostArrow.visible) {
-				const amplitude = 26; // world units (~half a stud)
 				const dir = new THREE.Vector3(0, 1, 0).applyQuaternion(ghostArrow.quaternion).normalize();
-				const base = ghostArrowBaseOrigin || ghostArrow.position;
+				const base = ghostArrowBaseOrigin;
 				ghostArrow.position.set(
-					base.x + dir.x * (phase-1.4) * amplitude,
-					base.y + dir.y * (phase-1.4) * amplitude,
-					base.z + dir.z * (phase-1.4) * amplitude
+					base.x + dir.x * (phase-0.2) * 30,
+					base.y + dir.y * (phase-0.2) * 30,
+					base.z + dir.z * (phase-0.2) * 30
 				);
+				// Apply fade over 3 seconds since last snap
+				const t = Math.max(0, Math.min(1, (Date.now() - ghostArrowFadeStartTime) / ghostArrowFadeDurationMs));
+				const alpha = 1 - t;
+				if (ghostArrow.material) {
+					ghostArrow.material.transparent = true;
+					ghostArrow.material.opacity = alpha;
+				}
 			}
 		}
 		
