@@ -70,13 +70,19 @@ class LDrawBatchParser extends LDrawParserAdvanced {
 
     // Process a single piece and store its data
     async processPiece(pieceInfo) {
+        // Respect skip list for top-level parts
+        const topLevelFilename = `${pieceInfo.partNumber}.dat`;
+        if (this.shouldSkipPart && this.shouldSkipPart(topLevelFilename)) {
+            console.log(`Skipping ${pieceInfo.partNumber}: on skip list`);
+            return null;
+        }
         // Reset per-piece data
         this.geometries = [];
         this.studData = [];
         this.antiStudData = [];
         
-        // Create .dat filename from part number
-        const filename = `${pieceInfo.partNumber}.dat`;
+        // Create .dat filename from part number (after skip check)
+        const filename = topLevelFilename;
         const partPath = this.findPartFile(filename);
         
         if (!partPath) {

@@ -17,6 +17,7 @@ const {
     brickPiecesData,
     loadBrickStudData,
     testGhostCollision,
+    testGhostCollisionWithDebug,
     rebuildWorldBVH,
     resolvePlayerCapsuleCollision,
 } = require('./collision');
@@ -478,17 +479,39 @@ io.on('connection', (socket) => {
                 }
 
                 if (placement) {
-                    const colliding = testGhostCollision({ 
+                    const debug = testGhostCollisionWithDebug({ 
                         pieceId: placement.pieceId, 
                         position: placement.position,
                         rotation: placement.rotation
                     }, gameState);
                     // Publish authoritative ghost pose on player's state so client can render it
                     player.ghostPose = placement;
-                    player.ghostColliding = !!colliding;
+                    player.ghostColliding = !!debug.colliding;
+                    player.ghostBroadCount = debug.broadCount | 0;
+                    player.ghostPrunedCount = debug.prunedCount | 0;
+                    if (debug.timings) {
+                        player.ghostTimingAabbMs = Math.round(debug.timings.aabbMs * 100) / 100;
+                        player.ghostTimingBroadMs = Math.round(debug.timings.broadMs * 100) / 100;
+                        player.ghostTimingBuildMs = Math.round(debug.timings.buildMs * 100) / 100;
+                        player.ghostTimingNarrowMs = Math.round(debug.timings.narrowMs * 100) / 100;
+                        player.ghostTimingTotalMs = Math.round(debug.timings.totalMs * 100) / 100;
+                    } else {
+                        player.ghostTimingAabbMs = 0;
+                        player.ghostTimingBroadMs = 0;
+                        player.ghostTimingBuildMs = 0;
+                        player.ghostTimingNarrowMs = 0;
+                        player.ghostTimingTotalMs = 0;
+                    }
                 } else {
                     player.ghostPose = null;
                     player.ghostColliding = false;
+                    player.ghostBroadCount = 0;
+                    player.ghostPrunedCount = 0;
+                    player.ghostTimingAabbMs = 0;
+                    player.ghostTimingBroadMs = 0;
+                    player.ghostTimingBuildMs = 0;
+                    player.ghostTimingNarrowMs = 0;
+                    player.ghostTimingTotalMs = 0;
                 }
             }
 
@@ -740,8 +763,8 @@ setInterval(() => {
         player.position.y += player.velocity.y * deltaTime;
         player.position.z += player.velocity.z * deltaTime;
 
-        // Resolve collisions against bricks using capsule vs AABB BVH
-        resolvePlayerCapsuleCollision(player, 3);
+        // Resolve collisions against bricks using capsule vs convex meshes (narrow-phase) after AABB BVH
+        resolvePlayerCapsuleCollision(gameState, player, 3);
 
         // Keep player above a minimum ground plane as a fallback
         if (player.position.y < 0) {

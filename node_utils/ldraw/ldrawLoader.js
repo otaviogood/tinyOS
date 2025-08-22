@@ -110,6 +110,10 @@ function parseLine(line) {
 }
 
 async function handleSubfile(cmd, parentTransform, depth, accumCull, accumInvert, parentWithinStudContext = false) {
+    // Skip parts on the caller-defined skip list
+    if (this.shouldSkipPart && this.shouldSkipPart(cmd.file)) {
+        return;
+    }
     const localMatrix = { a: cmd.a, b: cmd.b, c: cmd.c, x: cmd.x, d: cmd.d, e: cmd.e, f: cmd.f, y: cmd.y, g: cmd.g, h: cmd.h, i: cmd.i, z: cmd.z };
     const combinedMatrix = parentTransform ? this.multiplyMatrices(parentTransform, localMatrix) : localMatrix;
     const studInfo = this.checkStudPrimitive ? this.checkStudPrimitive(cmd.file) : null;

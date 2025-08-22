@@ -75,6 +75,10 @@ class LDrawParserAdvanced {
         
         // Debug flag
         this.debugBFC = false;
+
+        // Parts to skip entirely during export (by numeric part ID prefix)
+        // Example: '92438' will skip files like '92438.dat' or '92438p01.dat'
+        this.skipPartIds = new Set(['92438']);
     }
 
     // Find a part file in the library (delegated)
@@ -157,6 +161,17 @@ class LDrawParserAdvanced {
 
     // Get color value (delegated)
     getColorValue(colorCode) { return ldrawLoader.getColorValue.call(this, colorCode); }
+
+    // Determine whether a referenced subfile/part should be skipped based on part ID list
+    shouldSkipPart(filename) {
+        if (!filename) return false;
+        const normalizedName = filename.toLowerCase().replace(/\\/g, '/');
+        const basename = path.basename(normalizedName);
+        const match = basename.match(/^(\d+)/);
+        if (!match) return false;
+        const partId = match[1];
+        return this.skipPartIds && this.skipPartIds.has(partId);
+    }
 
     // Export to GLTF
     async exportToGLTF(outputPath) {

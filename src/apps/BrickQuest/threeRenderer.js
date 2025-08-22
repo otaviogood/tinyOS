@@ -56,6 +56,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let studHighlightMesh = null;
 	let skyboxMesh = null;
 	let ghostArrow = null; // Arrow showing selected connector direction on ghost piece
+	let ghostArrowBaseOrigin = null; // Base origin for arrow animation along its axis
 
 	// Data refs provided by host
 	let pieceList = [];
@@ -274,7 +275,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 				ids.push(id);
 				seen.add(id);
 			}
-			if (!seen.has('41539')) ids.push('41539');
 			return ids;
 		} catch (e) {
 			console.warn('Failed to load exported_pieces.csv, falling back to minimal piece set', e);
@@ -437,6 +437,15 @@ export function createBrickQuestRenderer(container, options = {}) {
 		if (!ghostMaterial) return;
 		const target = colliding ? 0xff0000 : 0x00ffc8;
 		ghostMaterial.color.setHex(target).convertSRGBToLinear();
+		// Keep arrow color in sync with ghost piece
+		if (ghostArrow) {
+			if (ghostArrow.cone && ghostArrow.cone.material && ghostArrow.cone.material.color) {
+				ghostArrow.cone.material.color.copy(ghostMaterial.color);
+			}
+			if (ghostArrow.line && ghostArrow.line.material && ghostArrow.line.material.color) {
+				ghostArrow.line.material.color.copy(ghostMaterial.color);
+			}
+		}
 		// Opacity is animated per-frame; do not override here
 	}
 
@@ -470,6 +479,15 @@ export function createBrickQuestRenderer(container, options = {}) {
 				ghostArrow = new THREE.ArrowHelper(dir, origin, 40, 0xffaa00);
 				ghostArrow.visible = false;
 				ghostArrow.renderOrder = 999;
+				// Match arrow color to ghost piece color on creation
+				if (ghostMaterial) {
+					if (ghostArrow.cone && ghostArrow.cone.material && ghostArrow.cone.material.color) {
+						ghostArrow.cone.material.color.copy(ghostMaterial.color);
+					}
+					if (ghostArrow.line && ghostArrow.line.material && ghostArrow.line.material.color) {
+						ghostArrow.line.material.color.copy(ghostMaterial.color);
+					}
+				}
 				scene.add(ghostArrow);
 			}
 		} else if (forceGeometryUpdate || ghostMesh.geometry !== geometry) {
@@ -528,13 +546,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 				y: closestAntiStudInfo.position.y - studPosWorldOffset.y,
 				z: closestAntiStudInfo.position.z - studPosWorldOffset.z,
 			};
-		} else if (lastMouseWorldPos && lastRayHitValid) {
-			const snapSize = 20;
-			targetPos = {
-				x: Math.round(lastMouseWorldPos.x / snapSize) * snapSize,
-				y: Math.round(lastMouseWorldPos.y / snapSize) * snapSize + 8,
-				z: Math.round(lastMouseWorldPos.z / snapSize) * snapSize,
-			};
 		}
 		if (targetPos) {
 			ghostMesh.position.set(targetPos.x, targetPos.y, targetPos.z);
@@ -574,6 +585,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 					// If anti-stud selected, arrow goes opposite direction
 					if (!useStud) worldDir.multiplyScalar(-1);
 					ghostArrow.position.copy(origin);
+					ghostArrowBaseOrigin = origin.clone();
 					ghostArrow.setDirection(worldDir);
 					// Scale arrow length to world units (stud spacing ~20)
 					const baseLen = 40; // 2 studs
@@ -652,9 +664,16 @@ export function createBrickQuestRenderer(container, options = {}) {
 			}
 		}
 
-		if (closestStud || closestAnti) {
-			const chosenPos = (selectedAnchorMode === 'anti') ? (closestStud || closestAnti) : (closestAnti || closestStud);
-			const chosenDir = (selectedAnchorMode === 'anti') ? (closestStudDir || closestAntiDir) : (closestAntiDir || closestStudDir);
+		// Only highlight connectors that match the current anchor mode.
+		let chosenPos = null;
+		let chosenDir = null;
+		if (selectedAnchorMode === 'anti') {
+			if (closestStud) { chosenPos = closestStud; chosenDir = closestStudDir; }
+		} else { // selectedAnchorMode === 'stud'
+			if (closestAnti) { chosenPos = closestAnti; chosenDir = closestAntiDir; }
+		}
+
+		if (chosenPos) {
 			studHighlightMesh.position.copy(chosenPos);
 			studHighlightMesh.position.y += 2;
 			const up = new THREE.Vector3(0, 1, 0);
@@ -662,12 +681,14 @@ export function createBrickQuestRenderer(container, options = {}) {
 			const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
 			studHighlightMesh.setRotationFromQuaternion(q);
 			studHighlightMesh.visible = true;
-			closestStudInfo = closestStud ? { position: closestStud, brickId: closestStudBrickId, direction: dir } : null;
-			closestAntiStudInfo = closestAnti ? { position: closestAnti, brickId: closestAntiBrickId, direction: dir } : null;
+			// Preserve both infos for downstream logic, but only one will be used based on mode during placement
+			closestStudInfo = closestStud ? { position: closestStud, brickId: closestStudBrickId, direction: closestStudDir ? closestStudDir.clone().normalize() : undefined } : null;
+			closestAntiStudInfo = closestAnti ? { position: closestAnti, brickId: closestAntiBrickId, direction: closestAntiDir ? closestAntiDir.clone().normalize() : undefined } : null;
 		} else {
 			studHighlightMesh.visible = false;
-			closestStudInfo = null;
-			closestAntiStudInfo = null;
+			// Still store the raw closest infos for potential UI/readout, but avoid implying a valid snap target
+			closestStudInfo = closestStud ? { position: closestStud, brickId: closestStudBrickId, direction: closestStudDir ? closestStudDir.clone().normalize() : undefined } : null;
+			closestAntiStudInfo = closestAnti ? { position: closestAnti, brickId: closestAntiBrickId, direction: closestAntiDir ? closestAntiDir.clone().normalize() : undefined } : null;
 		}
 	}
 
@@ -1037,6 +1058,17 @@ export function createBrickQuestRenderer(container, options = {}) {
 			const phase = Math.sin(2 * Math.PI * 1.0 * tSec); // 1 Hz
 			const minA = 0.1, maxA = 1.0;
 			ghostMaterial.opacity = ((phase + 1) * 0.5) * (maxA - minA) + minA;
+			// Animate ghostArrow sliding along its axis at 1 Hz
+			if (ghostArrow && ghostArrow.visible) {
+				const amplitude = 26; // world units (~half a stud)
+				const dir = new THREE.Vector3(0, 1, 0).applyQuaternion(ghostArrow.quaternion).normalize();
+				const base = ghostArrowBaseOrigin || ghostArrow.position;
+				ghostArrow.position.set(
+					base.x + dir.x * (phase-1.4) * amplitude,
+					base.y + dir.y * (phase-1.4) * amplitude,
+					base.z + dir.z * (phase-1.4) * amplitude
+				);
+			}
 		}
 		
 		if (studHighlightMesh && studHighlightMesh.visible) {
@@ -1255,7 +1287,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			brickId: closestAntiStudInfo.brickId,
 			direction: closestAntiStudInfo.direction ? { x: closestAntiStudInfo.direction.x, y: closestAntiStudInfo.direction.y, z: closestAntiStudInfo.direction.z } : undefined,
 		} : null; },
-		canPlaceNow() { return !!lastRayHitValid; },
+		canPlaceNow() { return !!(lastRayHitValid && ghostTargetPos); },
 		// Mesh management
 		createBrickMesh,
 		removeBrickMesh,

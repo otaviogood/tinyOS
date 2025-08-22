@@ -665,6 +665,16 @@
 			<div>Bricks: {Object.keys(gameState.bricks).length}</div>
 			<div>Players: {Object.keys(gameState.players).length}</div>
 			<div>RTT: {Math.round(smoothedRTT)}ms Current: {currentRTT}</div>
+			{#if gameState.players && playerId && gameState.players[playerId]}
+				<div>Ghost broad: {gameState.players[playerId].ghostBroadCount || 0}</div>
+				<div>Ghost post-prune: {gameState.players[playerId].ghostPrunedCount || 0}</div>
+				<div class="mt-1">Ghost timings (ms):</div>
+				<div>&nbsp;&nbsp;aabb: {Number(gameState.players[playerId].ghostTimingAabbMs || 0).toFixed(2)}</div>
+				<div>&nbsp;&nbsp;broad: {Number(gameState.players[playerId].ghostTimingBroadMs || 0).toFixed(2)}</div>
+				<div>&nbsp;&nbsp;build: {Number(gameState.players[playerId].ghostTimingBuildMs || 0).toFixed(2)}</div>
+				<div>&nbsp;&nbsp;narrow: {Number(gameState.players[playerId].ghostTimingNarrowMs || 0).toFixed(2)}</div>
+				<div>&nbsp;&nbsp;total: {Number(gameState.players[playerId].ghostTimingTotalMs || 0).toFixed(2)}</div>
+			{/if}
 			<!-- <div>SSAO: {ssaoEnabled ? 'On' : 'Off'}{ssaoDebug ? ' (Debug)' : ''}</div> -->
 			<div class="text-sm mt-4">
 				<div>Click to capture mouse</div>
