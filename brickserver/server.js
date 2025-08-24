@@ -44,7 +44,7 @@ const io = socketIO(server, {
 // Game configuration
 const TICK_RATE = 60; // Server tick rate in Hz
 const SEND_RATE = 60; // How often to send updates to clients in Hz
-const BRICK_SPACING = 160; // For initial world generation
+const BRICK_SPACING = 120; // For initial world generation
 const GRID_SIZE = 8; // For initial world generation
 // Color configuration
 const NUM_COLORS = 10; // Total number of brick colors supported by the client palette
@@ -200,13 +200,13 @@ function initializeWorld() {
             gameState.bricks[brickId] = {
                 id: brickId,
                 position: {
-                    x: x * BRICK_SPACING * 2 - gridOffset,
+                    x: x * BRICK_SPACING - gridOffset,
                     y: -32,
                     z: z * BRICK_SPACING - gridOffset
                 },
                 rotation: { x: 0, y: 0, z: 0 },
                 colorIndex: colorIndex,
-                pieceId: '92438', // Default to 8x8 plate for the ground 3024=1x1 8x8=41539 2x2=3022 6x6=3958
+                pieceId: '3958', // Default to 8x8 plate for the ground 3024=1x1 8x8=41539 2x2=3022 6x6=3958
                 type: 'ground' // Ground layer is protected from deletion
             };
         }

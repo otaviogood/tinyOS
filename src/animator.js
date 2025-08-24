@@ -1,12 +1,12 @@
-import { writable, get } from "svelte/store";
+import { writable } from "svelte/store";
 
 export const frameCount = writable(0);
 export const animateCount = writable(0);
 
 export class Animator {
     constructor(fps, tickFunc) {
-        this.fps = fps;
-        this.fpsIntervalMs = 1000 / fps;
+        this.fps = Number.isFinite(fps) && fps > 0 ? fps : 60;
+        this.fpsIntervalMs = 1000 / this.fps;
         this.lastDrawTimeMs = 0;
         this.requestID = null;
         this.timingQueue = [];
@@ -17,19 +17,40 @@ export class Animator {
         // this.animateCount = 0;
 
         this.subscribers = new Set();
+        this._animate = this.animate.bind(this);
     }
 
     subscribe(tickFunction, debug) {
         this.subscribers.add(tickFunction);
         // if (debug) console.log("SUBSCRIBED ", debug, this.subscribers);
+        // auto-resume if previously idle
+        if (!this.requestID) {
+            this.lastDrawTimeMs = performance.now();
+            this.requestID = requestAnimationFrame(this._animate);
+        }
     }
     unsubscribe(tickFunction) {
         // console.log("***UN*** SUBSCRIBED");
         this.subscribers.delete(tickFunction);
+        // auto-stop if no work left
+        if (this.subscribers.size === 0 && !this.tickFunc && this.requestID) {
+            cancelAnimationFrame(this.requestID);
+            this.requestID = null;
+        }
     }
 
     animate(now) {
-        this.requestID = requestAnimationFrame(this.animate.bind(this));
+        // Short-circuit when idle (no tick function and no subscribers)
+        if (!this.tickFunc && this.subscribers.size === 0) {
+            if (this.requestID) {
+                cancelAnimationFrame(this.requestID);
+                this.requestID = null;
+            }
+            this.lastDrawTimeMs = now;
+            return;
+        }
+
+        this.requestID = requestAnimationFrame(this._animate);
 
         // calc elapsed time since last loop
         var elapsed = now - this.lastDrawTimeMs;
@@ -38,16 +59,13 @@ export class Animator {
             this.timingQueue.push(elapsed);
             this.timingQueue = this.timingQueue.slice(-this.tqLen); // fifo queue and also Update svelte
 
-            animateCount.set(get(animateCount) + 1);
+            animateCount.update(n => n + 1);
 
             // if enough time has elapsed, draw the next frame
             let bailCount = 0;
-            let totalTickInterval = 0;
-            while (elapsed > this.fpsIntervalMs) {
+            while (elapsed >= this.fpsIntervalMs) {
                 // Get ready for next frame by setting lastDrawTimeMs=now, but...
                 // Also, adjust for fpsIntervalMs not being multiple of 16.67
-                let tickInterval = elapsed % this.fpsIntervalMs;
-                totalTickInterval += tickInterval;
                 elapsed -= this.fpsIntervalMs;
 
                 if (this.tickFunc) this.tickFunc();
@@ -56,10 +74,11 @@ export class Animator {
                     tickFunction(this.fpsIntervalMs * 0.001);
                 });
 
-                frameCount.set(get(frameCount) + 1);
+                frameCount.update(n => n + 1);
                 bailCount++;
                 if (bailCount > 5) {
                     console.log("anim missed");
+                    this.lastDrawTimeMs = now;
                     break;
                 }
                 if (elapsed > this.fpsIntervalMs * 20) {
@@ -82,10 +101,11 @@ export class Animator {
         this.timingQueue = [];
 
         if (this.requestID) cancelAnimationFrame(this.requestID);
-        this.requestID = requestAnimationFrame(this.animate.bind(this));
+        this.requestID = requestAnimationFrame(this._animate);
     }
 
     stop() {
         if (this.requestID) cancelAnimationFrame(this.requestID);
+        this.requestID = null;
     }
 }

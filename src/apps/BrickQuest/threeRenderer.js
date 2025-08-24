@@ -312,7 +312,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 		const geometry = new THREE.CylinderGeometry(6.5, 6.5, 4, 16);
 		const material = new THREE.MeshBasicMaterial({
 			color: 0xdf8f00,
-			emissiveIntensity: 1,
 			transparent: true,
 			opacity: 0.7,
 			depthTest: false,

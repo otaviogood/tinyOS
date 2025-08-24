@@ -3,9 +3,11 @@
     import { onMount, tick } from 'svelte';
 	import * as THREE from 'three';
 	import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+	import { Animator } from '../../animator';
 
 	let container;
-	let scene, camera, renderer, animationId;
+	let scene, camera, renderer;
+	let animator;
 	let gltfLoader;
 	let figure;
 	let cachedLegsGeom = null;
@@ -181,8 +183,20 @@
 		});
 	}
 
-	function startAnimation() { const tick = () => { if (figure) figure.rotation.y += 0.01; renderer.render(scene, camera); animationId = requestAnimationFrame(tick); }; animationId = requestAnimationFrame(tick); }
-	function stopAnimation() { if (animationId) cancelAnimationFrame(animationId); }
+	function startAnimation() {
+		if (animator) animator.stop();
+		animator = new Animator(60, () => {
+			if (figure) figure.rotation.y += 0.01;
+			if (renderer) renderer.render(scene, camera);
+		});
+		animator.start();
+	}
+	function stopAnimation() {
+		if (animator) {
+			animator.stop();
+			animator = null;
+		}
+	}
 	function rebuildFigure() { if (cachedLegsGeom && cachedTorsoGeom && cachedHeadGeom) buildFigure(cachedLegsGeom, cachedTorsoGeom, cachedHeadGeom); else loadPartsAndBuildFigure(); }
 
     function confirmAndStart() {

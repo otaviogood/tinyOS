@@ -65,6 +65,7 @@
 	let triangles = 0;
 	let ssaoEnabled = true;
 	let ssaoDebug = false;
+	let showStats = false; // HUD stats collapsed by default
 
     onMount(async () => {
         const onStart = async () => { showStart = false; await nextTick(); await safeStartGame(); };
@@ -670,24 +671,40 @@
 
 		<!-- UI Overlay -->
 		<div class="absolute top-4 left-4 w-64 text-white text-sm bg-black bg-opacity-50 p-2 rounded pointer-events-none" style="contain: paint;">
-			<div>frame ms: {lastFrameMs.toFixed(2)}</div>
-			<div>draw calls: {drawCalls}</div>
-			<div>triangles: {triangles}</div>
-			<div>Bricks: {Object.keys(gameState.bricks).length}</div>
-			<div>Players: {Object.keys(gameState.players).length}</div>
-			<div>RTT: {Math.round(smoothedRTT)}ms Current: {currentRTT}</div>
-			{#if gameState.players && playerId && gameState.players[playerId]}
-				<div>Ghost broad: {gameState.players[playerId].ghostBroadCount || 0}</div>
-				<div>Ghost post-prune: {gameState.players[playerId].ghostPrunedCount || 0}</div>
-				<div class="mt-1">Ghost timings (ms):</div>
-				<div>&nbsp;&nbsp;aabb: {Number(gameState.players[playerId].ghostTimingAabbMs || 0).toFixed(2)}</div>
-				<div>&nbsp;&nbsp;broad: {Number(gameState.players[playerId].ghostTimingBroadMs || 0).toFixed(2)}</div>
-				<div>&nbsp;&nbsp;build: {Number(gameState.players[playerId].ghostTimingBuildMs || 0).toFixed(2)}</div>
-				<div>&nbsp;&nbsp;narrow: {Number(gameState.players[playerId].ghostTimingNarrowMs || 0).toFixed(2)}</div>
-				<div>&nbsp;&nbsp;total: {Number(gameState.players[playerId].ghostTimingTotalMs || 0).toFixed(2)}</div>
-			{/if}
-			<!-- <div>SSAO: {ssaoEnabled ? 'On' : 'Off'}{ssaoDebug ? ' (Debug)' : ''}</div> -->
-			<div class="text-sm mt-4">
+			<div class="pointer-events-auto">
+				<button
+					class="w-full flex items-center justify-between gap-2 px-2 py-1 bg-black/40 rounded hover:bg-black/60 transition-colors"
+					on:click={() => (showStats = !showStats)}
+				>
+					<span class="font-medium">Stats</span>
+					<span class="transform transition-transform" class:rotate-180={showStats}>▼</span>
+				</button>
+				<div
+					class="mt-2 overflow-hidden transition-all duration-200"
+					class:max-h-0={!showStats}
+					class:opacity-0={!showStats}
+					class:max-h-[24rem]={showStats}
+					class:opacity-100={showStats}
+				>
+					<div>frame ms: {lastFrameMs.toFixed(2)}</div>
+					<div>draw calls: {drawCalls}</div>
+					<div>triangles: {triangles}</div>
+					<div>Bricks: {Object.keys(gameState.bricks).length}</div>
+					<div>Players: {Object.keys(gameState.players).length}</div>
+					<div>RTT: {Math.round(smoothedRTT)}ms Current: {currentRTT}</div>
+					{#if gameState.players && playerId && gameState.players[playerId]}
+						<div>Ghost broad: {gameState.players[playerId].ghostBroadCount || 0}</div>
+						<div>Ghost post-prune: {gameState.players[playerId].ghostPrunedCount || 0}</div>
+						<div class="mt-1">Ghost timings (ms):</div>
+						<div>&nbsp;&nbsp;aabb: {Number(gameState.players[playerId].ghostTimingAabbMs || 0).toFixed(2)}</div>
+						<div>&nbsp;&nbsp;broad: {Number(gameState.players[playerId].ghostTimingBroadMs || 0).toFixed(2)}</div>
+						<div>&nbsp;&nbsp;build: {Number(gameState.players[playerId].ghostTimingBuildMs || 0).toFixed(2)}</div>
+						<div>&nbsp;&nbsp;narrow: {Number(gameState.players[playerId].ghostTimingNarrowMs || 0).toFixed(2)}</div>
+						<div>&nbsp;&nbsp;total: {Number(gameState.players[playerId].ghostTimingTotalMs || 0).toFixed(2)}</div>
+					{/if}
+				</div>
+			</div>
+			<div class="text-sm mt-4 pointer-events-auto">
 				<div>Click to capture mouse</div>
 				<div>ESC to release mouse</div>
 				<div>Left Click: Place Brick</div>
