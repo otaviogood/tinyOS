@@ -576,72 +576,73 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function updateClosestStud(raycaster, intersects) {
 		if (!studHighlightMesh) return;
-		let closestStud = null;
-		let closestAnti = null;
-		let closestDistanceStud = Infinity;
-		let closestDistanceAnti = Infinity;
-		let closestStudBrickId = null;
-		let closestAntiBrickId = null;
-		let closestStudDir = null;
-		let closestAntiDir = null;
-
-		for (const intersect of intersects) {
-			// Prefer brickId from mesh userData to avoid O(n) map scans per hit
-			let brickId = (intersect && intersect.object && intersect.object.userData) ? intersect.object.userData.brickId : null;
-			if (!brickId) continue;
-			const gameState = getGameStateRef ? getGameStateRef() : null;
-			const brick = gameState && gameState.bricks ? gameState.bricks[brickId] : null;
-			if (!brick) continue;
-			const brickQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(brick.rotation.x, brick.rotation.y, brick.rotation.z));
-			const brickMatrix = new THREE.Matrix4();
-			brickMatrix.compose(new THREE.Vector3(brick.position.x, brick.position.y, brick.position.z), brickQuat, new THREE.Vector3(1, 1, 1));
-			const pieceData = piecesData[brick.pieceId] || {};
-			const thisBrickStuds = Array.isArray(pieceData.studs) ? pieceData.studs : [];
-			for (const stud of thisBrickStuds) {
-				const studWorldPos = new THREE.Vector3(stud.x, stud.y, stud.z);
-				studWorldPos.applyMatrix4(brickMatrix);
-				let studWorldDir = new THREE.Vector3(0, 1, 0);
-				if (typeof stud.dx === "number" && typeof stud.dy === "number" && typeof stud.dz === "number") {
-					studWorldDir = new THREE.Vector3(stud.dx, stud.dy, stud.dz).normalize().applyQuaternion(brickQuat);
-				} else {
-					studWorldDir.applyQuaternion(brickQuat);
-				}
-				// Use distance to the actual intersection point
-				const distanceS = intersect.point.distanceTo(studWorldPos);
-				if (distanceS < closestDistanceStud && distanceS < 60) {
-					closestDistanceStud = distanceS;
-					closestStud = studWorldPos;
-					closestStudBrickId = brickId;
-					closestStudDir = studWorldDir.clone().normalize();
-				}
+		// Only consider the closest-hit piece under the cursor
+		const firstIntersection = (intersects && intersects.length > 0) ? intersects[0] : null;
+		const targetBrickId = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? firstIntersection.object.userData.brickId : null;
+		if (!targetBrickId) {
+			studHighlightMesh.visible = false;
+			closestStudInfo = null;
+			closestAntiStudInfo = null;
+			return;
+		}
+		const gameState = getGameStateRef ? getGameStateRef() : null;
+		const brick = gameState && gameState.bricks ? gameState.bricks[targetBrickId] : null;
+		if (!brick) {
+			studHighlightMesh.visible = false;
+			closestStudInfo = null;
+			closestAntiStudInfo = null;
+			return;
+		}
+		const hitPoint = firstIntersection.point;
+		let bestStudPos = null;
+		let bestStudDir = null;
+		let bestAntiPos = null;
+		let bestAntiDir = null;
+		let bestStudDist = Infinity;
+		let bestAntiDist = Infinity;
+		const brickQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(brick.rotation.x, brick.rotation.y, brick.rotation.z));
+		const brickMatrix = new THREE.Matrix4();
+		brickMatrix.compose(new THREE.Vector3(brick.position.x, brick.position.y, brick.position.z), brickQuat, new THREE.Vector3(1, 1, 1));
+		const pieceData = piecesData[brick.pieceId] || {};
+		const studsArr = Array.isArray(pieceData.studs) ? pieceData.studs : [];
+		for (const stud of studsArr) {
+			const studWorldPos = new THREE.Vector3(stud.x, stud.y, stud.z).applyMatrix4(brickMatrix);
+			let studWorldDir = new THREE.Vector3(0, 1, 0);
+			if (typeof stud.dx === "number" && typeof stud.dy === "number" && typeof stud.dz === "number") {
+				studWorldDir = new THREE.Vector3(stud.dx, stud.dy, stud.dz).normalize().applyQuaternion(brickQuat);
+			} else {
+				studWorldDir.applyQuaternion(brickQuat);
 			}
-			const thisBrickAntiStuds = Array.isArray(pieceData.antiStuds) ? pieceData.antiStuds : [];
-			for (const anti of thisBrickAntiStuds) {
-				const antiWorldPos = new THREE.Vector3(anti.x, anti.y, anti.z);
-				antiWorldPos.applyMatrix4(brickMatrix);
-				let antiWorldDir = new THREE.Vector3(0, 1, 0);
-				if (typeof anti.dx === "number" && typeof anti.dy === "number" && typeof anti.dz === "number") {
-					antiWorldDir = new THREE.Vector3(anti.dx, anti.dy, anti.dz).normalize().applyQuaternion(brickQuat);
-				} else {
-					antiWorldDir.applyQuaternion(brickQuat);
-				}
-				const distanceA = intersect.point.distanceTo(antiWorldPos);
-				if (distanceA < closestDistanceAnti && distanceA < 80) {
-					closestDistanceAnti = distanceA;
-					closestAnti = antiWorldPos;
-					closestAntiBrickId = brickId;
-					closestAntiDir = antiWorldDir.clone().normalize();
-				}
+			const d = hitPoint.distanceTo(studWorldPos);
+			if (d < bestStudDist && d < 60) {
+				bestStudDist = d;
+				bestStudPos = studWorldPos;
+				bestStudDir = studWorldDir.clone().normalize();
+			}
+		}
+		const antisArr = Array.isArray(pieceData.antiStuds) ? pieceData.antiStuds : [];
+		for (const anti of antisArr) {
+			const antiWorldPos = new THREE.Vector3(anti.x, anti.y, anti.z).applyMatrix4(brickMatrix);
+			let antiWorldDir = new THREE.Vector3(0, 1, 0);
+			if (typeof anti.dx === "number" && typeof anti.dy === "number" && typeof anti.dz === "number") {
+				antiWorldDir = new THREE.Vector3(anti.dx, anti.dy, anti.dz).normalize().applyQuaternion(brickQuat);
+			} else {
+				antiWorldDir.applyQuaternion(brickQuat);
+			}
+			const d = hitPoint.distanceTo(antiWorldPos);
+			if (d < bestAntiDist && d < 80) {
+				bestAntiDist = d;
+				bestAntiPos = antiWorldPos;
+				bestAntiDir = antiWorldDir.clone().normalize();
 			}
 		}
 
-		// Only highlight connectors that match the current anchor mode.
 		let chosenPos = null;
 		let chosenDir = null;
 		if (selectedAnchorMode === 'anti') {
-			if (closestStud) { chosenPos = closestStud; chosenDir = closestStudDir; }
-		} else { // selectedAnchorMode === 'stud'
-			if (closestAnti) { chosenPos = closestAnti; chosenDir = closestAntiDir; }
+			if (bestStudPos) { chosenPos = bestStudPos; chosenDir = bestStudDir; }
+		} else {
+			if (bestAntiPos) { chosenPos = bestAntiPos; chosenDir = bestAntiDir; }
 		}
 
 		if (chosenPos) {
@@ -652,14 +653,12 @@ export function createBrickQuestRenderer(container, options = {}) {
 			const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
 			studHighlightMesh.setRotationFromQuaternion(q);
 			studHighlightMesh.visible = true;
-			// Preserve both infos for downstream logic, but only one will be used based on mode during placement
-			closestStudInfo = closestStud ? { position: closestStud, brickId: closestStudBrickId, direction: closestStudDir ? closestStudDir.clone().normalize() : undefined } : null;
-			closestAntiStudInfo = closestAnti ? { position: closestAnti, brickId: closestAntiBrickId, direction: closestAntiDir ? closestAntiDir.clone().normalize() : undefined } : null;
+			closestStudInfo = bestStudPos ? { position: bestStudPos, brickId: targetBrickId, direction: bestStudDir ? bestStudDir.clone().normalize() : undefined } : null;
+			closestAntiStudInfo = bestAntiPos ? { position: bestAntiPos, brickId: targetBrickId, direction: bestAntiDir ? bestAntiDir.clone().normalize() : undefined } : null;
 		} else {
 			studHighlightMesh.visible = false;
-			// Still store the raw closest infos for potential UI/readout, but avoid implying a valid snap target
-			closestStudInfo = closestStud ? { position: closestStud, brickId: closestStudBrickId, direction: closestStudDir ? closestStudDir.clone().normalize() : undefined } : null;
-			closestAntiStudInfo = closestAnti ? { position: closestAnti, brickId: closestAntiBrickId, direction: closestAntiDir ? closestAntiDir.clone().normalize() : undefined } : null;
+			closestStudInfo = bestStudPos ? { position: bestStudPos, brickId: targetBrickId, direction: bestStudDir ? bestStudDir.clone().normalize() : undefined } : null;
+			closestAntiStudInfo = bestAntiPos ? { position: bestAntiPos, brickId: targetBrickId, direction: bestAntiDir ? bestAntiDir.clone().normalize() : undefined } : null;
 		}
 	}
 
