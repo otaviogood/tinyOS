@@ -443,7 +443,7 @@
                         ssaoDebug = !!renderer3d.getSSAODebugView();
                     }
                 }
-            } else if (e.key === '`') {
+            } else if (e.key === '`' || e.code === 'Backquote') {
                 // Toggle chunk debug helpers
                 if (renderer3d && renderer3d.setChunkDebugVisible) {
                     // Flip the renderer-side state by reading from a local flag we keep in sync

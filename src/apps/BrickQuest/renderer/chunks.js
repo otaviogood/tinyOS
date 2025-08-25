@@ -27,7 +27,9 @@ export function ensureChunkGroup(state, scene, cx, cy, cz) {
 		const min = new THREE.Vector3(0, 0, 0);
 		const max = new THREE.Vector3(state.CHUNK_SIZE || 1, state.CHUNK_HEIGHT || 1, state.CHUNK_SIZE || 1);
 		const box = new THREE.Box3(min, max);
-		const helper = new THREE.Box3Helper(box, 0x00ff00);
+		const helper = new THREE.Box3Helper(box, 0x4b00f6);
+		helper.userData = helper.userData || {};
+		helper.userData.isChunkHelper = true;
 		helper.material.depthTest = false;
 		helper.renderOrder = 1;
 		group.add(helper);
@@ -40,23 +42,28 @@ export function ensureChunkGroup(state, scene, cx, cy, cz) {
 export function setChunkDebugVisible(state, scene, visible) {
 	state.chunkDebugVisible = !!visible;
 	for (const group of state.chunkGroups.values()) {
-		let helper = null;
+		let foundAny = false;
 		for (const child of group.children) {
-			if (child.isBox3Helper) { helper = child; break; }
-		}
-		if (state.chunkDebugVisible) {
-			if (!helper && state.CHUNK_SIZE != null && state.CHUNK_HEIGHT != null) {
-				const min = new THREE.Vector3(0, 0, 0);
-				const max = new THREE.Vector3(state.CHUNK_SIZE, state.CHUNK_HEIGHT, state.CHUNK_SIZE);
-				const box = new THREE.Box3(min, max);
-				helper = new THREE.Box3Helper(box, 0x0f000f);
-				helper.material.depthTest = false;
-				helper.renderOrder = 1;
-				group.add(helper);
+			const isHelper = !!(child && ((child.userData && child.userData.isChunkHelper) || child.type === 'Box3Helper'));
+			if (isHelper) {
+				foundAny = true;
+				child.visible = !!state.chunkDebugVisible;
+				if (state.chunkDebugVisible) {
+					if (child.material) child.material.depthTest = false;
+					child.renderOrder = 1;
+				}
 			}
-			if (helper) helper.visible = true;
-		} else {
-			if (helper) helper.visible = false;
+		}
+		if (state.chunkDebugVisible && !foundAny && state.CHUNK_SIZE != null && state.CHUNK_HEIGHT != null) {
+			const min = new THREE.Vector3(0, 0, 0);
+			const max = new THREE.Vector3(state.CHUNK_SIZE, state.CHUNK_HEIGHT, state.CHUNK_SIZE);
+			const box = new THREE.Box3(min, max);
+			const helper = new THREE.Box3Helper(box, 0x4b00f6);
+			helper.userData = helper.userData || {};
+			helper.userData.isChunkHelper = true;
+			helper.material.depthTest = false;
+			helper.renderOrder = 1;
+			group.add(helper);
 		}
 	}
 }

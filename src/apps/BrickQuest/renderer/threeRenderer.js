@@ -49,6 +49,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let brickMaterials = null; // array of MeshStandardMaterial
 	const brickGeometries = new Map(); // pieceId -> BufferGeometry
 	const collisionGeometries = new Map(); // pieceId -> BufferGeometry (nostuds)
+	const convexGeometries = new Map(); // pieceId -> BufferGeometry (convex LOD)
 
 	// Instancing resources
 	const instancedChunkData = new Map(); // chunkKey -> { pieceId -> InstancedMeshData }
@@ -64,7 +65,13 @@ export function createBrickQuestRenderer(container, options = {}) {
 		if (!chunkMap) { chunkMap = new Map(); instancedChunkData.set(chunkKey, chunkMap); }
 		let data = chunkMap.get(pieceId);
 		if (data && data.mesh) return data;
-		const geometry = brickGeometries.get(pieceId) || (brickGeometries.size > 0 ? brickGeometries.values().next().value : null);
+		let geometry = brickGeometries.get(pieceId) || (brickGeometries.size > 0 ? brickGeometries.values().next().value : null);
+		// Choose LOD geometry based on parent group's LOD hint (0=high, 1=low)
+		const useLow = !!(parentGroup && parentGroup.userData && parentGroup.userData.lod === 1);
+		if (useLow) {
+			const lowGeom = convexGeometries.get(pieceId);
+			if (lowGeom) geometry = lowGeom;
+		}
 		if (!geometry) return null;
 		const initialCapacity = 64;
 		const mesh = new THREE.InstancedMesh(geometry, instancedBrickMaterial || new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.0, envMapIntensity: 0.8 }), initialCapacity);
@@ -79,6 +86,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 		mesh.userData = mesh.userData || {};
 		mesh.userData.chunkKey = chunkKey;
 		mesh.userData.pieceId = pieceId;
+		mesh.userData.highGeom = brickGeometries.get(pieceId) || geometry;
+		mesh.userData.lowGeom = convexGeometries.get(pieceId) || null;
 		mesh.userData.instanceIdToBrickId = [];
 		mesh.count = 0;
 		parentGroup.add(mesh);
@@ -183,9 +192,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function expandGroupBoundsForInstance(group, geometry, instanceMatrixLocal, origin) {
 		if (!geometry) return;
-		if (!geometry.boundingBox) {
-			try { geometry.computeBoundingBox(); } catch (_) {}
-		}
+		if (!geometry.boundingBox) geometry.computeBoundingBox();
 		if (!geometry.boundingBox) return;
 		initGroupBounds(group);
 		_tempBox3.copy(geometry.boundingBox);
@@ -255,7 +262,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		_tempMatrix4.compose(_tempPosition, _tempQuaternion, _tempScale);
 		mesh.setMatrixAt(index, _tempMatrix4);
 		// Expand this chunk group's world-space bounds with this instance
-		expandGroupBoundsForInstance(parent, mesh.geometry, _tempMatrix4, origin);
+		expandGroupBoundsForInstance(parent, (mesh.userData && mesh.userData.highGeom) ? mesh.userData.highGeom : mesh.geometry, _tempMatrix4, origin);
 		// Per-instance color
 		const matColor = brickMaterials && brickMaterials[brick.colorIndex] ? brickMaterials[brick.colorIndex].color : (brickMaterials && brickMaterials[0] ? brickMaterials[0].color : null);
 		if (matColor) {
@@ -271,10 +278,10 @@ export function createBrickQuestRenderer(container, options = {}) {
 		data.count = index + 1;
 		mesh.count = data.count;
 		mesh.instanceMatrix.needsUpdate = true;
-		try { if (mesh.computeBoundingSphere) mesh.computeBoundingSphere(); } catch (_) {}
+		if (mesh.computeBoundingSphere) mesh.computeBoundingSphere();
 		// Also update the geometry's bounding sphere if missing
 		if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) {
-			try { mesh.geometry.computeBoundingSphere(); } catch (_) {}
+			mesh.geometry.computeBoundingSphere();
 		}
 		if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 		mesh.userData.instanceIdToBrickId[index] = brick.id;
@@ -314,9 +321,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 		if (data) data.count = lastIndex;
 		mesh.count = lastIndex;
 		mesh.instanceMatrix.needsUpdate = true;
-		try { if (mesh.computeBoundingSphere) mesh.computeBoundingSphere(); } catch (_) {}
+		if (mesh.computeBoundingSphere) mesh.computeBoundingSphere();
 		if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) {
-			try { mesh.geometry.computeBoundingSphere(); } catch (_) {}
+			mesh.geometry.computeBoundingSphere();
 		}
 		if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 		mesh.userData.instanceIdToBrickId[lastIndex] = undefined;
@@ -998,7 +1005,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 
 	async function loadBrickModelInternal() {
-		await loadBrickModel({ gltfLoader, setLoading, setupBrickMaterials, brickGeometries, collisionGeometries });
+		await loadBrickModel({ gltfLoader, setLoading, setupBrickMaterials, brickGeometries, collisionGeometries, convexGeometries });
 	}
 
 	function createMinifigureGroup(colors) {
@@ -1050,6 +1057,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let CHUNK_SIZE = null;
 	let CHUNK_HEIGHT = null;
 	let chunkDebugVisible = false;
+	// Simple chunk LOD settings
+	let LOD_DISTANCE = 1000; // world units from camera to chunk AABB center to switch to convex
 
 	function setChunkConfig(cfg) { setChunkConfigExternal({ CHUNK_SIZE, CHUNK_HEIGHT }, cfg); CHUNK_SIZE = (cfg && typeof cfg.size === 'number') ? cfg.size : null; CHUNK_HEIGHT = (cfg && typeof cfg.height === 'number') ? cfg.height : null; }
 
@@ -1315,7 +1324,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 				}
 			}
 		}
-		// Per-chunk frustum culling (main camera + shadow cameras)
+		// Per-chunk frustum culling (main camera + shadow cameras) and LOD
 		if (camera && chunkGroups && chunkGroups.size > 0) {
 			_projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 			_mainFrustum.setFromProjectionMatrix(_projScreenMatrix);
@@ -1332,6 +1341,33 @@ export function createBrickQuestRenderer(container, options = {}) {
 				if (!box || !isFinite(box.min.x) || !isFinite(box.max.x)) { continue; }
 				const inMain = _mainFrustum.intersectsBox(box);
 				ud.inMainFrustum = !!inMain;
+				// LOD selection per chunk (distance-based)
+				const center = box.getCenter(_tempVec3);
+				const camPos = camera.position;
+				const dist = center.distanceTo(camPos);
+				const desiredLod = (dist > LOD_DISTANCE) ? 1 : 0; // 0=high,1=low
+				if (ud.lod !== desiredLod) {
+					ud.lod = desiredLod;
+					// Swap geometries for instanced meshes under this chunk
+					for (const child of group.children) {
+						if (child.isInstancedMesh) {
+							const pieceId = child.userData && child.userData.pieceId;
+							if (!pieceId) continue;
+							let targetGeom = null;
+							if (desiredLod === 1) {
+								targetGeom = (child.userData && child.userData.lowGeom) ? child.userData.lowGeom : (convexGeometries.get(pieceId) || brickGeometries.get(pieceId));
+							} else {
+								targetGeom = (child.userData && child.userData.highGeom) ? child.userData.highGeom : brickGeometries.get(pieceId);
+							}
+							if (targetGeom && child.geometry !== targetGeom) {
+								child.geometry = targetGeom;
+								// Keep bounds up to date for better culling and correctness
+								if (!child.geometry.boundingBox) child.geometry.computeBoundingBox();
+								if (!child.geometry.boundingSphere) child.geometry.computeBoundingSphere();
+							}
+						}
+					}
+				}
 				// Layers are not toggled per-frame; onBeforeRender of meshes handles main-view culling only
 			}
 		}

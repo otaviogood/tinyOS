@@ -32,7 +32,7 @@ export async function fetchPieceIdsFromCSV() {
 	}
 }
 
-export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMaterials, brickGeometries, collisionGeometries }) {
+export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMaterials, brickGeometries, collisionGeometries, convexGeometries }) {
 	const pieceIds = await fetchPieceIdsFromCSV();
 	return new Promise((resolve, reject) => {
 		setLoading("Loading LEGO parts library...");
@@ -88,7 +88,8 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 						geometry.normalizeNormals();
 						// Keep geometry as-authored; material ignores per-vertex color (we use per-instance colors)
 						// Ensure bounds exist for better culling even though InstancedMesh disables frustum culling
-						try { geometry.computeBoundingBox(); geometry.computeBoundingSphere(); } catch (_) {}
+						geometry.computeBoundingBox();
+						geometry.computeBoundingSphere();
 						try { geometry.computeBoundsTree(); } catch (_) {}
 						brickGeometries.set(pieceId, geometry);
 						loadedCount++;
@@ -126,6 +127,45 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 						colGeom.normalizeNormals();
 						try { colGeom.computeBoundsTree(); } catch (_) {}
 						collisionGeometries.set(pieceId, colGeom);
+					}
+
+					// Optional convex mesh for LOD rendering
+					if (convexGeometries) {
+						let convexMesh = null;
+						const convexNode = piece.getObjectByName("convex");
+						if (convexNode) {
+							if (convexNode.isMesh || convexNode.isSkinnedMesh) convexMesh = convexNode; else {
+								convexNode.traverse((child) => { if (!convexMesh && (child.isMesh || child.isSkinnedMesh)) convexMesh = child; });
+							}
+						} else {
+							piece.traverse((child) => {
+								if (!convexMesh && (child.isMesh || child.isSkinnedMesh)) {
+									const ud = child.userData || {};
+									const typeTag = ud.type || (ud.extras && ud.extras.type);
+									if (typeTag === "convex") convexMesh = child;
+								}
+							});
+						}
+						if (convexMesh && convexMesh.geometry) {
+							const lodGeom = convexMesh.geometry.clone();
+							try {
+								piece.updateWorldMatrix(true, false);
+								convexMesh.updateWorldMatrix(true, false);
+								const pieceWorld = piece.matrixWorld;
+								const convexWorld = convexMesh.matrixWorld;
+								const pieceWorldInv = new THREE.Matrix4().copy(pieceWorld).invert();
+								const localToPiece = new THREE.Matrix4().multiplyMatrices(pieceWorldInv, convexWorld);
+								lodGeom.applyMatrix4(localToPiece);
+							} catch (e) {
+								console.warn(`Failed to bake transform for convex ${pieceId}:`, e);
+							}
+							if (!lodGeom.attributes.normal) lodGeom.computeVertexNormals();
+							lodGeom.normalizeNormals();
+							lodGeom.computeBoundingBox();
+							lodGeom.computeBoundingSphere();
+							try { lodGeom.computeBoundsTree(); } catch (_) {}
+							convexGeometries.set(pieceId, lodGeom);
+						}
 					}
 				}
 				setLoading("");
