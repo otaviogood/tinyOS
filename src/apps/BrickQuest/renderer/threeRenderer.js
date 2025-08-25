@@ -75,6 +75,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		try { mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(initialCapacity * 3), 3); mesh.instanceColor.setUsage(THREE.DynamicDrawUsage); } catch (_) {}
 		mesh.castShadow = true;
 		mesh.receiveShadow = true;
+		applyViewCullingHooks(mesh);
 		mesh.userData = mesh.userData || {};
 		mesh.userData.chunkKey = chunkKey;
 		mesh.userData.pieceId = pieceId;
@@ -99,6 +100,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		try { newMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(newCapacity * 3), 3); newMesh.instanceColor.setUsage(THREE.DynamicDrawUsage); } catch (_) {}
 		newMesh.castShadow = true;
 		newMesh.receiveShadow = true;
+		applyViewCullingHooks(newMesh);
 		newMesh.userData = newMesh.userData || {};
 		newMesh.userData.chunkKey = data.chunkKey;
 		newMesh.userData.pieceId = data.pieceId;
@@ -142,6 +144,84 @@ export function createBrickQuestRenderer(container, options = {}) {
 	const _tempPosition = new THREE.Vector3();
 	const _tempScale = new THREE.Vector3(1,1,1);
 	const _tempColor = new THREE.Color();
+	const _tempBox3 = new THREE.Box3();
+	const _tempVec3 = new THREE.Vector3();
+	const _projScreenMatrix = new THREE.Matrix4();
+	const _mainFrustum = new THREE.Frustum();
+
+	function applyViewCullingHooks(instancedMesh) {
+		// Per-camera skip draw: for main view, skip when parent chunk is outside view frustum
+		instancedMesh.onBeforeRender = function(_renderer, _scene, _cam) {
+			try {
+				const parent = instancedMesh.parent;
+				if (_cam === camera && parent && parent.userData && parent.userData.inMainFrustum === false) {
+					if (instancedMesh.userData._savedCount == null) instancedMesh.userData._savedCount = instancedMesh.count;
+					instancedMesh.count = 0;
+				}
+			} catch (_) {}
+		};
+		instancedMesh.onAfterRender = function(_renderer, _scene, _cam) {
+			try {
+				if (_cam === camera && instancedMesh.userData && instancedMesh.userData._savedCount != null) {
+					instancedMesh.count = instancedMesh.userData._savedCount;
+					instancedMesh.userData._savedCount = null;
+				}
+			} catch (_) {}
+		};
+	}
+
+	function initGroupBounds(group) {
+		group.userData = group.userData || {};
+		if (!group.userData.chunkBounds) {
+			group.userData.chunkBounds = new THREE.Box3(
+				new THREE.Vector3(Infinity, Infinity, Infinity),
+				new THREE.Vector3(-Infinity, -Infinity, -Infinity)
+			);
+			group.userData.boundsDirty = false;
+		}
+	}
+
+	function expandGroupBoundsForInstance(group, geometry, instanceMatrixLocal, origin) {
+		if (!geometry) return;
+		if (!geometry.boundingBox) {
+			try { geometry.computeBoundingBox(); } catch (_) {}
+		}
+		if (!geometry.boundingBox) return;
+		initGroupBounds(group);
+		_tempBox3.copy(geometry.boundingBox);
+		_tempBox3.applyMatrix4(instanceMatrixLocal);
+		_tempVec3.set(origin.x || 0, origin.y || 0, origin.z || 0);
+		_tempBox3.min.add(_tempVec3);
+		_tempBox3.max.add(_tempVec3);
+		group.userData.chunkBounds.union(_tempBox3);
+	}
+
+	function recomputeGroupBounds(group) {
+		initGroupBounds(group);
+		const bounds = group.userData.chunkBounds;
+		bounds.min.set(Infinity, Infinity, Infinity);
+		bounds.max.set(-Infinity, -Infinity, -Infinity);
+		const origin = group.position || new THREE.Vector3();
+		for (const child of group.children) {
+			if (child.isInstancedMesh) {
+				const geom = child.geometry;
+				if (!geom) continue;
+				if (!geom.boundingBox) {
+					try { geom.computeBoundingBox(); } catch (_) {}
+				}
+				if (!geom.boundingBox) continue;
+				for (let i = 0; i < child.count; i++) {
+					child.getMatrixAt(i, _tempMatrix4);
+					_tempBox3.copy(geom.boundingBox);
+					_tempBox3.applyMatrix4(_tempMatrix4);
+					_tempBox3.min.add(origin);
+					_tempBox3.max.add(origin);
+					bounds.union(_tempBox3);
+				}
+			}
+		}
+		group.userData.boundsDirty = false;
+	}
 
 	function addBrickInstance(brick) {
 		if (!brick.chunkKey || CHUNK_SIZE == null) return;
@@ -174,6 +254,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 		));
 		_tempMatrix4.compose(_tempPosition, _tempQuaternion, _tempScale);
 		mesh.setMatrixAt(index, _tempMatrix4);
+		// Expand this chunk group's world-space bounds with this instance
+		expandGroupBoundsForInstance(parent, mesh.geometry, _tempMatrix4, origin);
 		// Per-instance color
 		const matColor = brickMaterials && brickMaterials[brick.colorIndex] ? brickMaterials[brick.colorIndex].color : (brickMaterials && brickMaterials[0] ? brickMaterials[0].color : null);
 		if (matColor) {
@@ -239,6 +321,10 @@ export function createBrickQuestRenderer(container, options = {}) {
 		if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 		mesh.userData.instanceIdToBrickId[lastIndex] = undefined;
 		brickIdToInstanceRef.delete(brickId);
+		// Mark parent group bounds as dirty (safe but infrequent path)
+		if (mesh.parent && mesh.parent.userData) {
+			mesh.parent.userData.boundsDirty = true;
+		}
 		// If this InstancedMesh is now empty, remove and prune
 		if (mesh.count <= 0) {
 			const parent = mesh.parent;
@@ -754,7 +840,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			}
 			ghostMesh.position.set(posX, posY, posZ);
 			ghostMesh.setRotationFromQuaternion(finalQuat);
-			ghostMesh.visible = true;
+			ghostMesh.visible = !isPlayerMoving;
 			ghostTargetPos = { ...targetPos };
 			const selectedPiece = pieceList[selectedPieceIndex];
 			ghostPieceId = selectedPiece ? selectedPiece.id : null;
@@ -1144,7 +1230,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function applyAuthoritativeGhostPose(gp) {
 		if (!gp || !ghostMesh) return;
-		ghostMesh.visible = true;
+		ghostMesh.visible = !isPlayerMoving;
 		ghostMesh.position.set(gp.position.x, gp.position.y, gp.position.z);
 		const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(gp.rotation.x || 0, gp.rotation.y || 0, gp.rotation.z || 0));
 		ghostMesh.setRotationFromQuaternion(q);
@@ -1229,6 +1315,27 @@ export function createBrickQuestRenderer(container, options = {}) {
 				}
 			}
 		}
+		// Per-chunk frustum culling (main camera + shadow cameras)
+		if (camera && chunkGroups && chunkGroups.size > 0) {
+			_projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+			_mainFrustum.setFromProjectionMatrix(_projScreenMatrix);
+			// Compute per-chunk visibility; main view culling happens via mesh onBeforeRender
+			for (const group of chunkGroups.values()) {
+				if (!group) continue;
+				// Ensure groups remain visible so shadow pass can traverse them
+				group.visible = true;
+				const ud = group.userData || {};
+				if (!ud.chunkBounds || ud.boundsDirty) {
+					recomputeGroupBounds(group);
+				}
+				const box = ud.chunkBounds;
+				if (!box || !isFinite(box.min.x) || !isFinite(box.max.x)) { continue; }
+				const inMain = _mainFrustum.intersectsBox(box);
+				ud.inMainFrustum = !!inMain;
+				// Layers are not toggled per-frame; onBeforeRender of meshes handles main-view culling only
+			}
+		}
+
 		// Capture all composer passes by disabling autoReset and resetting once before render
 		if (renderer && renderer.info) {
 			renderer.info.autoReset = false;
