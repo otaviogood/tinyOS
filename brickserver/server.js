@@ -22,6 +22,8 @@ const {
     resolvePlayerCapsuleCollision,
     addBrickToCollision,
     removeBrickFromCollision,
+    CHUNK_SIZE_XZ,
+    CHUNK_SIZE_Y,
 } = require('./collision');
 
 const app = express();
@@ -262,7 +264,7 @@ io.on('connection', (socket) => {
         pieceList: PIECE_LIST,
         piecesData: Object.fromEntries(brickPiecesData),
         // Runtime chunk config for client
-        chunkConfig: { size: 640, height: 768 }
+        chunkConfig: { size: CHUNK_SIZE_XZ, height: CHUNK_SIZE_Y }
     };
 
     simulateLatency(() => {

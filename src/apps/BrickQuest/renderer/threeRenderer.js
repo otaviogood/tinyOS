@@ -50,9 +50,244 @@ export function createBrickQuestRenderer(container, options = {}) {
 	const brickGeometries = new Map(); // pieceId -> BufferGeometry
 	const collisionGeometries = new Map(); // pieceId -> BufferGeometry (nostuds)
 
+	// Instancing resources
+	const instancedChunkData = new Map(); // chunkKey -> { pieceId -> InstancedMeshData }
+	const brickIdToInstanceRef = new Map(); // brickId -> { mesh, index, chunkKey, pieceId }
+	let instancedBrickMaterial = null;
+
+	/**
+	 * Ensure an InstancedMesh exists for the given chunkKey and pieceId.
+	 * Returns an InstancedMeshData record { mesh, capacity, count, instanceIdToBrickId: [], chunkKey, pieceId }.
+	 */
+	function ensureInstancedMesh(chunkKey, pieceId, parentGroup) {
+		let chunkMap = instancedChunkData.get(chunkKey);
+		if (!chunkMap) { chunkMap = new Map(); instancedChunkData.set(chunkKey, chunkMap); }
+		let data = chunkMap.get(pieceId);
+		if (data && data.mesh) return data;
+		const geometry = brickGeometries.get(pieceId) || (brickGeometries.size > 0 ? brickGeometries.values().next().value : null);
+		if (!geometry) return null;
+		const initialCapacity = 64;
+		const mesh = new THREE.InstancedMesh(geometry, instancedBrickMaterial || new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.0, envMapIntensity: 0.8 }), initialCapacity);
+		mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+		// Disable frustum culling because instance transforms extend beyond geometry bounds
+		mesh.frustumCulled = false;
+		// Preallocate per-instance color attribute as Float32Array to match three 0.169 expectations
+		try { mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(initialCapacity * 3), 3); mesh.instanceColor.setUsage(THREE.DynamicDrawUsage); } catch (_) {}
+		mesh.castShadow = true;
+		mesh.receiveShadow = true;
+		mesh.userData = mesh.userData || {};
+		mesh.userData.chunkKey = chunkKey;
+		mesh.userData.pieceId = pieceId;
+		mesh.userData.instanceIdToBrickId = [];
+		mesh.count = 0;
+		parentGroup.add(mesh);
+		// Add to raycast list once
+		raycastTargets.push(mesh);
+		data = { mesh, capacity: initialCapacity, count: 0, chunkKey, pieceId };
+		chunkMap.set(pieceId, data);
+		return data;
+	}
+
+	function growInstancedMesh(data, parentGroup) {
+		const oldMesh = data.mesh;
+		const newCapacity = Math.max(4, (data.capacity * 2) | 0);
+		const geometry = oldMesh.geometry;
+		const material = oldMesh.material;
+		const newMesh = new THREE.InstancedMesh(geometry, material, newCapacity);
+		newMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+		newMesh.frustumCulled = false;
+		try { newMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(newCapacity * 3), 3); newMesh.instanceColor.setUsage(THREE.DynamicDrawUsage); } catch (_) {}
+		newMesh.castShadow = true;
+		newMesh.receiveShadow = true;
+		newMesh.userData = newMesh.userData || {};
+		newMesh.userData.chunkKey = data.chunkKey;
+		newMesh.userData.pieceId = data.pieceId;
+		newMesh.userData.instanceIdToBrickId = [];
+		// Copy existing instances
+		for (let i = 0; i < data.count; i++) {
+			oldMesh.getMatrixAt(i, _tempMatrix4);
+			newMesh.setMatrixAt(i, _tempMatrix4);
+			{
+				const src = oldMesh.instanceColor;
+				const dst = newMesh.instanceColor;
+				if (src && dst) {
+					dst.setXYZ(i, src.getX(i), src.getY(i), src.getZ(i));
+				}
+			}
+			newMesh.userData.instanceIdToBrickId[i] = oldMesh.userData.instanceIdToBrickId[i];
+		}
+		newMesh.count = data.count;
+		if (newMesh.instanceColor) newMesh.instanceColor.needsUpdate = true;
+		// Replace in scene
+		if (oldMesh.parent) oldMesh.parent.add(newMesh);
+		if (oldMesh.parent) oldMesh.parent.remove(oldMesh);
+		// Update raycastTargets array
+		const idx = raycastTargets.indexOf(oldMesh);
+		if (idx !== -1) raycastTargets[idx] = newMesh;
+		// Update instance refs pointing at old mesh
+		for (const [brickId, ref] of brickIdToInstanceRef.entries()) {
+			if (ref.mesh === oldMesh) {
+				ref.mesh = newMesh;
+			}
+		}
+		// Dispose old mesh
+		try { oldMesh.dispose(); } catch (_) {}
+		data.mesh = newMesh;
+		data.capacity = newCapacity;
+		return data;
+	}
+
+	const _tempMatrix4 = new THREE.Matrix4();
+	const _tempQuaternion = new THREE.Quaternion();
+	const _tempPosition = new THREE.Vector3();
+	const _tempScale = new THREE.Vector3(1,1,1);
+	const _tempColor = new THREE.Color();
+
+	function addBrickInstance(brick) {
+		if (!brick.chunkKey || CHUNK_SIZE == null) return;
+		const parts = String(brick.chunkKey).split(',');
+		const cx = parseInt(parts[0] || '0', 10) | 0;
+		const cy = parseInt(parts[1] || '0', 10) | 0;
+		const cz = parseInt(parts[2] || '0', 10) | 0;
+		const parent = ensureChunkGroup(cx, cy, cz);
+		const origin = getChunkOriginFromKey(brick.chunkKey);
+		const pieceId = brick.pieceId || "3022";
+		let data = ensureInstancedMesh(brick.chunkKey, pieceId, parent);
+		if (!data) return;
+		if (data.count >= data.capacity) data = growInstancedMesh(data, parent);
+		const mesh = data.mesh;
+		const index = data.count;
+		// Compose matrix with slight random rotation
+		_tempPosition.set(
+			brick.position.x - origin.x,
+			brick.position.y - origin.y,
+			brick.position.z - origin.z
+		);
+		const randomRotationRange = (Math.PI / 180) * 0.125;
+		const randomX = (Math.random() - 0.5) * 2 * randomRotationRange;
+		const randomY = (Math.random() - 0.5) * 2 * randomRotationRange;
+		const randomZ = (Math.random() - 0.5) * 2 * randomRotationRange;
+		_tempQuaternion.setFromEuler(new THREE.Euler(
+			(brick.rotation.x || 0) + randomX,
+			(brick.rotation.y || 0) + randomY,
+			(brick.rotation.z || 0) + randomZ
+		));
+		_tempMatrix4.compose(_tempPosition, _tempQuaternion, _tempScale);
+		mesh.setMatrixAt(index, _tempMatrix4);
+		// Per-instance color
+		const matColor = brickMaterials && brickMaterials[brick.colorIndex] ? brickMaterials[brick.colorIndex].color : (brickMaterials && brickMaterials[0] ? brickMaterials[0].color : null);
+		if (matColor) {
+			_tempColor.copy(matColor);
+			if (mesh.instanceColor) {
+				mesh.instanceColor.setXYZ(index,
+					THREE.MathUtils.clamp(_tempColor.r, 0, 1),
+					THREE.MathUtils.clamp(_tempColor.g, 0, 1),
+					THREE.MathUtils.clamp(_tempColor.b, 0, 1)
+				);
+			}
+		}
+		data.count = index + 1;
+		mesh.count = data.count;
+		mesh.instanceMatrix.needsUpdate = true;
+		try { if (mesh.computeBoundingSphere) mesh.computeBoundingSphere(); } catch (_) {}
+		// Also update the geometry's bounding sphere if missing
+		if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) {
+			try { mesh.geometry.computeBoundingSphere(); } catch (_) {}
+		}
+		if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+		mesh.userData.instanceIdToBrickId[index] = brick.id;
+		brickIdToInstanceRef.set(brick.id, { mesh, index, chunkKey: brick.chunkKey, pieceId });
+	}
+
+	function removeBrickInstance(brickId) {
+		const ref = brickIdToInstanceRef.get(brickId);
+		if (!ref) return false;
+		const mesh = ref.mesh;
+		const lastIndex = mesh.count - 1;
+		const removeIndex = ref.index;
+		if (removeIndex < 0 || lastIndex < 0) {
+			brickIdToInstanceRef.delete(brickId);
+			return true;
+		}
+		if (removeIndex !== lastIndex) {
+			// Move last into removed slot
+			mesh.getMatrixAt(lastIndex, _tempMatrix4);
+			mesh.setMatrixAt(removeIndex, _tempMatrix4);
+			if (mesh.instanceColor) {
+				mesh.instanceColor.setXYZ(removeIndex, mesh.instanceColor.getX(lastIndex), mesh.instanceColor.getY(lastIndex), mesh.instanceColor.getZ(lastIndex));
+			}
+			const movedBrickId = mesh.userData.instanceIdToBrickId[lastIndex];
+			mesh.userData.instanceIdToBrickId[removeIndex] = movedBrickId;
+			const movedRef = brickIdToInstanceRef.get(movedBrickId);
+			if (movedRef) movedRef.index = removeIndex;
+		}
+		// Clear last
+		const data = (function(){
+			const chunkKey = mesh && mesh.userData && mesh.userData.chunkKey;
+			const pieceId = mesh && mesh.userData && mesh.userData.pieceId;
+			if (!chunkKey || !pieceId) return null;
+			const chunkMap = instancedChunkData.get(chunkKey);
+			return chunkMap ? chunkMap.get(pieceId) : null;
+		})();
+		if (data) data.count = lastIndex;
+		mesh.count = lastIndex;
+		mesh.instanceMatrix.needsUpdate = true;
+		try { if (mesh.computeBoundingSphere) mesh.computeBoundingSphere(); } catch (_) {}
+		if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) {
+			try { mesh.geometry.computeBoundingSphere(); } catch (_) {}
+		}
+		if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+		mesh.userData.instanceIdToBrickId[lastIndex] = undefined;
+		brickIdToInstanceRef.delete(brickId);
+		// If this InstancedMesh is now empty, remove and prune
+		if (mesh.count <= 0) {
+			const parent = mesh.parent;
+			if (parent) parent.remove(mesh);
+			const idx = raycastTargets.indexOf(mesh);
+			if (idx !== -1) raycastTargets.splice(idx, 1);
+			try { mesh.dispose(); } catch (_) {}
+			// Remove from instancedChunkData map
+			const chunkKey = mesh.userData && mesh.userData.chunkKey;
+			const pieceId = mesh.userData && mesh.userData.pieceId;
+			if (chunkKey && instancedChunkData.has(chunkKey)) {
+				const chunkMap = instancedChunkData.get(chunkKey);
+				if (chunkMap) {
+					chunkMap.delete(pieceId);
+					if (chunkMap.size === 0) instancedChunkData.delete(chunkKey);
+				}
+			}
+			// If parent chunk group is empty, prune it
+			if (parent && parent.userData && parent.userData.chunkKey) {
+				let hasAnyMesh = false;
+				for (const child of parent.children) {
+					if (child.isMesh) { hasAnyMesh = true; break; }
+				}
+				if (!hasAnyMesh) {
+					scene.remove(parent);
+					chunkGroups.delete(parent.userData.chunkKey);
+				}
+			}
+		}
+		return true;
+	}
+
+	function disposeAllInstancedMeshes() {
+		for (const [chunkKey, chunkMap] of instancedChunkData.entries()) {
+			for (const [pieceId, data] of chunkMap.entries()) {
+				if (data && data.mesh && data.mesh.parent) {
+					data.mesh.parent.remove(data.mesh);
+				}
+				const idx = raycastTargets.indexOf(data.mesh);
+				if (idx !== -1) raycastTargets.splice(idx, 1);
+				try { data.mesh.dispose(); } catch (_) {}
+			}
+		}
+		instancedChunkData.clear();
+		brickIdToInstanceRef.clear();
+	}
+
 	// Instance maps
 	const playerMeshes = new Map(); // playerId -> Mesh
-	const brickMeshes = new Map(); // brickId -> Mesh
 	const chunkGroups = new Map(); // chunkKey -> Group
 	const playerNameSprites = new Map(); // playerId -> Sprite
 	// Cached raycast targets to avoid per-frame allocations
@@ -202,6 +437,14 @@ export function createBrickQuestRenderer(container, options = {}) {
 			roughness: 0.2,
 			envMapIntensity: 0.8,
 		}));
+		// Create a single instanced material that supports per-instance colors
+		if (!instancedBrickMaterial) {
+			instancedBrickMaterial = new THREE.MeshStandardMaterial({
+				roughness: 0.2,
+				envMapIntensity: 0.8,
+				color: 0xffffff,
+			});
+		}
 	}
 
 	function ensureStudHighlight() {
@@ -578,7 +821,12 @@ export function createBrickQuestRenderer(container, options = {}) {
 		if (!studHighlightMesh) return;
 		// Only consider the closest-hit piece under the cursor
 		const firstIntersection = (intersects && intersects.length > 0) ? intersects[0] : null;
-		const targetBrickId = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? firstIntersection.object.userData.brickId : null;
+		let targetBrickId = null;
+		if (firstIntersection && firstIntersection.instanceId != null && firstIntersection.object && firstIntersection.object.userData && Array.isArray(firstIntersection.object.userData.instanceIdToBrickId)) {
+			targetBrickId = firstIntersection.object.userData.instanceIdToBrickId[firstIntersection.instanceId] || null;
+		} else {
+			targetBrickId = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? firstIntersection.object.userData.brickId : null;
+		}
 		if (!targetBrickId) {
 			studHighlightMesh.visible = false;
 			closestStudInfo = null;
@@ -739,8 +987,12 @@ export function createBrickQuestRenderer(container, options = {}) {
 			const intersection = intersects[0];
 			lastRayHitValid = (typeof intersection.distance === 'number') ? (intersection.distance <= PLACEMENT_MAX_DISTANCE) : true;
 			if (lastRayHitValid) {
-				// Capture the brickId from the intersected mesh if available
-				lastHitBrickId = (intersection && intersection.object && intersection.object.userData) ? (intersection.object.userData.brickId || null) : null;
+				// Resolve brickId for both regular meshes and instanced meshes
+				if (intersection && intersection.instanceId != null && intersection.object && intersection.object.userData && Array.isArray(intersection.object.userData.instanceIdToBrickId)) {
+					lastHitBrickId = intersection.object.userData.instanceIdToBrickId[intersection.instanceId] || null;
+				} else {
+					lastHitBrickId = (intersection && intersection.object && intersection.object.userData) ? (intersection.object.userData.brickId || null) : null;
+				}
 				updateClosestStud(raycaster, intersects);
 				result = { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z };
 				lastMouseWorldPos = result;
@@ -772,70 +1024,15 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function createBrickMesh(brick) {
 		if (!brickMaterials) return;
-		const pieceId = brick.pieceId || "3022";
-		let geometry = brickGeometries.get(pieceId);
-		if (!geometry) {
-			if (brickGeometries.size > 0) geometry = brickGeometries.values().next().value; else return;
-		}
-		const material = brickMaterials[brick.colorIndex] || brickMaterials[0];
-		const mesh = new THREE.Mesh(geometry, material);
-		// Attach brickId to mesh for fast picking lookup
-		if (!mesh.userData) mesh.userData = {};
-		mesh.userData.brickId = brick.id;
 		// Require authoritative chunk assignment; skip otherwise
-		if (!brick.chunkKey || CHUNK_SIZE == null) {
-			return; // bricks must belong to a chunk
-		}
-		const parts = String(brick.chunkKey).split(',');
-		const cx = parseInt(parts[0] || '0', 10) | 0;
-		const cy = parseInt(parts[1] || '0', 10) | 0;
-		const cz = parseInt(parts[2] || '0', 10) | 0;
-		const parent = ensureChunkGroup(cx, cy, cz);
-		const origin = getChunkOriginFromKey(brick.chunkKey);
-		mesh.position.set(brick.position.x - origin.x, brick.position.y - origin.y, brick.position.z - origin.z);
-		
-		// Add tiny random rotation (±1 degree) on all axes
-		const randomRotationRange = (Math.PI / 180) * 0.125; // 1 degree in radians
-		const randomX = (Math.random() - 0.5) * 2 * randomRotationRange;
-		const randomY = (Math.random() - 0.5) * 2 * randomRotationRange;
-		const randomZ = (Math.random() - 0.5) * 2 * randomRotationRange;
-		
-		mesh.rotation.set(
-			brick.rotation.x + randomX, 
-			brick.rotation.y + randomY, 
-			brick.rotation.z + randomZ
-		);
-		mesh.castShadow = true;
-		mesh.receiveShadow = true;
-		parent.add(mesh);
-		brickMeshes.set(brick.id, mesh);
-		// Maintain cached raycast array
-		raycastTargets.push(mesh);
+		if (!brick.chunkKey || CHUNK_SIZE == null) { return; }
+		// Add to instanced mesh
+		addBrickInstance(brick);
 	}
 
 	function removeBrickMesh(brickId) {
-		const mesh = brickMeshes.get(brickId);
-		if (mesh) {
-			if (mesh.parent) mesh.parent.remove(mesh);
-			// Clear identifier to avoid stale picks
-			if (mesh.userData) delete mesh.userData.brickId;
-			brickMeshes.delete(brickId);
-			// Remove from raycast cache
-			const idx = raycastTargets.indexOf(mesh);
-			if (idx !== -1) raycastTargets.splice(idx, 1);
-			// If parent chunk group is empty, prune it
-			const parent = mesh.parent;
-			if (parent && parent.userData && parent.userData.chunkKey) {
-				let hasMesh = false;
-				for (const child of parent.children) {
-					if (child.isMesh) { hasMesh = true; break; }
-				}
-				if (!hasMesh) {
-					scene.remove(parent);
-					chunkGroups.delete(parent.userData.chunkKey);
-				}
-			}
-		}
+		// Try remove from instancing
+		removeBrickInstance(brickId);
 	}
 
 	function reconcileChunksAndBricks(stateChunks, stateBricks) {
@@ -848,7 +1045,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			}
 		}
 		for (const [bid, b] of Object.entries(stateBricks || {})) {
-			if (!brickMeshes.has(bid)) {
+			if (!brickIdToInstanceRef.has(bid)) {
 				createBrickMesh({ id: bid, ...b });
 			}
 		}
@@ -930,10 +1127,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 			if (sprite.material && sprite.material.dispose) try { sprite.material.dispose(); } catch (_) {}
 		});
 		playerNameSprites.clear();
-		brickMeshes.forEach((mesh) => {
-			scene.remove(mesh);
-		});
-		brickMeshes.clear();
+		// Dispose instanced meshes and clear maps
+		disposeAllInstancedMeshes();
 	}
 
 	function onWindowResize() {
@@ -1105,10 +1300,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 				disposeObject(ghostArrow);
 				ghostArrow = null;
 			}
-			// Clean up brick meshes
-			brickMeshes.forEach((mesh) => {
-				scene.remove(mesh);
-			});
+			// Clean up instanced meshes
+			disposeAllInstancedMeshes();
 			playerMeshes.forEach((mesh) => {
 				scene.remove(mesh);
 				if (mesh.geometry && mesh.geometry.dispose) mesh.geometry.dispose();
@@ -1119,6 +1312,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 				if (sprite.material && sprite.material.map && sprite.material.map.dispose) try { sprite.material.map.dispose(); } catch (_) {}
 				if (sprite.material && sprite.material.dispose) try { sprite.material.dispose(); } catch (_) {}
 			});
+			// Clean up instanced meshes
+			disposeAllInstancedMeshes();
 		},
 		onResize: onWindowResize,
 		// Data/config
@@ -1153,7 +1348,22 @@ export function createBrickQuestRenderer(container, options = {}) {
 			brickId: closestAntiStudInfo.brickId,
 			direction: closestAntiStudInfo.direction ? { x: closestAntiStudInfo.direction.x, y: closestAntiStudInfo.direction.y, z: closestAntiStudInfo.direction.z } : undefined,
 		} : null; },
-		canPlaceNow() { return !!(lastRayHitValid && ghostTargetPos); },
+		canPlaceNow() {
+			if (!lastRayHitValid) return false;
+			const selectedPieceLocal = pieceList[selectedPieceIndex];
+			const selectedPieceIdLocal = selectedPieceLocal ? selectedPieceLocal.id : null;
+			const pieceDataLocal = selectedPieceIdLocal ? piecesData[selectedPieceIdLocal] : null;
+			const hasStuds = !!(pieceDataLocal && Array.isArray(pieceDataLocal.studs) && pieceDataLocal.studs.length > 0);
+			const hasAnti = !!(pieceDataLocal && Array.isArray(pieceDataLocal.antiStuds) && pieceDataLocal.antiStuds.length > 0);
+			if (selectedAnchorMode === 'anti' && hasAnti) {
+				return !!closestStudInfo;
+			}
+			if (selectedAnchorMode === 'stud' && hasStuds) {
+				return !!closestAntiStudInfo;
+			}
+			// Fallback for parts with no connectors: allow server grid-snap
+			return !!(ghostTargetPos || lastMouseWorldPos);
+		},
 		// Mesh management
 		createBrickMesh,
 		removeBrickMesh,

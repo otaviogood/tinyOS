@@ -617,10 +617,19 @@
             return; // Don't send click event when just capturing the mouse
         }
         
-        // Add click event
-        if (renderer3d.canPlaceNow && !renderer3d.canPlaceNow()) {
-            return; // Out of range: ignore placement/removal clicks
+        // For left-click placement, require canPlaceNow(); for right-click deletion, require a picked brick
+        if (event.button === 0) {
+            if (renderer3d.canPlaceNow && !renderer3d.canPlaceNow()) {
+                return; // Not placeable at this moment
+            }
+        } else if (event.button === 2) {
+            const picked = renderer3d.getPickedBrickId && renderer3d.getPickedBrickId();
+            if (!picked) {
+                return; // No hovered brick to delete
+            }
         }
+        
+        // Enqueue click event
         inputState.events.push({
             type: 'click',
             button: event.button, // 0 = left, 2 = right

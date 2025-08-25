@@ -86,6 +86,9 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 						}
 						if (!geometry.attributes.normal) geometry.computeVertexNormals();
 						geometry.normalizeNormals();
+						// Keep geometry as-authored; material ignores per-vertex color (we use per-instance colors)
+						// Ensure bounds exist for better culling even though InstancedMesh disables frustum culling
+						try { geometry.computeBoundingBox(); geometry.computeBoundingSphere(); } catch (_) {}
 						try { geometry.computeBoundsTree(); } catch (_) {}
 						brickGeometries.set(pieceId, geometry);
 						loadedCount++;

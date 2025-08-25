@@ -444,6 +444,21 @@ function testGhostCollision(payload, gameState) {
     const ghostMatInv = new THREE.Matrix4().copy(ghostMat).invert();
 
     for (const c of candidateData) {
+        // Heuristic fallback: treat as colliding if AABB sizes are nearly equal (within 1%)
+        // and centers are nearly identical (within 0.1 units) in world space.
+        try {
+            const candWorldBox = c.geometry.boundingBox.clone().applyMatrix4(c.matrixWorld);
+            const gSize = new THREE.Vector3().subVectors(ghostAABB.max, ghostAABB.min);
+            const cSize = new THREE.Vector3().subVectors(candWorldBox.max, candWorldBox.min);
+            const gCenter = new THREE.Vector3().addVectors(ghostAABB.min, ghostAABB.max).multiplyScalar(0.5);
+            const cCenter = new THREE.Vector3().addVectors(candWorldBox.min, candWorldBox.max).multiplyScalar(0.5);
+            const rel = (a, b) => Math.abs(a - b) / Math.max(1e-6, Math.max(Math.abs(a), Math.abs(b)));
+            const dimsClose = (rel(gSize.x, cSize.x) < 0.01) && (rel(gSize.y, cSize.y) < 0.01) && (rel(gSize.z, cSize.z) < 0.01);
+            const centerClose = (Math.abs(gCenter.x - cCenter.x) < 0.1) && (Math.abs(gCenter.y - cCenter.y) < 0.1) && (Math.abs(gCenter.z - cCenter.z) < 0.1);
+            if (dimsClose && centerClose) {
+                return true;
+            }
+        } catch (_) {}
         const otherToGhostLocal = new THREE.Matrix4().multiplyMatrices(ghostMatInv, c.matrixWorld);
         const hit = bvh.intersectsGeometry(c.geometry, otherToGhostLocal);
         if (hit) {
@@ -559,6 +574,30 @@ function testGhostCollisionWithDebug(payload, gameState) {
 
     const tNarrowStart = process.hrtime.bigint();
     for (const c of candidateData) {
+        // Check if we are testing 2 pieces that are the same in the same place.
+        // That can miss the triangle intersection test.
+        // Heuristic fallback: sizes ~equal (<=1%) and centers ~equal (<=0.1)
+        try {
+            const candWorldBox = c.geometry.boundingBox.clone().applyMatrix4(c.matrixWorld);
+            const gSize = new THREE.Vector3().subVectors(ghostAABB.max, ghostAABB.min);
+            const cSize = new THREE.Vector3().subVectors(candWorldBox.max, candWorldBox.min);
+            const gCenter = new THREE.Vector3().addVectors(ghostAABB.min, ghostAABB.max).multiplyScalar(0.5);
+            const cCenter = new THREE.Vector3().addVectors(candWorldBox.min, candWorldBox.max).multiplyScalar(0.5);
+            const rel = (a, b) => Math.abs(a - b) / Math.max(1e-6, Math.max(Math.abs(a), Math.abs(b)));
+            const dimsClose = (rel(gSize.x, cSize.x) < 0.01) && (rel(gSize.y, cSize.y) < 0.01) && (rel(gSize.z, cSize.z) < 0.01);
+            const centerClose = (Math.abs(gCenter.x - cCenter.x) < 0.1) && (Math.abs(gCenter.y - cCenter.y) < 0.1) && (Math.abs(gCenter.z - cCenter.z) < 0.1);
+            if (dimsClose && centerClose) {
+                tNarrowEnd = process.hrtime.bigint();
+                const tEnd = tNarrowEnd;
+                return { colliding: true, broadCount, prunedCount, timings: {
+                    aabbMs: Number(tAabbEnd - t0) / 1e6,
+                    broadMs: Number(tBroadEnd - tAabbEnd) / 1e6,
+                    buildMs: Number(tBuildEnd - tBroadEnd) / 1e6,
+                    narrowMs: Number(tNarrowEnd - tNarrowStart) / 1e6,
+                    totalMs: Number(tEnd - t0) / 1e6,
+                } };
+            }
+        } catch (_) {}
         const otherToGhostLocal = _tmpMat4.multiplyMatrices(ghostMatInv, c.matrixWorld);
         // Prune using transformed candidate AABB vs ghost-local AABB
         const candidateBoxGhostLocal = _tmpBox3.copy(c.geometry.boundingBox).applyMatrix4(otherToGhostLocal);
@@ -596,7 +635,7 @@ function testGhostCollisionWithDebug(payload, gameState) {
 // Neighboring chunks are considered automatically during queries.
 
 const CHUNK_SIZE_XZ = 640; // world units along X and Z
-const CHUNK_SIZE_Y = CHUNK_SIZE_XZ;  // world units along Y (max piece axis == X size)
+const CHUNK_SIZE_Y = 768;  // world units along Y
 
 function getChunkCoordForPoint(x, y, z) {
     const cx = Math.floor(x / CHUNK_SIZE_XZ);
@@ -1150,6 +1189,8 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
 }
 
 module.exports = {
+    CHUNK_SIZE_XZ,
+    CHUNK_SIZE_Y,
     PIECE_LIST,
     brickPiecesData,
     loadBrickStudData,
