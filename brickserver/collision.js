@@ -868,7 +868,7 @@ function narrowPhaseCapsuleVsConvex(geometry, matrixWorld, p0World, p1World, rad
                     best.ny = _capsuleNarrowTmp.normalWorld.y;
                     best.nz = _capsuleNarrowTmp.normalWorld.z;
                 }
-                return true; // we have a hit on this triangle; continue traversal
+                return false; // record hit but continue traversal to find deepest contact
             }
             return false;
         },
@@ -909,10 +909,29 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
             const r = CAPSULE_RADIUS;
             if (distSq < r*r) {
                 const dist = Math.sqrt(Math.max(1e-12, distSq));
-                const nx = dist > 1e-6 ? dx / dist : 0;
-                const ny = dist > 1e-6 ? dy / dist : 1;
-                const nz = dist > 1e-6 ? dz / dist : 0;
-                const penetration = r - dist;
+                let nx, ny, nz, penetration;
+                if (dist > 1e-6) {
+                    // Use gradient direction when meaningful
+                    nx = dx / dist;
+                    ny = dy / dist;
+                    nz = dz / dist;
+                    penetration = r - dist;
+                } else {
+                    // Degenerate case: center is essentially on the expanded box. Choose axis-aligned MTV.
+                    const minX = box.min.x - r, maxX = box.max.x + r;
+                    const minY = box.min.y - r, maxY = box.max.y + r;
+                    const minZ = box.min.z - r, maxZ = box.max.z + r;
+                    const dMinX = Math.abs(px - minX), dMaxX = Math.abs(maxX - px);
+                    const dMinY = Math.abs(pos.y - minY), dMaxY = Math.abs(maxY - pos.y);
+                    const dMinZ = Math.abs(pz - minZ), dMaxZ = Math.abs(maxZ - pz);
+                    // Find smallest move to exit the expanded box
+                    let best = dMinX; nx = -1; ny = 0; nz = 0; penetration = dMinX;
+                    if (dMaxX < best) { best = dMaxX; nx = 1; ny = 0; nz = 0; penetration = dMaxX; }
+                    if (dMinY < best) { best = dMinY; nx = 0; ny = -1; nz = 0; penetration = dMinY; }
+                    if (dMaxY < best) { best = dMaxY; nx = 0; ny = 1; nz = 0; penetration = dMaxY; }
+                    if (dMinZ < best) { best = dMinZ; nx = 0; ny = 0; nz = -1; penetration = dMinZ; }
+                    if (dMaxZ < best) { best = dMaxZ; nx = 0; ny = 0; nz = 1; penetration = dMaxZ; }
+                }
                 const brickId = worldCollision.owners[idx];
                 const brick = gameState && gameState.bricks ? gameState.bricks[brickId] : null;
                 candidates.push({ idx, box, brick, corr: { nx, ny, nz, penetration } });

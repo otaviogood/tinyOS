@@ -747,8 +747,6 @@ function handleBrickInteraction(player, click, mouseRay) {
     }
 }
 
-// ---------- Collision Helpers moved to collision.js ----------
-
 // Game update loop
 let lastUpdateTime = Date.now();
 setInterval(() => {
