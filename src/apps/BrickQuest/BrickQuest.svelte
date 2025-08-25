@@ -6,7 +6,7 @@
     import FourByThreeScreen from "../../components/FourByThreeScreen.svelte";
     import CloseButton from "../../components/CloseButton.svelte";
     import { Animator, frameCount, animateCount } from "../../animator";
-    import { createBrickQuestRenderer } from "./threeRenderer.js";
+    import { createBrickQuestRenderer } from "./renderer/threeRenderer.js";
     import StartScreen from "./StartScreen.svelte";
     import io from "socket.io-client";
     import { createDeltaState, applyDiff } from "./client-delta.js";

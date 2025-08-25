@@ -9,6 +9,11 @@ import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { GammaCorrectionShader } from "three/examples/jsm/shaders/GammaCorrectionShader.js";
+import { disposeObject } from "./threeUtils.js";
+import { setupPBRLighting, setupEquirectangularSkybox as setupSkyboxExternal } from "./lighting.js";
+import { createTextSprite, createOrUpdateNameSprite as updateNameSpriteExternal } from "./labels.js";
+import { loadBrickModel } from "./piecesLoader.js";
+import { setChunkConfig as setChunkConfigExternal, getChunkOriginFromKey as getChunkOriginFromKeyExternal, ensureChunkGroup as ensureChunkGroupExternal, setChunkDebugVisible as setChunkDebugVisibleExternal } from "./chunks.js";
 
 export function createBrickQuestRenderer(container, options = {}) {
 	const { colorPalette = [], onLoadingTextChange = () => {}, onError = () => {} } = options;
@@ -100,95 +105,17 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let previewMaterial = null;
 	let previewRotationSpeed = 0.01;
 
-	// Helper to dispose any Mesh(es) contained in an Object3D
-	function disposeObject(object3d) {
-		if (!object3d) return;
-		object3d.traverse((child) => {
-			if (child && child.isMesh) {
-				if (child.geometry && child.geometry.dispose) try { child.geometry.dispose(); } catch (_) {}
-				if (child.material) {
-					const mat = child.material;
-					if (Array.isArray(mat)) {
-						for (const m of mat) { if (m && m.dispose) try { m.dispose(); } catch (_) {} }
-					} else if (mat.dispose) {
-						try { mat.dispose(); } catch (_) {}
-					}
-				}
-			}
-		});
-	}
+    // disposed via threeUtils
 
 	function setLoading(text) {
 		onLoadingTextChange(text || "");
 	}
 
-	function setupPBRLighting() {
-		const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x3e5765, 0.6);
-		hemiLight.position.set(0, 50, 0);
-		scene.add(hemiLight);
+    // moved to lighting.js
 
-		const sunLight = new THREE.DirectionalLight(0xffffff, 2.5);
-		sunLight.position.set(200, 300, 100);
-		sunLight.castShadow = true;
-		sunLight.shadow.mapSize.width = 2048;
-		sunLight.shadow.mapSize.height = 2048;
-		sunLight.shadow.camera.near = 1;
-		sunLight.shadow.camera.far = 1500;
-		sunLight.shadow.camera.left = -800;
-		sunLight.shadow.camera.right = 800;
-		sunLight.shadow.camera.top = 800;
-		sunLight.shadow.camera.bottom = -800;
-		sunLight.shadow.bias = -0.0001;
-		scene.add(sunLight);
-		scene.add(sunLight.target);
-
-		const fillLight = new THREE.DirectionalLight(0x4a90e2, 0.8);
-		fillLight.position.set(-100, 100, -100);
-		scene.add(fillLight);
-
-		const rimLight = new THREE.DirectionalLight(0xffffff, 0.5);
-		rimLight.position.set(0, 0, -200);
-		scene.add(rimLight);
-	}
-
-	function setupEquirectangularSkybox() {
-		const textureLoader = new THREE.TextureLoader();
-		textureLoader.load(
-			'/apps/lego_sky2.png',
-			function(texture) {
-				// Create sphere geometry for the skybox sized near the far clip plane
-				const farDistance = (camera && typeof camera.far === 'number') ? camera.far : 5000;
-				const radius = Math.max(10, farDistance * 0.98);
-				const skyboxGeometry = new THREE.SphereGeometry(radius, 64, 32);
-				
-				// Create material with the equirectangular texture
-				const skyboxMaterial = new THREE.MeshBasicMaterial({
-					map: texture,
-					side: THREE.BackSide, // Render inside of sphere
-					fog: false
-				});
-				
-				// Create skybox mesh
-				skyboxMesh = new THREE.Mesh(skyboxGeometry, skyboxMaterial);
-				skyboxMesh.renderOrder = -1; // Render behind everything else
-				
-				// Add to scene
-				scene.add(skyboxMesh);
-				
-				// Remove the solid background color since we now have a skybox
-				scene.background = null;
-			},
-			function(progress) {
-				// Optional: handle loading progress
-				console.log('Skybox loading progress:', (progress.loaded / progress.total * 100) + '%');
-			},
-			function(error) {
-				console.error('Error loading skybox texture:', error);
-				// Fallback to original background color
-				scene.background = new THREE.Color(0x0cbeff);
-			}
-		);
-	}
+    function setupEquirectangularSkybox() {
+        setupSkyboxExternal(scene, camera, (mesh) => { skyboxMesh = mesh; }, onError);
+    }
 
 	function getSSAOPass() { return ssaoPassRef; }
 
@@ -266,37 +193,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function getSSAODebugView() {
 		return !!ssaoDebugView;
-	}
-
-	async function fetchPieceIdsFromCSV() {
-		try {
-			const res = await fetch('/apps/bricks/exported_pieces.csv', { cache: 'no-cache' });
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const text = await res.text();
-			const lines = text.split(/\r?\n/);
-			const ids = [];
-			const seen = new Set();
-			for (const raw of lines) {
-				if (!raw) continue;
-				const line = raw.trim();
-				if (!line) continue;
-				const parts = line.split(',');
-				if (!parts.length) continue;
-				const id = (parts[0] || '').trim();
-				if (!id || seen.has(id)) continue;
-				ids.push(id);
-				seen.add(id);
-			}
-			return ids;
-		} catch (e) {
-			console.warn('Failed to load exported_pieces.csv, falling back to minimal piece set', e);
-			return [
-				'3001','3002','3003','3004','3005','3008','3009','3010',
-				'3020','3021','3022','3023','3024','3029','3030','3031',
-				'3032','3034','3035','3460','3623','3666','3710','3795',
-				'3832','4070','41539'
-			];
-		}
 	}
 
 	function setupBrickMaterials() {
@@ -767,117 +663,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 		}
 	}
 
-	async function loadBrickModel() {
-		const pieceIds = await fetchPieceIdsFromCSV();
-		return new Promise((resolve, reject) => {
-			setLoading("Loading LEGO parts library...");
-			gltfLoader.load(
-				"/apps/bricks/all_pieces.gltf",
-				function (gltf) {
-					const legoPartsLibrary = gltf.scene.getObjectByName("LegoPartsLibrary");
-					if (!legoPartsLibrary) {
-						reject(new Error("LegoPartsLibrary not found in GLTF"));
-						return;
-					}
-					setupBrickMaterials();
-					let loadedCount = 0;
-					for (const pieceId of pieceIds) {
-						const piece = legoPartsLibrary.getObjectByName(pieceId);
-						if (!piece) {
-							console.warn(`Piece ${pieceId} not found in GLTF`);
-							continue;
-						}
-						let partMesh = null;
-						const partNode = piece.getObjectByName("part");
-						if (partNode) {
-							if (partNode.isMesh || partNode.isSkinnedMesh) partMesh = partNode; else {
-								partNode.traverse((child) => { if (!partMesh && (child.isMesh || child.isSkinnedMesh)) partMesh = child; });
-							}
-						} else {
-							piece.traverse((child) => {
-								if (!partMesh && (child.isMesh || child.isSkinnedMesh)) {
-									const ud = child.userData || {};
-									const typeTag = ud.type || (ud.extras && ud.extras.type);
-									if (typeTag === "part") partMesh = child;
-								}
-							});
-						}
-						if (!partMesh) {
-							console.warn(`Piece ${pieceId}: 'part' node not found; using first mesh as fallback`);
-							piece.traverse((child) => { if (!partMesh && (child.isMesh || child.isSkinnedMesh)) partMesh = child; });
-						}
-						if (partMesh && partMesh.geometry) {
-							const geometry = partMesh.geometry.clone();
-							try {
-								piece.updateWorldMatrix(true, false);
-								partMesh.updateWorldMatrix(true, false);
-								const pieceWorld = piece.matrixWorld;
-								const partWorld = partMesh.matrixWorld;
-								const pieceWorldInv = new THREE.Matrix4().copy(pieceWorld).invert();
-								const localToPiece = new THREE.Matrix4().multiplyMatrices(pieceWorldInv, partWorld);
-								geometry.applyMatrix4(localToPiece);
-							} catch (e) {
-								console.warn(`Failed to bake transform for piece ${pieceId}:`, e);
-							}
-							if (!geometry.attributes.normal) geometry.computeVertexNormals();
-							geometry.normalizeNormals();
-							// Build BVH once per unique piece geometry to accelerate raycasting
-							try { geometry.computeBoundsTree(); } catch (_) {}
-							brickGeometries.set(pieceId, geometry);
-							loadedCount++;
-						}
-						let partNoStudsMesh = null;
-						const pnsNode = piece.getObjectByName("partnostuds");
-						if (pnsNode) {
-							if (pnsNode.isMesh || pnsNode.isSkinnedMesh) partNoStudsMesh = pnsNode; else {
-								pnsNode.traverse((child) => { if (!partNoStudsMesh && (child.isMesh || child.isSkinnedMesh)) partNoStudsMesh = child; });
-							}
-						}
-						if (!partNoStudsMesh) {
-							piece.traverse((child) => {
-								if (!partNoStudsMesh && (child.isMesh || child.isSkinnedMesh)) {
-									const ud = child.userData || {};
-									const typeTag = ud.type || (ud.extras && ud.extras.type);
-									if (typeTag === "partnostuds") partNoStudsMesh = child;
-								}
-							});
-						}
-						if (partNoStudsMesh && partNoStudsMesh.geometry) {
-							const colGeom = partNoStudsMesh.geometry.clone();
-							try {
-								piece.updateWorldMatrix(true, false);
-								partNoStudsMesh.updateWorldMatrix(true, false);
-								const pieceWorld = piece.matrixWorld;
-								const pnsWorld = partNoStudsMesh.matrixWorld;
-								const pieceWorldInv = new THREE.Matrix4().copy(pieceWorld).invert();
-								const localToPiece = new THREE.Matrix4().multiplyMatrices(pieceWorldInv, pnsWorld);
-								colGeom.applyMatrix4(localToPiece);
-							} catch (e) {
-								console.warn(`Failed to bake transform for partnostuds ${pieceId}:`, e);
-							}
-							if (!colGeom.attributes.normal) colGeom.computeVertexNormals();
-							colGeom.normalizeNormals();
-							// Optional: BVH for potential collision/picking with nostuds if used for picking later
-							try { colGeom.computeBoundsTree(); } catch (_) {}
-							collisionGeometries.set(pieceId, colGeom);
-						}
-					}
-					setLoading("");
-					resolve();
-				},
-				function (progress) {
-					if (progress.lengthComputable) {
-						const percentComplete = (progress.loaded / progress.total) * 100;
-						setLoading(`Loading: ${Math.round(percentComplete)}%`);
-					}
-				},
-				function (error) {
-					console.error("Error loading GLTF model:", error);
-					setLoading("Error loading model");
-					reject(error);
-				}
-			);
-		});
+
+	async function loadBrickModelInternal() {
+		await loadBrickModel({ gltfLoader, setLoading, setupBrickMaterials, brickGeometries, collisionGeometries });
 	}
 
 	function createMinifigureGroup(colors) {
@@ -930,67 +718,13 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let CHUNK_HEIGHT = null;
 	let chunkDebugVisible = false;
 
-	function setChunkConfig(cfg) {
-		CHUNK_SIZE = (cfg && typeof cfg.size === 'number') ? cfg.size : null;
-		CHUNK_HEIGHT = (cfg && typeof cfg.height === 'number') ? cfg.height : null;
-	}
+	function setChunkConfig(cfg) { setChunkConfigExternal({ CHUNK_SIZE, CHUNK_HEIGHT }, cfg); CHUNK_SIZE = (cfg && typeof cfg.size === 'number') ? cfg.size : null; CHUNK_HEIGHT = (cfg && typeof cfg.height === 'number') ? cfg.height : null; }
 
-	function getChunkOriginFromKey(key) {
-		if (!key || CHUNK_SIZE == null || CHUNK_HEIGHT == null) return { x: 0, y: 0, z: 0 };
-		const parts = String(key).split(',');
-		const cx = parseInt(parts[0] || '0', 10) | 0;
-		const cy = parseInt(parts[1] || '0', 10) | 0;
-		const cz = parseInt(parts[2] || '0', 10) | 0;
-		return { x: cx * CHUNK_SIZE, y: cy * CHUNK_HEIGHT, z: cz * CHUNK_SIZE };
-	}
+	function getChunkOriginFromKey(key) { return getChunkOriginFromKeyExternal({ CHUNK_SIZE, CHUNK_HEIGHT }, key); }
 
-	function ensureChunkGroup(cx, cy, cz) {
-		const key = `${cx},${cy},${cz}`;
-		let group = chunkGroups.get(key);
-		if (group) return group;
-		const origin = getChunkOriginFromKey(key);
-		group = new THREE.Group();
-		group.position.set(origin.x, origin.y, origin.z);
-		group.userData.chunkKey = key;
-		if (chunkDebugVisible) {
-			const min = new THREE.Vector3(0, 0, 0);
-			const max = new THREE.Vector3(CHUNK_SIZE || 1, CHUNK_HEIGHT || 1, CHUNK_SIZE || 1);
-			const box = new THREE.Box3(min, max);
-			const helper = new THREE.Box3Helper(box, 0x00ff00);
-			helper.material.depthTest = false;
-			helper.renderOrder = 1;
-			group.add(helper);
-		}
-		scene.add(group);
-		chunkGroups.set(key, group);
-		return group;
-	}
+	function ensureChunkGroup(cx, cy, cz) { return ensureChunkGroupExternal({ CHUNK_SIZE, CHUNK_HEIGHT, chunkGroups, chunkDebugVisible }, scene, cx, cy, cz); }
 
-	function setChunkDebugVisible(visible) {
-		chunkDebugVisible = !!visible;
-		for (const group of chunkGroups.values()) {
-			// Find existing helper
-			let helper = null;
-			for (const child of group.children) {
-				if (child.isBox3Helper) { helper = child; break; }
-			}
-			if (chunkDebugVisible) {
-				// Create helper on demand if missing
-				if (!helper && CHUNK_SIZE != null && CHUNK_HEIGHT != null) {
-					const min = new THREE.Vector3(0, 0, 0);
-					const max = new THREE.Vector3(CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE);
-					const box = new THREE.Box3(min, max);
-					helper = new THREE.Box3Helper(box, 0x0f000f);
-					helper.material.depthTest = false;
-					helper.renderOrder = 1;
-					group.add(helper);
-				}
-				if (helper) helper.visible = true;
-			} else {
-				if (helper) helper.visible = false;
-			}
-		}
-	}
+	function setChunkDebugVisible(visible) { chunkDebugVisible = !!visible; setChunkDebugVisibleExternal({ CHUNK_SIZE, CHUNK_HEIGHT, chunkGroups, chunkDebugVisible }, scene, chunkDebugVisible); }
 
 	function getMouseWorldPosition() {
 		const raycaster = new THREE.Raycaster();
@@ -1314,67 +1048,10 @@ export function createBrickQuestRenderer(container, options = {}) {
 		}
 	}
 
-	// -------- Name label helpers --------
-	function createTextSprite(text) {
-		const canvas = document.createElement('canvas');
-		canvas.width = 512;
-		canvas.height = 128;
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return null;
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
-		// Background (transparent) and text
-		ctx.font = 'bold 64px Inter, system-ui, Arial, sans-serif';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		const x = canvas.width / 2;
-		const y = canvas.height / 2;
-		ctx.lineWidth = 10;
-		ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-		ctx.strokeText(text, x, y);
-		ctx.fillStyle = 'white';
-		ctx.fillText(text, x, y);
-		const texture = new THREE.CanvasTexture(canvas);
-		texture.colorSpace = THREE.SRGBColorSpace;
-		texture.needsUpdate = true;
-		const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
-		const sprite = new THREE.Sprite(material);
-		// World size for readability
-		const worldHeight = 28; // tune as needed
-		const aspect = canvas.width / canvas.height;
-		sprite.scale.set(worldHeight * aspect, worldHeight, 1);
-		sprite.renderOrder = 1000;
-		sprite.userData.labelText = text;
-		return sprite;
-	}
-
-	function createOrUpdateNameSprite(playerData) {
-		const id = playerData.id;
-		const nameText = (typeof playerData.name === 'string' && playerData.name.trim()) ? playerData.name.trim() : '';
-		let sprite = playerNameSprites.get(id);
-		// If we have no sprite yet, create one
-		if (!sprite) {
-			const s = createTextSprite(nameText || '');
-			if (!s) return;
-			playerNameSprites.set(id, s);
-			s.position.set(playerData.position.x, playerData.position.y + 90, playerData.position.z);
-			scene.add(s);
-			return;
-		}
-		// If text changed, rebuild texture
-		if ((sprite.userData.labelText || '') !== nameText) {
-			scene.remove(sprite);
-			if (sprite.material && sprite.material.map && sprite.material.map.dispose) try { sprite.material.map.dispose(); } catch (_) {}
-			if (sprite.material && sprite.material.dispose) try { sprite.material.dispose(); } catch (_) {}
-			const s2 = createTextSprite(nameText || '');
-			if (!s2) return;
-			s2.position.copy(sprite.position);
-			playerNameSprites.set(id, s2);
-			scene.add(s2);
-			sprite = s2;
-		}
-		// Always keep sprite above current position
-		sprite.position.set(playerData.position.x, playerData.position.y + 90, playerData.position.z);
-	}
+    // moved to labels.js
+    function createOrUpdateNameSprite(playerData) {
+        updateNameSpriteExternal(playerData, playerNameSprites, scene);
+    }
 
 	return {
 		async init() {
@@ -1407,12 +1084,12 @@ export function createBrickQuestRenderer(container, options = {}) {
 					renderer.domElement.style.contain = 'layout paint';
 					renderer.domElement.style.touchAction = 'none';
 				}
-				setupPBRLighting();
+				setupPBRLighting(scene);
 				setupEquirectangularSkybox();
 				setupPostProcessing();
 				gltfLoader = new GLTFLoader();
 				ensureStudHighlight();
-				await loadBrickModel();
+				await loadBrickModelInternal();
 				setLoading("");
 			} catch (e) {
 				onError(e);
