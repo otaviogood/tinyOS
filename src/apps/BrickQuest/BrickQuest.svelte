@@ -66,6 +66,7 @@
 	let ssaoEnabled = true;
 	let ssaoDebug = false;
 	let showStats = false; // HUD stats collapsed by default
+	let chunkDebugVisible = false; // toggled with backtick
 
     onMount(async () => {
         const onStart = async () => { showStart = false; await nextTick(); await safeStartGame(); };
@@ -201,11 +202,16 @@
             }
             // Inform renderer of data
             renderer3d.setData({ pieceList, piecesData });
+            // Apply runtime chunk config from server
+            if (data.chunkConfig) {
+                renderer3d.setChunkConfig(data.chunkConfig);
+            }
             
             // Apply full state
             gameState._pause();
             gameState.players = data.state.players || {};
             gameState.bricks = data.state.bricks || {};
+            gameState.chunks = data.state.chunks || {};
             gameState._resume();
             
             // Create meshes for all entities
@@ -213,9 +219,8 @@
                 renderer3d.createPlayerMesh({ id: pid, ...player });
             }
             
-            for (const [bid, brick] of Object.entries(gameState.bricks)) {
-                renderer3d.createBrickMesh({ id: bid, ...brick });
-            }
+            // Ensure chunk groups and bricks reconcile under chunk parents
+            renderer3d.reconcileChunksAndBricks(gameState.chunks, gameState.bricks);
             
             // Update selected piece index
             const localPlayer = gameState.players[playerId];
@@ -356,6 +361,10 @@
                     }
                 }
             }
+            // If chunks changed in diff, ensure groups exist before any brick creations
+            if (diff.chunks) {
+                renderer3d.reconcileChunksAndBricks(gameState.chunks, {});
+            }
         });
 
         // Start lightweight keepalive to ensure server hears from us even when idle
@@ -433,6 +442,13 @@
                     if (renderer3d.getSSAODebugView) {
                         ssaoDebug = !!renderer3d.getSSAODebugView();
                     }
+                }
+            } else if (e.key === '`') {
+                // Toggle chunk debug helpers
+                if (renderer3d && renderer3d.setChunkDebugVisible) {
+                    // Flip the renderer-side state by reading from a local flag we keep in sync
+                    chunkDebugVisible = !chunkDebugVisible;
+                    renderer3d.setChunkDebugVisible(chunkDebugVisible);
                 }
             } else if (key === 'c') {
                 // Toggle simple third-person follow camera (debug)

@@ -48,6 +48,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 	// Instance maps
 	const playerMeshes = new Map(); // playerId -> Mesh
 	const brickMeshes = new Map(); // brickId -> Mesh
+	const chunkGroups = new Map(); // chunkKey -> Group
 	const playerNameSprites = new Map(); // playerId -> Sprite
 	// Cached raycast targets to avoid per-frame allocations
 	const raycastTargets = [];
@@ -924,6 +925,73 @@ export function createBrickQuestRenderer(container, options = {}) {
 		return group;
 	}
 
+	// Chunk config (authoritative from server)
+	let CHUNK_SIZE = null;
+	let CHUNK_HEIGHT = null;
+	let chunkDebugVisible = false;
+
+	function setChunkConfig(cfg) {
+		CHUNK_SIZE = (cfg && typeof cfg.size === 'number') ? cfg.size : null;
+		CHUNK_HEIGHT = (cfg && typeof cfg.height === 'number') ? cfg.height : null;
+	}
+
+	function getChunkOriginFromKey(key) {
+		if (!key || CHUNK_SIZE == null || CHUNK_HEIGHT == null) return { x: 0, y: 0, z: 0 };
+		const parts = String(key).split(',');
+		const cx = parseInt(parts[0] || '0', 10) | 0;
+		const cy = parseInt(parts[1] || '0', 10) | 0;
+		const cz = parseInt(parts[2] || '0', 10) | 0;
+		return { x: cx * CHUNK_SIZE, y: cy * CHUNK_HEIGHT, z: cz * CHUNK_SIZE };
+	}
+
+	function ensureChunkGroup(cx, cy, cz) {
+		const key = `${cx},${cy},${cz}`;
+		let group = chunkGroups.get(key);
+		if (group) return group;
+		const origin = getChunkOriginFromKey(key);
+		group = new THREE.Group();
+		group.position.set(origin.x, origin.y, origin.z);
+		group.userData.chunkKey = key;
+		if (chunkDebugVisible) {
+			const min = new THREE.Vector3(0, 0, 0);
+			const max = new THREE.Vector3(CHUNK_SIZE || 1, CHUNK_HEIGHT || 1, CHUNK_SIZE || 1);
+			const box = new THREE.Box3(min, max);
+			const helper = new THREE.Box3Helper(box, 0x00ff00);
+			helper.material.depthTest = false;
+			helper.renderOrder = 1;
+			group.add(helper);
+		}
+		scene.add(group);
+		chunkGroups.set(key, group);
+		return group;
+	}
+
+	function setChunkDebugVisible(visible) {
+		chunkDebugVisible = !!visible;
+		for (const group of chunkGroups.values()) {
+			// Find existing helper
+			let helper = null;
+			for (const child of group.children) {
+				if (child.isBox3Helper) { helper = child; break; }
+			}
+			if (chunkDebugVisible) {
+				// Create helper on demand if missing
+				if (!helper && CHUNK_SIZE != null && CHUNK_HEIGHT != null) {
+					const min = new THREE.Vector3(0, 0, 0);
+					const max = new THREE.Vector3(CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE);
+					const box = new THREE.Box3(min, max);
+					helper = new THREE.Box3Helper(box, 0x0f000f);
+					helper.material.depthTest = false;
+					helper.renderOrder = 1;
+					group.add(helper);
+				}
+				if (helper) helper.visible = true;
+			} else {
+				if (helper) helper.visible = false;
+			}
+		}
+	}
+
 	function getMouseWorldPosition() {
 		const raycaster = new THREE.Raycaster();
 		raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -932,7 +1000,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		raycaster.far = PLACEMENT_MAX_DISTANCE;
 		// With BVH, return only the closest hit for speed
 		raycaster.firstHitOnly = true;
-		const intersects = raycaster.intersectObjects(raycastTargets, false);
+		const intersects = raycaster.intersectObjects(raycastTargets, true);
 		let result;
 		if (intersects.length > 0) {
 			const intersection = intersects[0];
@@ -981,7 +1049,17 @@ export function createBrickQuestRenderer(container, options = {}) {
 		// Attach brickId to mesh for fast picking lookup
 		if (!mesh.userData) mesh.userData = {};
 		mesh.userData.brickId = brick.id;
-		mesh.position.set(brick.position.x, brick.position.y, brick.position.z);
+		// Require authoritative chunk assignment; skip otherwise
+		if (!brick.chunkKey || CHUNK_SIZE == null) {
+			return; // bricks must belong to a chunk
+		}
+		const parts = String(brick.chunkKey).split(',');
+		const cx = parseInt(parts[0] || '0', 10) | 0;
+		const cy = parseInt(parts[1] || '0', 10) | 0;
+		const cz = parseInt(parts[2] || '0', 10) | 0;
+		const parent = ensureChunkGroup(cx, cy, cz);
+		const origin = getChunkOriginFromKey(brick.chunkKey);
+		mesh.position.set(brick.position.x - origin.x, brick.position.y - origin.y, brick.position.z - origin.z);
 		
 		// Add tiny random rotation (±1 degree) on all axes
 		const randomRotationRange = (Math.PI / 180) * 0.125; // 1 degree in radians
@@ -996,7 +1074,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		);
 		mesh.castShadow = true;
 		mesh.receiveShadow = true;
-		scene.add(mesh);
+		parent.add(mesh);
 		brickMeshes.set(brick.id, mesh);
 		// Maintain cached raycast array
 		raycastTargets.push(mesh);
@@ -1005,13 +1083,41 @@ export function createBrickQuestRenderer(container, options = {}) {
 	function removeBrickMesh(brickId) {
 		const mesh = brickMeshes.get(brickId);
 		if (mesh) {
-			scene.remove(mesh);
+			if (mesh.parent) mesh.parent.remove(mesh);
 			// Clear identifier to avoid stale picks
 			if (mesh.userData) delete mesh.userData.brickId;
 			brickMeshes.delete(brickId);
 			// Remove from raycast cache
 			const idx = raycastTargets.indexOf(mesh);
 			if (idx !== -1) raycastTargets.splice(idx, 1);
+			// If parent chunk group is empty, prune it
+			const parent = mesh.parent;
+			if (parent && parent.userData && parent.userData.chunkKey) {
+				let hasMesh = false;
+				for (const child of parent.children) {
+					if (child.isMesh) { hasMesh = true; break; }
+				}
+				if (!hasMesh) {
+					scene.remove(parent);
+					chunkGroups.delete(parent.userData.chunkKey);
+				}
+			}
+		}
+	}
+
+	function reconcileChunksAndBricks(stateChunks, stateBricks) {
+		if (stateChunks && typeof stateChunks === 'object') {
+			for (const [key, c] of Object.entries(stateChunks)) {
+				const cx = Number.isFinite(c.cx) ? (c.cx | 0) : 0;
+				const cy = Number.isFinite(c.cy) ? (c.cy | 0) : 0;
+				const cz = Number.isFinite(c.cz) ? (c.cz | 0) : 0;
+				ensureChunkGroup(cx, cy, cz);
+			}
+		}
+		for (const [bid, b] of Object.entries(stateBricks || {})) {
+			if (!brickMeshes.has(bid)) {
+				createBrickMesh({ id: bid, ...b });
+			}
 		}
 	}
 
@@ -1342,6 +1448,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 		// Data/config
 		setGameStateProvider(fn) { getGameStateRef = fn; },
 		setData({ pieceList: pl, piecesData: pd }) { pieceList = pl || []; piecesData = pd || {}; },
+		setChunkConfig,
+		setChunkDebugVisible,
+		reconcileChunksAndBricks,
 		setSelectedPieceIndex(i) { selectedPieceIndex = Math.max(0, Math.min(pieceList.length - 1, i | 0)); ensureGhostMesh(true); updatePreviewMesh(); },
 		setSelectedColorIndex(i) { selectedColorIndex = Math.max(0, Math.min((colorPalette.length || 1) - 1, i | 0)); updatePreviewMesh(); },
 		setGhostYaw(y) { ghostYaw = y || 0; ensureGhostMesh(false); },

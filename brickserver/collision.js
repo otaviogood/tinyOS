@@ -387,9 +387,8 @@ function testGhostCollision(payload, gameState) {
     const ghostAABB = getWorldAABBForPiece(pieceId, position, payload.rotation ?? payload.rotationY ?? 0);
     if (!ghostAABB) return false;
     const candidates = [];
-    // Use world AABB BVH to collect overlapping bricks efficiently
-    queryBVHForAABB(ghostAABB, (boxIndex) => {
-        const brickId = worldCollision.owners[boxIndex];
+    // Use chunked AABB BVHs to collect overlapping bricks efficiently
+    queryBVHForAABB(ghostAABB, (boxIndex, _box, brickId) => {
         const brick = gameState.bricks && gameState.bricks[brickId];
         if (!brick) return;
         if (!pieceCollisionCache.get(brick.pieceId)) return;
@@ -490,8 +489,7 @@ function testGhostCollisionWithDebug(payload, gameState) {
     tAabbEnd = process.hrtime.bigint();
     if (!ghostAABB) return { colliding: false, broadCount, prunedCount };
     const candidates = [];
-    queryBVHForAABB(ghostAABB, (boxIndex) => {
-        const brickId = worldCollision.owners[boxIndex];
+    queryBVHForAABB(ghostAABB, (boxIndex, _box, brickId) => {
         const brick = gameState.bricks && gameState.bricks[brickId];
         if (!brick) return;
         if (!pieceCollisionCache.get(brick.pieceId)) return;
@@ -592,17 +590,77 @@ function testGhostCollisionWithDebug(payload, gameState) {
     } };
 }
 
-// -------------------- Player Capsule vs World AABB BVH --------------------
+// -------------------- Player Capsule vs Chunked World AABB BVH --------------------
 
-// Simple AABB BVH structure over brick bounding boxes
-const worldCollision = {
-    nodes: [], // array of { box: THREE.Box3, left: number, right: number, start: number, count: number }
-    indices: [], // indices into boxes array
-    boxes: [], // array of THREE.Box3 for each brick
-    owners: [], // parallel to boxes; store brick ids
-    root: -1,
-    leafSize: 8,
+// Chunked broadphase: each brick is inserted into exactly one chunk (by AABB center).
+// Neighboring chunks are considered automatically during queries.
+
+const CHUNK_SIZE_XZ = 640; // world units along X and Z
+const CHUNK_SIZE_Y = CHUNK_SIZE_XZ;  // world units along Y (max piece axis == X size)
+
+function getChunkCoordForPoint(x, y, z) {
+    const cx = Math.floor(x / CHUNK_SIZE_XZ);
+    const cy = Math.floor(y / CHUNK_SIZE_Y);
+    const cz = Math.floor(z / CHUNK_SIZE_XZ);
+    return { cx, cy, cz };
+}
+
+function getChunkKey(cx, cy, cz) {
+    return cx + ',' + cy + ',' + cz;
+}
+
+function getChunkAABB(cx, cy, cz) {
+    const min = new THREE.Vector3(
+        cx * CHUNK_SIZE_XZ,
+        cy * CHUNK_SIZE_Y,
+        cz * CHUNK_SIZE_XZ
+    );
+    const max = new THREE.Vector3(
+        (cx + 1) * CHUNK_SIZE_XZ,
+        (cy + 1) * CHUNK_SIZE_Y,
+        (cz + 1) * CHUNK_SIZE_XZ
+    );
+    return new THREE.Box3(min, max);
+}
+
+function createEmptyChunk(cx, cy, cz) {
+    return {
+        key: getChunkKey(cx, cy, cz),
+        cx, cy, cz,
+        bounds: getChunkAABB(cx, cy, cz),
+        nodes: [],
+        indices: [],
+        boxes: [],
+        owners: [], // brick ids parallel to boxes
+        root: -1,
+        leafSize: 8,
+    };
+}
+
+const chunkCollision = {
+    chunks: new Map(), // key -> chunk
+    totalBoxes: 0,
 };
+
+function ensureChunk(cx, cy, cz) {
+    const key = getChunkKey(cx, cy, cz);
+    let chunk = chunkCollision.chunks.get(key);
+    if (!chunk) {
+        chunk = createEmptyChunk(cx, cy, cz);
+        chunkCollision.chunks.set(key, chunk);
+    }
+    return chunk;
+}
+
+function rebuildChunkBVH(chunk) {
+    chunk.nodes = [];
+    chunk.indices = [];
+    chunk.root = -1;
+    if (chunk.boxes.length > 0) {
+        const all = chunk.boxes.map((_, i) => i);
+        chunk.root = buildBVHRecursive(all, chunk.boxes, chunk.nodes, chunk.indices, chunk.leafSize);
+    }
+}
 
 function buildAABBForRange(indices, boxes) {
     const box = new THREE.Box3();
@@ -614,7 +672,8 @@ function buildAABBForRange(indices, boxes) {
     return box;
 }
 
-function buildBVHRecursive(indices, boxes, nodes, leafSize) {
+// Generic BVH builder for an arbitrary set of arrays (no globals)
+function buildBVHRecursive(indices, boxes, nodes, indicesOut, leafSize) {
     if (indices.length === 0) return -1;
 
     const nodeBox = buildAABBForRange(indices, boxes);
@@ -623,9 +682,9 @@ function buildBVHRecursive(indices, boxes, nodes, leafSize) {
     nodes.push(node);
 
     if (indices.length <= leafSize) {
-        node.start = worldCollision.indices.length;
+        node.start = indicesOut.length;
         node.count = indices.length;
-        for (const idx of indices) worldCollision.indices.push(idx);
+        for (const idx of indices) indicesOut.push(idx);
         return nodeIndex;
     }
 
@@ -645,50 +704,144 @@ function buildBVHRecursive(indices, boxes, nodes, leafSize) {
     const leftIndices = indices.slice(0, mid);
     const rightIndices = indices.slice(mid);
 
-    node.left = buildBVHRecursive(leftIndices, boxes, nodes, leafSize);
-    node.right = buildBVHRecursive(rightIndices, boxes, nodes, leafSize);
+    node.left = buildBVHRecursive(leftIndices, boxes, nodes, indicesOut, leafSize);
+    node.right = buildBVHRecursive(rightIndices, boxes, nodes, indicesOut, leafSize);
     return nodeIndex;
 }
 
 function rebuildWorldBVH(gameState) {
-    worldCollision.nodes = [];
-    worldCollision.indices = [];
-    worldCollision.boxes = [];
-    worldCollision.owners = [];
-    worldCollision.root = -1;
+    // Reset chunk store
+    chunkCollision.chunks.clear();
+    chunkCollision.totalBoxes = 0;
+    // Reset authoritative chunk map in game state
+    if (!gameState.chunks || typeof gameState.chunks !== 'object') gameState.chunks = {};
+    // Clear existing chunk entries (delta will compute diff)
+    gameState.chunks = {};
 
     const entries = Object.values(gameState.bricks || {});
     for (const brick of entries) {
         const box = getWorldAABBForPiece(brick.pieceId, brick.position, brick.rotation || 0);
         if (!box) continue;
-        worldCollision.boxes.push(box.clone());
-        worldCollision.owners.push(brick.id);
+        // Insert by center into exactly one chunk
+        const center = new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
+        const { cx, cy, cz } = getChunkCoordForPoint(center.x, center.y, center.z);
+        const key = getChunkKey(cx, cy, cz);
+        let chunk = chunkCollision.chunks.get(key);
+        if (!chunk) {
+            chunk = createEmptyChunk(cx, cy, cz);
+            chunkCollision.chunks.set(key, chunk);
+        }
+        chunk.boxes.push(box.clone());
+        chunk.owners.push(brick.id);
+        // Authoritatively stamp brick's chunkKey
+        if (brick && typeof brick === 'object') {
+            brick.chunkKey = key;
+        }
     }
 
-    const allIndices = worldCollision.boxes.map((_, i) => i);
-    worldCollision.root = buildBVHRecursive(allIndices, worldCollision.boxes, worldCollision.nodes, worldCollision.leafSize);
+    // Build per-chunk BVHs
+    for (const chunk of chunkCollision.chunks.values()) {
+        rebuildChunkBVH(chunk);
+        chunkCollision.totalBoxes += chunk.boxes.length;
+        // Publish chunk presence into game state for clients
+        gameState.chunks[chunk.key] = { cx: chunk.cx | 0, cy: chunk.cy | 0, cz: chunk.cz | 0 };
+    }
 }
 
 function queryBVHForAABB(aabb, callback) {
-    if (worldCollision.root === -1) return;
-    const stack = [worldCollision.root];
-    while (stack.length) {
-        const nodeIndex = stack.pop();
-        const node = worldCollision.nodes[nodeIndex];
-        if (!node) continue;
-        if (!aabbIntersects(aabb, node.box)) continue;
-        if (node.count >= 0) {
-            for (let i = 0; i < node.count; i++) {
-                const boxIndex = worldCollision.indices[node.start + i];
-                const box = worldCollision.boxes[boxIndex];
-                if (aabbIntersects(aabb, box)) {
-                    callback(boxIndex, box);
+    if (chunkCollision.totalBoxes === 0) return;
+    // Determine overlapped chunk coords
+    let minCX = Math.floor(aabb.min.x / CHUNK_SIZE_XZ);
+    let maxCX = Math.floor((aabb.max.x - 1e-6) / CHUNK_SIZE_XZ);
+    let minCY = Math.floor(aabb.min.y / CHUNK_SIZE_Y);
+    let maxCY = Math.floor((aabb.max.y - 1e-6) / CHUNK_SIZE_Y);
+    let minCZ = Math.floor(aabb.min.z / CHUNK_SIZE_XZ);
+    let maxCZ = Math.floor((aabb.max.z - 1e-6) / CHUNK_SIZE_XZ);
+
+    // Expand per-axis only if the query AABB comes within the global max half-extent
+    // of a chunk boundary, to capture single-home bricks overhanging borders.
+    // Expand using half of X chunk size as overhang threshold for all axes.
+    const halfX = CHUNK_SIZE_XZ * 0.5;
+    // Left distances to current cell boundaries
+    const leftBoundaryX = minCX * CHUNK_SIZE_XZ;
+    const leftBoundaryY = minCY * CHUNK_SIZE_Y;
+    const leftBoundaryZ = minCZ * CHUNK_SIZE_XZ;
+    if ((aabb.min.x - leftBoundaryX) < halfX) minCX -= 1;
+    if ((aabb.min.y - leftBoundaryY) < halfX) minCY -= 1;
+    if ((aabb.min.z - leftBoundaryZ) < halfX) minCZ -= 1;
+    // Right distances to next cell boundaries
+    const rightBoundaryX = (maxCX + 1) * CHUNK_SIZE_XZ;
+    const rightBoundaryY = (maxCY + 1) * CHUNK_SIZE_Y;
+    const rightBoundaryZ = (maxCZ + 1) * CHUNK_SIZE_XZ;
+    if ((rightBoundaryX - aabb.max.x) < halfX) maxCX += 1;
+    if ((rightBoundaryY - aabb.max.y) < halfX) maxCY += 1;
+    if ((rightBoundaryZ - aabb.max.z) < halfX) maxCZ += 1;
+
+    for (let cy = minCY; cy <= maxCY; cy++) {
+        for (let cx = minCX; cx <= maxCX; cx++) {
+            for (let cz = minCZ; cz <= maxCZ; cz++) {
+                const key = getChunkKey(cx, cy, cz);
+                const chunk = chunkCollision.chunks.get(key);
+                if (!chunk || chunk.root === -1) continue;
+
+                const stack = [chunk.root];
+                while (stack.length) {
+                    const nodeIndex = stack.pop();
+                    const node = chunk.nodes[nodeIndex];
+                    if (!node) continue;
+                    if (!aabbIntersects(aabb, node.box)) continue;
+                    if (node.count >= 0) {
+                        for (let i = 0; i < node.count; i++) {
+                            const boxIndex = chunk.indices[node.start + i];
+                            const box = chunk.boxes[boxIndex];
+                            if (aabbIntersects(aabb, box)) {
+                                callback(boxIndex, box, chunk.owners[boxIndex], chunk.key);
+                            }
+                        }
+                    } else {
+                        if (node.left !== -1) stack.push(node.left);
+                        if (node.right !== -1) stack.push(node.right);
+                    }
                 }
             }
-        } else {
-            if (node.left !== -1) stack.push(node.left);
-            if (node.right !== -1) stack.push(node.right);
         }
+    }
+}
+
+function addBrickToCollision(gameState, brick) {
+    if (!brick || !brick.id || !brick.position || !brick.pieceId) return;
+    const box = getWorldAABBForPiece(brick.pieceId, brick.position, brick.rotation || 0);
+    if (!box) return;
+    const center = new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
+    const { cx, cy, cz } = getChunkCoordForPoint(center.x, center.y, center.z);
+    const chunk = ensureChunk(cx, cy, cz);
+    const key = chunk.key;
+    chunk.boxes.push(box.clone());
+    chunk.owners.push(brick.id);
+    rebuildChunkBVH(chunk);
+    chunkCollision.totalBoxes++;
+    // Update authoritative maps
+    brick.chunkKey = key;
+    if (!gameState.chunks) gameState.chunks = {};
+    gameState.chunks[key] = { cx, cy, cz };
+}
+
+function removeBrickFromCollision(gameState, brick) {
+    if (!brick || !brick.id) return;
+    const key = brick.chunkKey;
+    if (!key) return;
+    const chunk = chunkCollision.chunks.get(key);
+    if (!chunk) return;
+    const idx = chunk.owners.indexOf(brick.id);
+    if (idx === -1) return;
+    chunk.owners.splice(idx, 1);
+    chunk.boxes.splice(idx, 1);
+    chunkCollision.totalBoxes = Math.max(0, chunkCollision.totalBoxes - 1);
+    if (chunk.boxes.length === 0) {
+        chunkCollision.chunks.delete(key);
+        if (gameState && gameState.chunks) delete gameState.chunks[key];
+    } else {
+        rebuildChunkBVH(chunk);
     }
 }
 
@@ -878,7 +1031,7 @@ function narrowPhaseCapsuleVsConvex(geometry, matrixWorld, p0World, p1World, rad
 
 function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
     // player: { position: {x,y,z}, velocity: {x,y,z} }
-    if (worldCollision.root === -1) return; // nothing to collide with
+    if (chunkCollision.totalBoxes === 0) return; // nothing to collide with
 
     const pos = new THREE.Vector3(player.position.x, player.position.y, player.position.z);
     const vel = new THREE.Vector3(player.velocity.x, player.velocity.y, player.velocity.z);
@@ -894,7 +1047,7 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
         );
 
         const candidates = [];
-        queryBVHForAABB(capsuleAABB, (idx, box) => {
+        queryBVHForAABB(capsuleAABB, (idx, box, brickId) => {
             // Broad-phase: capsule line vs AABB quick overlap test
             const px = pos.x;
             const pz = pos.z;
@@ -932,7 +1085,6 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
                     if (dMinZ < best) { best = dMinZ; nx = 0; ny = 0; nz = -1; penetration = dMinZ; }
                     if (dMaxZ < best) { best = dMaxZ; nx = 0; ny = 0; nz = 1; penetration = dMaxZ; }
                 }
-                const brickId = worldCollision.owners[idx];
                 const brick = gameState && gameState.bricks ? gameState.bricks[brickId] : null;
                 candidates.push({ idx, box, brick, corr: { nx, ny, nz, penetration } });
             }
@@ -1006,6 +1158,8 @@ module.exports = {
     getWorldAABBForPiece,
     rebuildWorldBVH,
     resolvePlayerCapsuleCollision,
+    addBrickToCollision,
+    removeBrickFromCollision,
 };
 
 

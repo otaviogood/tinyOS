@@ -20,6 +20,8 @@ const {
     testGhostCollisionWithDebug,
     rebuildWorldBVH,
     resolvePlayerCapsuleCollision,
+    addBrickToCollision,
+    removeBrickFromCollision,
 } = require('./collision');
 
 const app = express();
@@ -136,6 +138,7 @@ const gameState = createDeltaState();
 // Initialize structure
 gameState.players = {};
 gameState.bricks = {};
+gameState.chunks = {};
 gameState.nextBrickId = 1;
 let worldDirtySinceSave = false;
 
@@ -257,7 +260,9 @@ io.on('connection', (socket) => {
         playerId: socket.id,
         state: JSON.parse(JSON.stringify(gameState._state)), // Send raw state
         pieceList: PIECE_LIST,
-        piecesData: Object.fromEntries(brickPiecesData)
+        piecesData: Object.fromEntries(brickPiecesData),
+        // Runtime chunk config for client
+        chunkConfig: { size: 640, height: 768 }
     };
 
     simulateLatency(() => {
@@ -726,10 +731,10 @@ function handleBrickInteraction(player, click, mouseRay) {
             pieceId: pieceId, // Store the piece type
             type: 'basic'
         };
-        
+        // Compute chunk and stamp chunkKey BEFORE inserting into delta state
+        addBrickToCollision(gameState, newBrick);
+        // Now insert into authoritative state so _new diff includes chunkKey
         gameState.bricks[newBrickId] = newBrick;
-        // Update world collision BVH
-        rebuildWorldBVH(gameState);
         worldDirtySinceSave = true;
         
     } else if (click.button === 2) { // Right click - remove brick
@@ -738,9 +743,10 @@ function handleBrickInteraction(player, click, mouseRay) {
         if (targetBrickId) {
             const brickToRemove = gameState.bricks[targetBrickId];
             if (brickToRemove && brickToRemove.type !== 'ground') { // Don't remove ground layer
+                const removed = gameState.bricks[targetBrickId];
+                // Remove from collision before deleting so we still have chunkKey
+                removeBrickFromCollision(gameState, removed);
                 delete gameState.bricks[targetBrickId];
-                // Update world collision BVH
-                rebuildWorldBVH(gameState);
                 worldDirtySinceSave = true;
             }
         }
