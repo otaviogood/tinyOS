@@ -482,7 +482,8 @@
     }
 
     function changeColor(direction) {
-        selectedColorIndex = Math.max(0, Math.min(brickColorHexes.length - 1, selectedColorIndex + direction));
+        const n = brickColorHexes.length;
+        selectedColorIndex = n > 0 ? (((selectedColorIndex + direction) % n + n) % n) : 0;
         renderer3d && renderer3d.setSelectedColorIndex(selectedColorIndex);
         inputState.events.push({ type: 'colorChange', delta: direction });
     }

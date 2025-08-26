@@ -328,8 +328,10 @@ io.on('connection', (socket) => {
                                 rotationY: typeof event.rotationY === 'number' ? event.rotationY : 0
                             }, inputDiff.mouse);
                         } else if (event.type === 'pieceChange') {
-                            player.selectedPieceIndex = Math.max(0, Math.min(PIECE_LIST.length - 1, 
-                                player.selectedPieceIndex + event.delta));
+                            const n = PIECE_LIST.length | 0;
+                            const cur = Number.isFinite(player.selectedPieceIndex) ? (player.selectedPieceIndex | 0) : 0;
+                            const d = Number.isFinite(event.delta) ? (event.delta | 0) : 0;
+                            player.selectedPieceIndex = n > 0 ? (((cur + d) % n + n) % n) : 0;
                             console.log(`Player ${socket.id} selected piece: ${PIECE_LIST[player.selectedPieceIndex].id}`);
                             // Reset anchor state when switching pieces to keep authoritative behavior consistent
                             const newPieceId = (PIECE_LIST[player.selectedPieceIndex] && PIECE_LIST[player.selectedPieceIndex].id) || null;
@@ -346,8 +348,10 @@ io.on('connection', (socket) => {
                             player.selectedStudIndex = 0;
                             player.selectedAntiStudIndex = 0;
                         } else if (event.type === 'colorChange') {
-                            const next = Math.max(0, Math.min(MAX_COLOR_INDEX, (player.selectedColorIndex || 0) + (event.delta || 0)));
-                            player.selectedColorIndex = next;
+                            const n = (MAX_COLOR_INDEX + 1) | 0;
+                            const cur = Number.isFinite(player.selectedColorIndex) ? (player.selectedColorIndex | 0) : 0;
+                            const d = Number.isFinite(event.delta) ? (event.delta | 0) : 0;
+                            player.selectedColorIndex = n > 0 ? (((cur + d) % n + n) % n) : 0;
                         } else if (event.type === 'setColor') {
                             const idx = typeof event.index === 'number' ? event.index : 0;
                             player.selectedColorIndex = Math.max(0, Math.min(MAX_COLOR_INDEX, idx));

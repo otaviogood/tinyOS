@@ -402,6 +402,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 	// Ghost placement state
 	let ghostMesh = null;
 	let ghostMaterial = null;
+	let ghostMeshAdditive = null;
+	let ghostMaterialAdditive = null;
 	let ghostIsColliding = false;
 	let ghostTargetPos = null;
 	let ghostPieceId = null;
@@ -556,7 +558,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 	}
 
 	function setupGhostMaterial() {
-		if (ghostMaterial) return;
+		if (ghostMaterial && ghostMaterialAdditive) return;
 		ghostMaterial = new THREE.MeshStandardMaterial({
 			color: 0x00ffc8,
 			transparent: true,
@@ -567,6 +569,20 @@ export function createBrickQuestRenderer(container, options = {}) {
 			metalness: 0.0,
 		});
 		ghostMaterial.shadowSide = null;
+		// Secondary very-dim additive pass to show through occluders
+		if (!ghostMaterialAdditive) {
+			ghostMaterialAdditive = new THREE.MeshStandardMaterial({
+				color: 0x101010,
+				transparent: true,
+				blending: THREE.NormalBlending,
+				opacity: 0.96,
+				depthTest: false,
+				depthWrite: false,
+				roughness: 0.3,
+				metalness: 0.0,
+			});
+			ghostMaterialAdditive.shadowSide = null;
+		}
 	}
 
 	function setupPreview(previewContainerElement) {
@@ -679,7 +695,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 		ghostIsColliding = !!colliding;
 		if (!ghostMaterial) return;
 		const target = colliding ? 0xff0000 : 0x00ffc8;
+		const targetAdditive = colliding ? 0xa00000 : 0x101010;
 		ghostMaterial.color.setHex(target).convertSRGBToLinear();
+		if (ghostMaterialAdditive) ghostMaterialAdditive.color.setHex(targetAdditive).convertSRGBToLinear();
 		// Keep arrow color in sync with ghost piece
 		if (ghostArrow) {
 			if (ghostArrow.material && ghostArrow.material.color) {
@@ -712,6 +730,12 @@ export function createBrickQuestRenderer(container, options = {}) {
 			ghostMesh.receiveShadow = false;
 			ghostMesh.renderOrder = 998;
 			scene.add(ghostMesh);
+			// Add the additive ghost mesh
+			ghostMeshAdditive = new THREE.Mesh(geometry, ghostMaterialAdditive);
+			ghostMeshAdditive.castShadow = false;
+			ghostMeshAdditive.receiveShadow = false;
+			ghostMeshAdditive.renderOrder = 997;
+			scene.add(ghostMeshAdditive);
 			// Create arrow helper once
 			if (!ghostArrow) {
 				// Fixed-size cone (head only): radius=12, height=16
@@ -728,6 +752,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			}
 		} else if (forceGeometryUpdate || ghostMesh.geometry !== geometry) {
 			ghostMesh.geometry = geometry;
+			if (ghostMeshAdditive) ghostMeshAdditive.geometry = geometry;
 		}
 
 		const pieceData = piecesData[selectedPieceId];
@@ -848,6 +873,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 			ghostMesh.position.set(posX, posY, posZ);
 			ghostMesh.setRotationFromQuaternion(finalQuat);
 			ghostMesh.visible = !isPlayerMoving;
+			if (ghostMeshAdditive) {
+				ghostMeshAdditive.position.set(posX, posY, posZ);
+				ghostMeshAdditive.setRotationFromQuaternion(finalQuat);
+				ghostMeshAdditive.visible = !isPlayerMoving;
+			}
 			ghostTargetPos = { ...targetPos };
 			const selectedPiece = pieceList[selectedPieceIndex];
 			ghostPieceId = selectedPiece ? selectedPiece.id : null;
@@ -904,6 +934,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			}
 		} else {
 			ghostMesh.visible = false;
+			if (ghostMeshAdditive) ghostMeshAdditive.visible = false;
 			ghostTargetPos = null;
 			ghostPieceId = null;
 			if (ghostArrow) ghostArrow.visible = false;
@@ -1059,6 +1090,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let chunkDebugVisible = false;
 	// Simple chunk LOD settings
 	let LOD_DISTANCE = 1000; // world units from camera to chunk AABB center to switch to convex
+	// Centralized far render distance (used for camera.far and chunk culling)
+	let RENDER_DISTANCE = 5000; // world units
 
 	function setChunkConfig(cfg) { setChunkConfigExternal({ CHUNK_SIZE, CHUNK_HEIGHT }, cfg); CHUNK_SIZE = (cfg && typeof cfg.size === 'number') ? cfg.size : null; CHUNK_HEIGHT = (cfg && typeof cfg.height === 'number') ? cfg.height : null; }
 
@@ -1243,6 +1276,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 		ghostMesh.position.set(gp.position.x, gp.position.y, gp.position.z);
 		const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(gp.rotation.x || 0, gp.rotation.y || 0, gp.rotation.z || 0));
 		ghostMesh.setRotationFromQuaternion(q);
+		if (ghostMeshAdditive) {
+			ghostMeshAdditive.visible = !isPlayerMoving;
+			ghostMeshAdditive.position.set(gp.position.x, gp.position.y, gp.position.z);
+			ghostMeshAdditive.setRotationFromQuaternion(q);
+		}
 		ghostTargetPos = { ...gp.position };
 		ghostRotationEuler = { ...gp.rotation };
 	}
@@ -1262,6 +1300,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 			const phase = Math.sin(2 * Math.PI * 1.0 * tSec); // 1 Hz
 			const minA = 0.1, maxA = 1.0;
 			ghostMaterial.opacity = ((phase + 1) * 0.5) * (maxA - minA) + minA;
+			if (ghostMaterialAdditive) {
+				ghostMaterialAdditive.opacity = Math.max(0.02, ghostMaterial.opacity * 0.4);
+			}
 			// Animate ghostArrow sliding along its axis at 1 Hz and fade over time
 			if (ghostArrow && ghostArrow.visible) {
 				const dir = new THREE.Vector3(0, 1, 0).applyQuaternion(ghostArrow.quaternion).normalize();
@@ -1334,6 +1375,19 @@ export function createBrickQuestRenderer(container, options = {}) {
 				// Ensure groups remain visible so shadow pass can traverse them
 				group.visible = true;
 				const ud = group.userData || {};
+				// Distance-based chunk culling using chunk centroid vs render distance
+				if (CHUNK_SIZE != null && CHUNK_HEIGHT != null && Number.isFinite(RENDER_DISTANCE)) {
+					const centroidX = group.position.x + (CHUNK_SIZE * 0.5);
+					const centroidY = group.position.y + (CHUNK_HEIGHT * 0.5);
+					const centroidZ = group.position.z + (CHUNK_SIZE * 0.5);
+					_tempVec3.set(centroidX, centroidY, centroidZ);
+					const distToCentroid = _tempVec3.distanceTo(camera.position);
+					if (distToCentroid > RENDER_DISTANCE) {
+						group.visible = false; // fully cull when beyond far render distance
+						ud.inMainFrustum = false;
+						continue;
+					}
+				}
 				if (!ud.chunkBounds || ud.boundsDirty) {
 					recomputeGroupBounds(group);
 				}
@@ -1400,7 +1454,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color(0x0cbeff);
                 
-				camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.5, 10000);
+				camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.5, RENDER_DISTANCE);
 				camera.position.set(0, 50, 0);
 				camera.lookAt(0, 50, -1);
 				renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
@@ -1438,6 +1492,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 			if (composer) composer.dispose();
 			if (previewRenderer) previewRenderer.dispose();
 			if (previewComposer) previewComposer.dispose();
+			if (ghostMeshAdditive) {
+				scene.remove(ghostMeshAdditive);
+				disposeObject(ghostMeshAdditive);
+				ghostMeshAdditive = null;
+			}
 			if (ghostArrow) {
 				scene.remove(ghostArrow);
 				disposeObject(ghostArrow);
