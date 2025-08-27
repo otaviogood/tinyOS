@@ -886,24 +886,19 @@ function addBricksToCollisionBatch(gameState, bricks) {
     const addedBricks = [];
 
     for (const brick of bricks) {
-        if (!brick || !brick.id || !brick.position || !brick.pieceId) continue;
-        const box = getWorldAABBForPiece(brick.pieceId, brick.position, brick.rotation || 0);
-        if (!box) continue;
-
-        if (!chunk) {
-            const center = new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
-            const coords = getChunkCoordForPoint(center.x, center.y, center.z);
-            cx = coords.cx; cy = coords.cy; cz = coords.cz;
-            chunk = ensureChunk(cx, cy, cz);
-            key = chunk.key;
-        }
-
+        const box = getWorldAABBForPiece(brick.pieceId, brick.position, brick.rotation);
         boxesToAdd.push(box.clone());
         ownersToAdd.push(brick.id);
         addedBricks.push(brick);
     }
 
-    if (!chunk || boxesToAdd.length === 0) return;
+    // Determine chunk once from the first valid box (loop-invariant)
+    const firstBox = boxesToAdd[0];
+    const center = new THREE.Vector3().addVectors(firstBox.min, firstBox.max).multiplyScalar(0.5);
+    const coords = getChunkCoordForPoint(center.x, center.y, center.z);
+    cx = coords.cx; cy = coords.cy; cz = coords.cz;
+    chunk = ensureChunk(cx, cy, cz);
+    key = chunk.key;
 
     for (let i = 0; i < boxesToAdd.length; i++) {
         chunk.boxes.push(boxesToAdd[i]);
@@ -914,9 +909,13 @@ function addBricksToCollisionBatch(gameState, bricks) {
     chunkCollision.totalBoxes += boxesToAdd.length;
 
     if (!gameState.chunks) gameState.chunks = {};
-    gameState.chunks[key] = { cx, cy, cz };
+    if (!gameState.chunks[key]) gameState.chunks[key] = { cx, cy, cz, bricks: {} };
+    const bricksMap = gameState.chunks[key].bricks || (gameState.chunks[key].bricks = {});
+    if (!gameState.brickIndex) gameState.brickIndex = {};
     for (const brick of addedBricks) {
         brick.chunkKey = key;
+        bricksMap[brick.id] = brick;
+        gameState.brickIndex[brick.id] = key;
     }
 }
 

@@ -21,10 +21,12 @@ const {
     rebuildWorldBVH,
     resolvePlayerCapsuleCollision,
     addBrickToCollision,
+    addBricksToCollisionBatch,
     removeBrickFromCollision,
     CHUNK_SIZE_XZ,
     CHUNK_SIZE_Y,
 } = require('./collision');
+const { generateChunk } = require('./worldgen/generateChunk');
 
 const app = express();
 const server = http.createServer(app);
@@ -48,8 +50,6 @@ const io = socketIO(server, {
 // Game configuration
 const TICK_RATE = 60; // Server tick rate in Hz
 const SEND_RATE = 60; // How often to send updates to clients in Hz
-const BRICK_SPACING = 40; // For initial world generation
-const GRID_SIZE = 8; // For initial world generation
 // Color configuration
 const NUM_COLORS = 10; // Total number of brick colors supported by the client palette
 const MAX_COLOR_INDEX = NUM_COLORS - 1;
@@ -199,38 +199,6 @@ function tryLoadWorldFromDisk() {
         return false;
     }
 }
-
-
-// Initialize world with some starter bricks
-function initializeWorld() {
-    // Create a simple starter platform, but defer chunk assignment until GLTF is loaded
-    const initialBricks = [];
-    for (let x = 0; x < GRID_SIZE; x++) {
-        for (let z = 0; z < GRID_SIZE; z++) {
-            const isEvenRow = x % 2 === 0;
-            const isEvenCol = z % 2 === 0;
-            const colorIndex = (isEvenRow && isEvenCol) || (!isEvenRow && !isEvenCol) ? 0 : Math.floor(Math.random() * NUM_COLORS);
-            const brickId = String(gameState.nextBrickId++);
-            const gridOffset = (GRID_SIZE - 1) * BRICK_SPACING * 0.5;
-            initialBricks.push({
-                id: brickId,
-                position: {
-                    x: x * BRICK_SPACING - gridOffset,
-                    y: -32,
-                    z: z * BRICK_SPACING - gridOffset
-                },
-                rotation: { x: 0, y: 0, z: 0 },
-                colorIndex: colorIndex,
-                pieceId: '3022',
-                type: 'ground'
-            });
-        }
-    }
-    gameState.pendingBricks = initialBricks;
-    worldDirtySinceSave = true;
-}
-
-
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
@@ -830,15 +798,7 @@ setInterval(() => {
     }
 }, 1000 / SEND_RATE);
 
-// Initialize or load the world when server starts
-const loaded = tryLoadWorldFromDisk();
-if (!loaded) {
-    initializeWorld();
-    console.log(`[${new Date().toLocaleTimeString()}] Created new world with starter platform`);
-} else {
-    console.log(`[${new Date().toLocaleTimeString()}] Using persisted world from disk`);
-    worldDirtySinceSave = false;
-}
+// Startup moved below to a single async block that awaits brick load first
 
 // Start periodic autosave
 const autosaveInterval = setInterval(() => {
@@ -869,48 +829,43 @@ process.on('uncaughtException', async (err) => {
     process.exit(1);
 });
 
-// Load brick stud data before starting server
-loadBrickStudData().then(() => {
-    // After GLTF/stud data is ready, finalize initial world: assign chunks from AABBs
-    if (Array.isArray(gameState.pendingBricks) && gameState.pendingBricks.length > 0) {
-        for (const b of gameState.pendingBricks) {
-            addBrickToCollision(gameState, b);
-            const key = b.chunkKey;
-            const parts = (key && typeof key === 'string') ? key.split(',') : ['0','0','0'];
-            const cx = parseInt(parts[0] || '0', 10) | 0;
-            const cy = parseInt(parts[1] || '0', 10) | 0;
-            const cz = parseInt(parts[2] || '0', 10) | 0;
-            if (!gameState.chunks[key]) gameState.chunks[key] = { cx, cy, cz, bricks: {} };
-            if (!gameState.chunks[key].bricks) gameState.chunks[key].bricks = {};
-            gameState.chunks[key].bricks[b.id] = b;
-            if (!gameState.brickIndex) gameState.brickIndex = {};
-            gameState.brickIndex[b.id] = key;
-        }
-        gameState.pendingBricks = [];
-    }
-    // Build per-chunk BVHs over the inserted boxes
-    rebuildWorldBVH(gameState);
-    // Start server
-    const PORT = process.env.PORT || 3001;
-    const HOST = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for local network access
-    server.listen(PORT, HOST, () => {
-        console.log(`BrickQuest server running on ${HOST}:${PORT}`);
-        console.log(`Local network access: http://${HOST}:${PORT}`);
-        console.log(`Your local IP addresses for remote access:`);
-        console.log(`  - http://192.168.68.53:${PORT}`);
-        console.log(`  - http://10.147.20.89:${PORT}`);
-        const brickCount = Object.values(gameState.chunks || {}).reduce((n, c) => n + Object.keys((c && c.bricks) || {}).length, 0);
-        console.log(`World ready with ${brickCount} bricks across ${Object.keys(gameState.chunks||{}).length} chunks`);
-        
-        // Log latency simulation status
-        if (LATENCY_SIMULATION.enabled) {
-            console.log(`🌐 Latency simulation ENABLED:`);
-            console.log(`   - Latency: ${LATENCY_SIMULATION.minLatency}-${LATENCY_SIMULATION.maxLatency}ms`);
-            console.log(`   - Packet loss: ${(LATENCY_SIMULATION.packetLoss * 100).toFixed(1)}%`);
-            console.log(`   - Jitter: ${LATENCY_SIMULATION.jitter ? 'ON' : 'OFF'}`);
-            console.log(`   - Burst mode: ${LATENCY_SIMULATION.burstMode ? 'ON' : 'OFF'}`);
+// Synchronous startup flow: await brick data, then load/generate world, then start server
+(async () => {
+    try {
+        console.log(`[${new Date().toLocaleTimeString()}] Loading brick data (GLTF + collision)`);
+        await loadBrickStudData();
+        console.log(`[${new Date().toLocaleTimeString()}] Brick data loaded`);
+
+        const loaded = tryLoadWorldFromDisk();
+        if (!loaded) {
+            console.log(`[${new Date().toLocaleTimeString()}] Creating new world via worldgen (chunk 0,0,0)`);
+            addBricksToCollisionBatch(gameState, generateChunk(0, 0, 0, gameState));
+            worldDirtySinceSave = true;
         } else {
-            console.log(`🌐 Latency simulation DISABLED`);
+            console.log(`[${new Date().toLocaleTimeString()}] Using persisted world from disk`);
+            // Build per-chunk BVHs from authoritative bricks loaded from disk
+            rebuildWorldBVH(gameState);
         }
-    });
-}); 
+
+        const PORT = process.env.PORT || 3001;
+        const HOST = process.env.HOST || '0.0.0.0';
+        server.listen(PORT, HOST, () => {
+            console.log(`BrickQuest server running on ${HOST}:${PORT}`);
+            console.log(`Local network access: http://${HOST}:${PORT}`);
+            const brickCount = Object.values(gameState.chunks || {}).reduce((n, c) => n + Object.keys((c && c.bricks) || {}).length, 0);
+            console.log(`World ready with ${brickCount} bricks across ${Object.keys(gameState.chunks||{}).length} chunks`);
+            if (LATENCY_SIMULATION.enabled) {
+                console.log(`🌐 Latency simulation ENABLED:`);
+                console.log(`   - Latency: ${LATENCY_SIMULATION.minLatency}-${LATENCY_SIMULATION.maxLatency}ms`);
+                console.log(`   - Packet loss: ${(LATENCY_SIMULATION.packetLoss * 100).toFixed(1)}%`);
+                console.log(`   - Jitter: ${LATENCY_SIMULATION.jitter ? 'ON' : 'OFF'}`);
+                console.log(`   - Burst mode: ${LATENCY_SIMULATION.burstMode ? 'ON' : 'OFF'}`);
+            } else {
+                console.log(`🌐 Latency simulation DISABLED`);
+            }
+        });
+    } catch (e) {
+        console.error('Fatal startup error:', e);
+        process.exit(1);
+    }
+})();

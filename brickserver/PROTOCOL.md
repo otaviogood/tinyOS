@@ -58,21 +58,22 @@ Payload:
       }
       // ...other players
     },
-    "bricks": {
-      "1": {
-        "id": "1",
-        "position": { "x": 0, "y": 0, "z": 0 },
-        "rotation": { "x": 0, "y": 0, "z": 0 },
-        "colorIndex": 0,
-        "pieceId": "3022",
-        "type": "basic",
-        "chunkKey": "0,0,0"
-      }
-      // ...other bricks
-    },
     "chunks": {
-      "0,0,0": { "cx": 0, "cy": 0, "cz": 0 }
-      // ...chunkKey → { cx, cy, cz }
+      "0,0,0": {
+        "cx": 0, "cy": 0, "cz": 0,
+        "bricks": {
+          "1": {
+            "id": "1",
+            "position": { "x": 0, "y": 0, "z": 0 },
+            "rotation": { "x": 0, "y": 0, "z": 0 },
+            "colorIndex": 0,
+            "pieceId": "3022",
+            "type": "basic"
+          }
+          // ...other bricks in this chunk
+        }
+      }
+      // ...other chunks
     },
     "nextBrickId": 123
   },
@@ -180,22 +181,23 @@ Payload:
         "_new": true
       }
     },
-    "bricks": {
-      "42": { "position": { "x": 80, "y": 8, "z": 40 } },
-      "99": { "_deleted": true },
-      "150": {
-        "id": "150",
-        "position": { "x": 100, "y": 8, "z": 60 },
-        "rotation": { "x": 0, "y": 0, "z": 0 },
-        "colorIndex": 1,
-        "pieceId": "3022",
-        "type": "basic",
-        "chunkKey": "0,0,0",
-        "_new": true
-      }
-    },
     "chunks": {
-      "0,0,0": { "cx": 0, "cy": 0, "cz": 0 },
+      "0,0,0": {
+        "cx": 0, "cy": 0, "cz": 0,
+        "bricks": {
+          "42": { "position": { "x": 80, "y": 8, "z": 40 } },
+          "99": { "_deleted": true },
+          "150": {
+            "id": "150",
+            "position": { "x": 100, "y": 8, "z": 60 },
+            "rotation": { "x": 0, "y": 0, "z": 0 },
+            "colorIndex": 1,
+            "pieceId": "3022",
+            "type": "basic",
+            "_new": true
+          }
+        }
+      },
       "1,0,0": { "_deleted": true }
     }
   },
