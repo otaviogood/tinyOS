@@ -23,7 +23,7 @@
     // Game state with delta tracking
     let gameState = createDeltaState();
     gameState.players = {};
-    gameState.bricks = {};
+    gameState.chunks = {};
     
     // Input state with delta tracking
     const inputState = createDeltaState();
@@ -210,7 +210,6 @@
             // Apply full state
             gameState._pause();
             gameState.players = data.state.players || {};
-            gameState.bricks = data.state.bricks || {};
             gameState.chunks = data.state.chunks || {};
             gameState._resume();
             
@@ -220,7 +219,18 @@
             }
             
             // Ensure chunk groups and bricks reconcile under chunk parents
-            renderer3d.reconcileChunksAndBricks(gameState.chunks, gameState.bricks);
+            renderer3d.reconcileChunksAndBricks(gameState.chunks, (function(){
+                const flat = {};
+                for (const [k, c] of Object.entries(gameState.chunks || {})) {
+                    const br = (c && c.bricks) || {};
+                    for (const [bid, b] of Object.entries(br)) flat[bid] = { ...b, chunkKey: k };
+                }
+                return flat;
+            })());
+            // If debug was toggled previously, re-apply to ensure helpers get added to all groups
+            if (chunkDebugVisible && renderer3d && renderer3d.setChunkDebugVisible) {
+                renderer3d.setChunkDebugVisible(true);
+            }
             
             // Update selected piece index
             const localPlayer = gameState.players[playerId];
@@ -352,18 +362,42 @@
             }
             
             // Process brick changes
-            if (diff.bricks) {
-                for (const [bid, brickDiff] of Object.entries(diff.bricks)) {
-                    if (brickDiff._deleted) {
-                        renderer3d.removeBrickMesh(bid);
-                    } else if (brickDiff._new) {
-                        renderer3d.createBrickMesh({ id: bid, ...gameState.bricks[bid] });
+            if (diff.chunks) {
+                // Reconcile groups for any added chunks, but do NOT prune here
+                renderer3d.reconcileChunksAndBricks(gameState.chunks, {});
+                if (chunkDebugVisible && renderer3d && renderer3d.setChunkDebugVisible) {
+                    // Ensure helpers exist for any newly created groups
+                    renderer3d.setChunkDebugVisible(true);
+                }
+                for (const [ckey, cDiff] of Object.entries(diff.chunks)) {
+                    const chunk = gameState.chunks && gameState.chunks[ckey];
+                    // If chunk is deleted, remove its visual group and all instances
+                    if (cDiff && cDiff._deleted) {
+                        if (renderer3d && renderer3d.removeChunkGroupAndInstances) {
+                            renderer3d.removeChunkGroupAndInstances(ckey);
+                        }
+                        continue;
+                    }
+                    if (!chunk) continue;
+                    // If the entire chunk is new, create all of its bricks
+                    if (cDiff && cDiff._new) {
+                        const bricksMap = (chunk && chunk.bricks) || {};
+                        for (const [bid, b] of Object.entries(bricksMap)) {
+                            renderer3d.createBrickMesh({ id: bid, chunkKey: ckey, ...b });
+                        }
+                        continue;
+                    }
+                    if (cDiff && cDiff.bricks) {
+                        for (const [bid, bDiff] of Object.entries(cDiff.bricks)) {
+                            if (bDiff && bDiff._deleted) {
+                                renderer3d.removeBrickMesh(bid);
+                            } else if (bDiff && bDiff._new) {
+                                const brick = chunk && chunk.bricks ? chunk.bricks[bid] : null;
+                                if (brick) renderer3d.createBrickMesh({ id: bid, chunkKey: ckey, ...brick });
+                            }
+                        }
                     }
                 }
-            }
-            // If chunks changed in diff, ensure groups exist before any brick creations
-            if (diff.chunks) {
-                renderer3d.reconcileChunksAndBricks(gameState.chunks, {});
             }
         });
 
@@ -715,7 +749,7 @@
 					<div>frame ms: {lastFrameMs.toFixed(2)}</div>
 					<div>draw calls: {drawCalls}</div>
 					<div>triangles: {triangles}</div>
-					<div>Bricks: {Object.keys(gameState.bricks).length}</div>
+					<div>Bricks: {Object.values(gameState.chunks||{}).reduce((n,c)=>n+Object.keys((c&&c.bricks)||{}).length,0)}</div>
 					<div>Players: {Object.keys(gameState.players).length}</div>
 					<div>RTT: {Math.round(smoothedRTT)}ms Current: {currentRTT}</div>
 					{#if gameState.players && playerId && gameState.players[playerId]}

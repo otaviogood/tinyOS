@@ -155,8 +155,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 	const _tempColor = new THREE.Color();
 	const _tempBox3 = new THREE.Box3();
 	const _tempVec3 = new THREE.Vector3();
+	const _tempVec3b = new THREE.Vector3();
 	const _projScreenMatrix = new THREE.Matrix4();
 	const _mainFrustum = new THREE.Frustum();
+	const _sharedRaycaster = new THREE.Raycaster();
+	const _ndcCenter = new THREE.Vector2(0, 0);
 
 	function applyViewCullingHooks(instancedMesh) {
 		// Per-camera skip draw: for main view, skip when parent chunk is outside view frustum
@@ -460,9 +463,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 		ssaoPassRef.maxDistance = 80.0;
 		ssaoPassRef.output = ssaoDebugView ? SSAOPass.OUTPUT.SSAO : SSAOPass.OUTPUT.Default;
 		ssaoPassRef.enabled = !!ssaoEnabled;
-		composer.addPass(ssaoPassRef);
+		// composer.addPass(ssaoPassRef);
 		smaaPassRef = new SMAAPass(container.clientWidth, container.clientHeight);
-		composer.addPass(smaaPassRef);
+		// composer.addPass(smaaPassRef);
 		gammaPassRef = new ShaderPass(GammaCorrectionShader);
 		composer.addPass(gammaPassRef);
 		outputPassRef = new OutputPass();
@@ -707,6 +710,75 @@ export function createBrickQuestRenderer(container, options = {}) {
 		// Opacity is animated per-frame; do not override here
 	}
 
+	// Helper: choose the currently selected connector (stud or anti) once
+	function getSelectedConnectorForPiece(pieceData) {
+		const useStud = (selectedAnchorMode === 'stud');
+		if (!pieceData) return null;
+		if (useStud) {
+			const studs = Array.isArray(pieceData.studs) ? pieceData.studs : [];
+			if (studs.length === 0) return null;
+			const idx = studs.length > 0 ? ((selectedStudIndex % studs.length) + studs.length) % studs.length : 0;
+			return { connector: (studs[idx] || studs[0]), useStud: true };
+		} else {
+			const antis = Array.isArray(pieceData.antiStuds) ? pieceData.antiStuds : [];
+			if (antis.length === 0) return null;
+			const idx = antis.length > 0 ? ((selectedAntiStudIndex % antis.length) + antis.length) % antis.length : 0;
+			return { connector: (antis[idx] || antis[0]), useStud: false };
+		}
+	}
+
+	// Helper: from the chosen connector, compute finalQuat and targetPos
+	function computeGhostPoseFromConnector(connInfo, baseQuat, closestStudInfoLocal, closestAntiStudInfoLocal) {
+		let finalQuat = baseQuat.clone ? baseQuat.clone() : new THREE.Quaternion().copy(baseQuat);
+		let targetPos = null;
+		if (!connInfo || !connInfo.connector) return { finalQuat, targetPos, connInfo };
+		const useStud = connInfo.useStud;
+		const connector = connInfo.connector;
+		const targetAxis = (useStud ? (closestAntiStudInfoLocal && closestAntiStudInfoLocal.direction) : (closestStudInfoLocal && closestStudInfoLocal.direction)) || new THREE.Vector3(0, 1, 0);
+		const normTargetAxis = targetAxis.clone().normalize();
+		const localDir = new THREE.Vector3(
+			Number.isFinite(connector.dx) ? connector.dx : 0,
+			Number.isFinite(connector.dy) ? connector.dy : 1,
+			Number.isFinite(connector.dz) ? connector.dz : 0,
+		).normalize();
+		const dirWorld0 = localDir.clone().applyQuaternion(finalQuat).normalize();
+		const alignQuat = new THREE.Quaternion().setFromUnitVectors(dirWorld0, normTargetAxis);
+		finalQuat = alignQuat.clone().multiply(finalQuat);
+		const localPos = new THREE.Vector3(
+			Number.isFinite(connector.x) ? connector.x : 0,
+			Number.isFinite(connector.y) ? connector.y : 0,
+			Number.isFinite(connector.z) ? connector.z : 0,
+		);
+		const worldOffset = localPos.clone().applyQuaternion(finalQuat);
+		const snapPos = useStud ? (closestAntiStudInfoLocal && closestAntiStudInfoLocal.position) : (closestStudInfoLocal && closestStudInfoLocal.position);
+		if (snapPos) {
+			targetPos = { x: snapPos.x - worldOffset.x, y: snapPos.y - worldOffset.y, z: snapPos.z - worldOffset.z };
+		}
+		return { finalQuat, targetPos, connInfo };
+	}
+
+	// Helper: world-space connector origin and directions for animation and arrow
+	function computeConnectorWorldVectors(connInfo, finalQuat, targetPos) {
+		if (!connInfo || !connInfo.connector || !finalQuat || !targetPos) return null;
+		const { connector, useStud } = connInfo;
+		const localPos = new THREE.Vector3(
+			Number.isFinite(connector.x) ? connector.x : 0,
+			Number.isFinite(connector.y) ? connector.y : 0,
+			Number.isFinite(connector.z) ? connector.z : 0,
+		);
+		const worldOffset = localPos.clone().applyQuaternion(finalQuat);
+		const origin = new THREE.Vector3(targetPos.x + worldOffset.x, targetPos.y + worldOffset.y, targetPos.z + worldOffset.z);
+		let localDir = new THREE.Vector3(
+			Number.isFinite(connector.dx) ? connector.dx : 0,
+			Number.isFinite(connector.dy) ? connector.dy : 1,
+			Number.isFinite(connector.dz) ? connector.dz : 0,
+		).normalize();
+		let worldDirBase = localDir.applyQuaternion(finalQuat).normalize();
+		const animDir = useStud ? worldDirBase.clone().normalize() : worldDirBase.clone().multiplyScalar(-1).normalize();
+		const arrowDir = animDir.clone().multiplyScalar(-1).normalize();
+		return { origin, animDir, arrowDir };
+	}
+
 	function ensureGhostMesh(forceGeometryUpdate = false) {
 		if (!scene) return;
 		setupGhostMaterial();
@@ -757,92 +829,15 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 		const pieceData = piecesData[selectedPieceId];
 		let targetPos = null;
-		let finalQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ghostYaw, 0));
-		if (selectedAnchorMode === 'anti' && closestStudInfo && pieceData && Array.isArray(pieceData.antiStuds) && pieceData.antiStuds.length > 0) {
-			const studDirWorld = (closestStudInfo.direction && closestStudInfo.direction.clone()) || new THREE.Vector3(0, 1, 0);
-			studDirWorld.normalize();
-			const targetAxis = studDirWorld.clone();
-			// Choose anti-stud strictly by selectedAntiStudIndex to match server
-			const antiList = pieceData.antiStuds;
-			let idx = antiList.length > 0 ? ((selectedAntiStudIndex % antiList.length) + antiList.length) % antiList.length : 0;
-			const usedAnti = antiList[idx] || antiList[0];
-			const antiDirLocal = new THREE.Vector3(
-				Number.isFinite(usedAnti.dx) ? usedAnti.dx : 0,
-				Number.isFinite(usedAnti.dy) ? usedAnti.dy : 1,
-				Number.isFinite(usedAnti.dz) ? usedAnti.dz : 0,
-			).normalize();
-			const antiDirWorld0 = antiDirLocal.clone().applyQuaternion(finalQuat).normalize();
-			const alignQuat = new THREE.Quaternion().setFromUnitVectors(antiDirWorld0, targetAxis);
-			finalQuat = alignQuat.clone().multiply(finalQuat);
-			const antiPosLocal = new THREE.Vector3(usedAnti.x, usedAnti.y, usedAnti.z);
-			const antiPosWorldOffset = antiPosLocal.clone().applyQuaternion(finalQuat);
-			targetPos = {
-				x: closestStudInfo.position.x - antiPosWorldOffset.x,
-				y: closestStudInfo.position.y - antiPosWorldOffset.y,
-				z: closestStudInfo.position.z - antiPosWorldOffset.z,
-			};
-		} else if (selectedAnchorMode === 'stud' && closestAntiStudInfo && pieceData && Array.isArray(pieceData.studs) && pieceData.studs.length > 0) {
-			const antiDirWorld = (closestAntiStudInfo.direction && closestAntiStudInfo.direction.clone()) || new THREE.Vector3(0, 1, 0);
-			antiDirWorld.normalize();
-			const targetAxis = antiDirWorld.clone();
-			const studList = pieceData.studs;
-			let idx2 = studList.length > 0 ? ((selectedStudIndex % studList.length) + studList.length) % studList.length : 0;
-			const usedStud = studList[idx2] || studList[0];
-			const studDirLocal = new THREE.Vector3(
-				Number.isFinite(usedStud.dx) ? usedStud.dx : 0,
-				Number.isFinite(usedStud.dy) ? usedStud.dy : 1,
-				Number.isFinite(usedStud.dz) ? usedStud.dz : 0,
-			).normalize();
-			const studDirWorld0 = studDirLocal.clone().applyQuaternion(finalQuat).normalize();
-			const alignQuat2 = new THREE.Quaternion().setFromUnitVectors(studDirWorld0, targetAxis);
-			finalQuat = alignQuat2.clone().multiply(finalQuat);
-			const studPosLocal = new THREE.Vector3(
-				Number.isFinite(usedStud.x) ? usedStud.x : 0,
-				Number.isFinite(usedStud.y) ? usedStud.y : 0,
-				Number.isFinite(usedStud.z) ? usedStud.z : 0,
-			);
-			const studPosWorldOffset = studPosLocal.clone().applyQuaternion(finalQuat);
-			targetPos = {
-				x: closestAntiStudInfo.position.x - studPosWorldOffset.x,
-				y: closestAntiStudInfo.position.y - studPosWorldOffset.y,
-				z: closestAntiStudInfo.position.z - studPosWorldOffset.z,
-			};
-		}
+		let finalQuatBase = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ghostYaw, 0));
+		const connInfo = getSelectedConnectorForPiece(pieceData);
+		const pose = computeGhostPoseFromConnector(connInfo, finalQuatBase, closestStudInfo, closestAntiStudInfo);
+		let finalQuat = pose.finalQuat;
+		targetPos = pose.targetPos;
 		if (targetPos) {
-			// Compute arrow direction to use for drop animation and arrow helper
-			let animArrowDir = null;
-			let animConnectorOrigin = null;
-			const pieceDataAnim = (function() {
-				const selectedPieceLocal = pieceList[selectedPieceIndex];
-				const selectedPieceIdLocal = selectedPieceLocal ? selectedPieceLocal.id : null;
-				return selectedPieceIdLocal ? piecesData[selectedPieceIdLocal] : null;
-			})();
-			let useStudAnim = (selectedAnchorMode === 'stud');
-			let connectorAnim = null;
-			if (useStudAnim && pieceDataAnim && Array.isArray(pieceDataAnim.studs) && pieceDataAnim.studs.length > 0) {
-				let idx = pieceDataAnim.studs.length > 0 ? ((selectedStudIndex % pieceDataAnim.studs.length) + pieceDataAnim.studs.length) % pieceDataAnim.studs.length : 0;
-				connectorAnim = pieceDataAnim.studs[idx] || pieceDataAnim.studs[0];
-			} else if (!useStudAnim && pieceDataAnim && Array.isArray(pieceDataAnim.antiStuds) && pieceDataAnim.antiStuds.length > 0) {
-				let idx = pieceDataAnim.antiStuds.length > 0 ? ((selectedAntiStudIndex % pieceDataAnim.antiStuds.length) + pieceDataAnim.antiStuds.length) % pieceDataAnim.antiStuds.length : 0;
-				connectorAnim = pieceDataAnim.antiStuds[idx] || pieceDataAnim.antiStuds[0];
-			}
-			if (connectorAnim) {
-				const localPos = new THREE.Vector3(
-					Number.isFinite(connectorAnim.x) ? connectorAnim.x : 0,
-					Number.isFinite(connectorAnim.y) ? connectorAnim.y : 0,
-					Number.isFinite(connectorAnim.z) ? connectorAnim.z : 0,
-				);
-				const worldOffset = localPos.clone().applyQuaternion(finalQuat);
-				animConnectorOrigin = new THREE.Vector3(targetPos.x + worldOffset.x, targetPos.y + worldOffset.y, targetPos.z + worldOffset.z);
-				let localDir = new THREE.Vector3(
-					Number.isFinite(connectorAnim.dx) ? connectorAnim.dx : 0,
-					Number.isFinite(connectorAnim.dy) ? connectorAnim.dy : 1,
-					Number.isFinite(connectorAnim.dz) ? connectorAnim.dz : 0,
-				).normalize();
-				let worldDir = localDir.applyQuaternion(finalQuat).normalize();
-				if (!useStudAnim) worldDir.multiplyScalar(-1);
-				animArrowDir = worldDir.clone().normalize();
-			}
+			// Compute connector vectors (for drop animation and arrow) once
+			const connVectors = computeConnectorWorldVectors(connInfo, finalQuat, targetPos);
+			let animArrowDir = connVectors ? connVectors.animDir : null;
 
 			// Detect highlighted snap target change and start one-shot drop animation
 			const snapInfo = (selectedAnchorMode === 'stud') ? closestAntiStudInfo : closestStudInfo;
@@ -885,34 +880,10 @@ export function createBrickQuestRenderer(container, options = {}) {
 			ghostRotationEuler = { x: e.x, y: e.y, z: e.z };
 			// Update ghost connector arrow (origin and direction)
 			if (ghostArrow) {
-				const pieceData = ghostPieceId ? piecesData[ghostPieceId] : null;
-				let useStud = (selectedAnchorMode === 'stud');
-				let connector = null;
-				if (useStud && pieceData && Array.isArray(pieceData.studs) && pieceData.studs.length > 0) {
-					let idx = pieceData.studs.length > 0 ? ((selectedStudIndex % pieceData.studs.length) + pieceData.studs.length) % pieceData.studs.length : 0;
-					connector = pieceData.studs[idx] || pieceData.studs[0];
-				} else if (!useStud && pieceData && Array.isArray(pieceData.antiStuds) && pieceData.antiStuds.length > 0) {
-					let idx = pieceData.antiStuds.length > 0 ? ((selectedAntiStudIndex % pieceData.antiStuds.length) + pieceData.antiStuds.length) % pieceData.antiStuds.length : 0;
-					connector = pieceData.antiStuds[idx] || pieceData.antiStuds[0];
-				}
-				if (connector) {
-					const localPos = new THREE.Vector3(
-						Number.isFinite(connector.x) ? connector.x : 0,
-						Number.isFinite(connector.y) ? connector.y : 0,
-						Number.isFinite(connector.z) ? connector.z : 0,
-					);
-					const worldOffset = localPos.clone().applyQuaternion(finalQuat);
-					const origin = new THREE.Vector3(targetPos.x + worldOffset.x, targetPos.y + worldOffset.y, targetPos.z + worldOffset.z);
-					let localDir = new THREE.Vector3(
-						Number.isFinite(connector.dx) ? connector.dx : 0,
-						Number.isFinite(connector.dy) ? connector.dy : 1,
-						Number.isFinite(connector.dz) ? connector.dz : 0,
-					).normalize();
-					let worldDir = localDir.applyQuaternion(finalQuat).normalize();
-					// If anti-stud selected, arrow goes opposite direction
-					if (!useStud) worldDir.multiplyScalar(-1);
-					// Reverse arrow direction globally for consistency with ghost animation
-					worldDir.multiplyScalar(-1);
+				const connVectorsForArrow = computeConnectorWorldVectors(connInfo, finalQuat, targetPos);
+				if (connVectorsForArrow) {
+					const origin = connVectorsForArrow.origin;
+					const worldDir = connVectorsForArrow.arrowDir;
 					ghostArrow.position.copy(origin);
 					ghostArrowBaseOrigin = origin.clone();
 					{
@@ -946,10 +917,13 @@ export function createBrickQuestRenderer(container, options = {}) {
 		// Only consider the closest-hit piece under the cursor
 		const firstIntersection = (intersects && intersects.length > 0) ? intersects[0] : null;
 		let targetBrickId = null;
+		let targetChunkKey = null;
 		if (firstIntersection && firstIntersection.instanceId != null && firstIntersection.object && firstIntersection.object.userData && Array.isArray(firstIntersection.object.userData.instanceIdToBrickId)) {
 			targetBrickId = firstIntersection.object.userData.instanceIdToBrickId[firstIntersection.instanceId] || null;
+			targetChunkKey = firstIntersection.object.userData.chunkKey || null;
 		} else {
 			targetBrickId = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? firstIntersection.object.userData.brickId : null;
+			targetChunkKey = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? (firstIntersection.object.userData.chunkKey || null) : null;
 		}
 		if (!targetBrickId) {
 			studHighlightMesh.visible = false;
@@ -958,7 +932,18 @@ export function createBrickQuestRenderer(container, options = {}) {
 			return;
 		}
 		const gameState = getGameStateRef ? getGameStateRef() : null;
-		const brick = gameState && gameState.bricks ? gameState.bricks[targetBrickId] : null;
+		let brick = null;
+		if (gameState && gameState.chunks) {
+			if (targetChunkKey && gameState.chunks[targetChunkKey] && gameState.chunks[targetChunkKey].bricks) {
+				brick = gameState.chunks[targetChunkKey].bricks[targetBrickId] || null;
+			}
+			if (!brick && gameState.brickIndex) {
+				const key = gameState.brickIndex[targetBrickId];
+				if (key && gameState.chunks[key] && gameState.chunks[key].bricks) {
+					brick = gameState.chunks[key].bricks[targetBrickId] || null;
+				}
+			}
+		}
 		if (!brick) {
 			studHighlightMesh.visible = false;
 			closestStudInfo = null;
@@ -1102,8 +1087,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 	function setChunkDebugVisible(visible) { chunkDebugVisible = !!visible; setChunkDebugVisibleExternal({ CHUNK_SIZE, CHUNK_HEIGHT, chunkGroups, chunkDebugVisible }, scene, chunkDebugVisible); }
 
 	function getMouseWorldPosition() {
-		const raycaster = new THREE.Raycaster();
-		raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+		const raycaster = _sharedRaycaster;
+		raycaster.setFromCamera(_ndcCenter, camera);
 		// Only raycast against bricks (exclude players) using cached list
 		// Limit effective ray length for picking to reduce broad-phase work
 		raycaster.far = PLACEMENT_MAX_DISTANCE;
@@ -1138,11 +1123,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 			if (studHighlightMesh) studHighlightMesh.visible = false;
 			closestStudInfo = null;
 			lastHitBrickId = null;
-			const vector = new THREE.Vector3(0, 0, 0.5);
+			const vector = _tempVec3b.set(0, 0, 0.5);
 			vector.unproject(camera);
 			const dir = vector.sub(camera.position).normalize();
 			const distance = -camera.position.y / dir.y;
-			const pos = camera.position.clone().add(dir.multiplyScalar(distance));
+			const pos = _tempVec3.copy(camera.position).add(dir.multiplyScalar(distance));
 			result = { x: pos.x, y: pos.y, z: pos.z };
 			lastMouseWorldPos = null;
 		}
@@ -1176,6 +1161,34 @@ export function createBrickQuestRenderer(container, options = {}) {
 			if (!brickIdToInstanceRef.has(bid)) {
 				createBrickMesh({ id: bid, ...b });
 			}
+		}
+	}
+
+	function removeChunkGroupAndInstances(chunkKey) {
+		// Remove all instanced meshes for this chunk
+		const chunkMap = instancedChunkData.get(chunkKey);
+		if (chunkMap) {
+			for (const [pieceId, data] of chunkMap.entries()) {
+				if (data && data.mesh && data.mesh.parent) {
+					data.mesh.parent.remove(data.mesh);
+					const idx = raycastTargets.indexOf(data.mesh);
+					if (idx !== -1) raycastTargets.splice(idx, 1);
+					try { data.mesh.dispose(); } catch (_) {}
+				}
+			}
+			instancedChunkData.delete(chunkKey);
+		}
+		// Remove instance refs pointing to this chunk
+		for (const [brickId, ref] of Array.from(brickIdToInstanceRef.entries())) {
+			if (ref && ref.chunkKey === chunkKey) {
+				brickIdToInstanceRef.delete(brickId);
+			}
+		}
+		// Remove the chunk group
+		const group = chunkGroups.get(chunkKey);
+		if (group) {
+			scene.remove(group);
+			chunkGroups.delete(chunkKey);
 		}
 	}
 
@@ -1514,8 +1527,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 				if (sprite.material && sprite.material.map && sprite.material.map.dispose) try { sprite.material.map.dispose(); } catch (_) {}
 				if (sprite.material && sprite.material.dispose) try { sprite.material.dispose(); } catch (_) {}
 			});
-			// Clean up instanced meshes
-			disposeAllInstancedMeshes();
 		},
 		onResize: onWindowResize,
 		// Data/config
@@ -1524,6 +1535,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		setChunkConfig,
 		setChunkDebugVisible,
 		reconcileChunksAndBricks,
+		removeChunkGroupAndInstances,
 		setSelectedPieceIndex(i) { selectedPieceIndex = Math.max(0, Math.min(pieceList.length - 1, i | 0)); ensureGhostMesh(true); updatePreviewMesh(); },
 		setSelectedColorIndex(i) { selectedColorIndex = Math.max(0, Math.min((colorPalette.length || 1) - 1, i | 0)); updatePreviewMesh(); },
 		setGhostYaw(y) { ghostYaw = y || 0; ensureGhostMesh(false); },

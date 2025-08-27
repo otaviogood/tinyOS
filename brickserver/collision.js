@@ -388,8 +388,15 @@ function testGhostCollision(payload, gameState) {
     if (!ghostAABB) return false;
     const candidates = [];
     // Use chunked AABB BVHs to collect overlapping bricks efficiently
-    queryBVHForAABB(ghostAABB, (boxIndex, _box, brickId) => {
-        const brick = gameState.bricks && gameState.bricks[brickId];
+    queryBVHForAABB(ghostAABB, (boxIndex, _box, brickId, chunkKey) => {
+        let brick = null;
+        if (gameState && gameState.chunks && chunkKey && gameState.chunks[chunkKey] && gameState.chunks[chunkKey].bricks) {
+            brick = gameState.chunks[chunkKey].bricks[brickId];
+        } else if (gameState && gameState.brickIndex && gameState.chunks) {
+            const key = gameState.brickIndex[brickId];
+            const ch = key && gameState.chunks[key];
+            brick = ch && ch.bricks ? ch.bricks[brickId] : null;
+        }
         if (!brick) return;
         if (!pieceCollisionCache.get(brick.pieceId)) return;
         candidates.push(brick);
@@ -504,8 +511,15 @@ function testGhostCollisionWithDebug(payload, gameState) {
     tAabbEnd = process.hrtime.bigint();
     if (!ghostAABB) return { colliding: false, broadCount, prunedCount };
     const candidates = [];
-    queryBVHForAABB(ghostAABB, (boxIndex, _box, brickId) => {
-        const brick = gameState.bricks && gameState.bricks[brickId];
+    queryBVHForAABB(ghostAABB, (boxIndex, _box, brickId, chunkKey) => {
+        let brick = null;
+        if (gameState && gameState.chunks && chunkKey && gameState.chunks[chunkKey] && gameState.chunks[chunkKey].bricks) {
+            brick = gameState.chunks[chunkKey].bricks[brickId];
+        } else if (gameState && gameState.brickIndex && gameState.chunks) {
+            const key = gameState.brickIndex[brickId];
+            const ch = key && gameState.chunks[key];
+            brick = ch && ch.bricks ? ch.bricks[brickId] : null;
+        }
         if (!brick) return;
         if (!pieceCollisionCache.get(brick.pieceId)) return;
         candidates.push(brick);
@@ -752,38 +766,31 @@ function rebuildWorldBVH(gameState) {
     // Reset chunk store
     chunkCollision.chunks.clear();
     chunkCollision.totalBoxes = 0;
-    // Reset authoritative chunk map in game state
     if (!gameState.chunks || typeof gameState.chunks !== 'object') gameState.chunks = {};
-    // Clear existing chunk entries (delta will compute diff)
-    gameState.chunks = {};
-
-    const entries = Object.values(gameState.bricks || {});
-    for (const brick of entries) {
-        const box = getWorldAABBForPiece(brick.pieceId, brick.position, brick.rotation || 0);
-        if (!box) continue;
-        // Insert by center into exactly one chunk
-        const center = new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
-        const { cx, cy, cz } = getChunkCoordForPoint(center.x, center.y, center.z);
-        const key = getChunkKey(cx, cy, cz);
-        let chunk = chunkCollision.chunks.get(key);
-        if (!chunk) {
-            chunk = createEmptyChunk(cx, cy, cz);
-            chunkCollision.chunks.set(key, chunk);
-        }
-        chunk.boxes.push(box.clone());
-        chunk.owners.push(brick.id);
-        // Authoritatively stamp brick's chunkKey
-        if (brick && typeof brick === 'object') {
-            brick.chunkKey = key;
+    // Walk existing chunk-nested bricks and rebuild BVHs
+    for (const [key, c] of Object.entries(gameState.chunks)) {
+        const cx = Number.isFinite(c.cx) ? (c.cx|0) : 0;
+        const cy = Number.isFinite(c.cy) ? (c.cy|0) : 0;
+        const cz = Number.isFinite(c.cz) ? (c.cz|0) : 0;
+        const chunk = ensureChunk(cx, cy, cz);
+        const bricksMap = (c && c.bricks && typeof c.bricks === 'object') ? c.bricks : {};
+        for (const brick of Object.values(bricksMap)) {
+            const box = getWorldAABBForPiece(brick.pieceId, brick.position, brick.rotation || 0);
+            if (!box) continue;
+            chunk.boxes.push(box.clone());
+            chunk.owners.push(brick.id);
+            if (!brick.chunkKey) brick.chunkKey = key;
         }
     }
-
-    // Build per-chunk BVHs
     for (const chunk of chunkCollision.chunks.values()) {
         rebuildChunkBVH(chunk);
         chunkCollision.totalBoxes += chunk.boxes.length;
-        // Publish chunk presence into game state for clients
-        gameState.chunks[chunk.key] = { cx: chunk.cx | 0, cy: chunk.cy | 0, cz: chunk.cz | 0 };
+        // Ensure presence map in gameState
+        const key = chunk.key;
+        const existing = gameState.chunks[key] || { cx: chunk.cx|0, cy: chunk.cy|0, cz: chunk.cz|0, bricks: {} };
+        if (existing.cx !== (chunk.cx|0) || existing.cy !== (chunk.cy|0) || existing.cz !== (chunk.cz|0)) {
+            gameState.chunks[key] = { ...existing, cx: chunk.cx|0, cy: chunk.cy|0, cz: chunk.cz|0 };
+        }
     }
 }
 
@@ -862,7 +869,55 @@ function addBrickToCollision(gameState, brick) {
     // Update authoritative maps
     brick.chunkKey = key;
     if (!gameState.chunks) gameState.chunks = {};
+    if (!gameState.chunks[key]) {
+        gameState.chunks[key] = { cx, cy, cz };
+    }
+}
+
+function addBricksToCollisionBatch(gameState, bricks) {
+    if (!Array.isArray(bricks) || bricks.length === 0) return;
+
+    let cx, cy, cz;
+    let chunk = null;
+    let key = null;
+
+    const boxesToAdd = [];
+    const ownersToAdd = [];
+    const addedBricks = [];
+
+    for (const brick of bricks) {
+        if (!brick || !brick.id || !brick.position || !brick.pieceId) continue;
+        const box = getWorldAABBForPiece(brick.pieceId, brick.position, brick.rotation || 0);
+        if (!box) continue;
+
+        if (!chunk) {
+            const center = new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
+            const coords = getChunkCoordForPoint(center.x, center.y, center.z);
+            cx = coords.cx; cy = coords.cy; cz = coords.cz;
+            chunk = ensureChunk(cx, cy, cz);
+            key = chunk.key;
+        }
+
+        boxesToAdd.push(box.clone());
+        ownersToAdd.push(brick.id);
+        addedBricks.push(brick);
+    }
+
+    if (!chunk || boxesToAdd.length === 0) return;
+
+    for (let i = 0; i < boxesToAdd.length; i++) {
+        chunk.boxes.push(boxesToAdd[i]);
+        chunk.owners.push(ownersToAdd[i]);
+    }
+
+    rebuildChunkBVH(chunk);
+    chunkCollision.totalBoxes += boxesToAdd.length;
+
+    if (!gameState.chunks) gameState.chunks = {};
     gameState.chunks[key] = { cx, cy, cz };
+    for (const brick of addedBricks) {
+        brick.chunkKey = key;
+    }
 }
 
 function removeBrickFromCollision(gameState, brick) {
@@ -878,7 +933,6 @@ function removeBrickFromCollision(gameState, brick) {
     chunkCollision.totalBoxes = Math.max(0, chunkCollision.totalBoxes - 1);
     if (chunk.boxes.length === 0) {
         chunkCollision.chunks.delete(key);
-        if (gameState && gameState.chunks) delete gameState.chunks[key];
     } else {
         rebuildChunkBVH(chunk);
     }
@@ -1086,7 +1140,7 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
         );
 
         const candidates = [];
-        queryBVHForAABB(capsuleAABB, (idx, box, brickId) => {
+        queryBVHForAABB(capsuleAABB, (idx, box, brickId, chunkKey) => {
             // Broad-phase: capsule line vs AABB quick overlap test
             const px = pos.x;
             const pz = pos.z;
@@ -1124,7 +1178,15 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
                     if (dMinZ < best) { best = dMinZ; nx = 0; ny = 0; nz = -1; penetration = dMinZ; }
                     if (dMaxZ < best) { best = dMaxZ; nx = 0; ny = 0; nz = 1; penetration = dMaxZ; }
                 }
-                const brick = gameState && gameState.bricks ? gameState.bricks[brickId] : null;
+                let brick = null;
+                if (gameState && gameState.chunks && chunkKey && gameState.chunks[chunkKey] && gameState.chunks[chunkKey].bricks) {
+                    brick = gameState.chunks[chunkKey].bricks[brickId];
+                } else if (gameState && gameState.brickIndex && gameState.chunks) {
+                    const key = gameState.brickIndex[brickId];
+                    const ch = key && gameState.chunks[key];
+                    brick = ch && ch.bricks ? ch.bricks[brickId] : null;
+                }
+                if (!brick) return; // skip candidates without a resolved brick
                 candidates.push({ idx, box, brick, corr: { nx, ny, nz, penetration } });
             }
         });
@@ -1200,6 +1262,7 @@ module.exports = {
     rebuildWorldBVH,
     resolvePlayerCapsuleCollision,
     addBrickToCollision,
+    addBricksToCollisionBatch,
     removeBrickFromCollision,
 };
 

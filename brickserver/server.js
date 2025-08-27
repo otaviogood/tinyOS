@@ -48,7 +48,7 @@ const io = socketIO(server, {
 // Game configuration
 const TICK_RATE = 60; // Server tick rate in Hz
 const SEND_RATE = 60; // How often to send updates to clients in Hz
-const BRICK_SPACING = 120; // For initial world generation
+const BRICK_SPACING = 40; // For initial world generation
 const GRID_SIZE = 8; // For initial world generation
 // Color configuration
 const NUM_COLORS = 10; // Total number of brick colors supported by the client palette
@@ -137,22 +137,22 @@ function simulateLatency(callback, eventName = 'unknown') {
 
 // Game state using delta tracking
 const gameState = createDeltaState();
-// Initialize structure
+// Initialize structure (chunk-nested bricks)
 gameState.players = {};
-gameState.bricks = {};
 gameState.chunks = {};
+gameState.brickIndex = {};
 gameState.nextBrickId = 1;
 let worldDirtySinceSave = false;
 
 // -------------------- Persistence Helpers --------------------
 function serializeWorldState() {
     const raw = gameState._state || {};
-    const bricks = raw.bricks || {};
+    const chunks = raw.chunks || {};
     const nextBrickId = raw.nextBrickId || 1;
     return {
-        version: 1,
+        version: 2,
         savedAt: Date.now(),
-        bricks,
+        chunks,
         nextBrickId,
     };
 }
@@ -176,11 +176,23 @@ function tryLoadWorldFromDisk() {
         const text = fs.readFileSync(SAVE_FILE, 'utf8');
         const data = JSON.parse(text);
         if (!data || typeof data !== 'object') return false;
-        const bricks = (data.bricks && typeof data.bricks === 'object') ? data.bricks : {};
+        const chunks = (data.chunks && typeof data.chunks === 'object') ? data.chunks : {};
         const nextBrickId = Number.isFinite(data.nextBrickId) ? data.nextBrickId : 1;
-        gameState.bricks = bricks;
+        gameState.chunks = {};
+        gameState.brickIndex = {};
+        for (const [key, chunk] of Object.entries(chunks)) {
+            const cx = Number.isFinite(chunk.cx) ? (chunk.cx | 0) : 0;
+            const cy = Number.isFinite(chunk.cy) ? (chunk.cy | 0) : 0;
+            const cz = Number.isFinite(chunk.cz) ? (chunk.cz | 0) : 0;
+            const bricks = (chunk && chunk.bricks && typeof chunk.bricks === 'object') ? chunk.bricks : {};
+            gameState.chunks[key] = { cx, cy, cz, bricks };
+            for (const bid of Object.keys(bricks)) {
+                gameState.brickIndex[bid] = key;
+            }
+        }
         gameState.nextBrickId = nextBrickId;
-        console.log(`[${new Date().toLocaleTimeString()}] Loaded world from disk: ${Object.keys(gameState.bricks).length} bricks, next id ${gameState.nextBrickId}`);
+        const count = Object.values(gameState.chunks).reduce((n, c) => n + Object.keys((c && c.bricks) || {}).length, 0);
+        console.log(`[${new Date().toLocaleTimeString()}] Loaded world from disk: ${count} bricks across ${Object.keys(gameState.chunks).length} chunks, next id ${gameState.nextBrickId}`);
         return true;
     } catch (err) {
         console.error('Failed to load world state, starting fresh:', err);
@@ -191,18 +203,16 @@ function tryLoadWorldFromDisk() {
 
 // Initialize world with some starter bricks
 function initializeWorld() {
-    // Create a simple starter platform
+    // Create a simple starter platform, but defer chunk assignment until GLTF is loaded
+    const initialBricks = [];
     for (let x = 0; x < GRID_SIZE; x++) {
         for (let z = 0; z < GRID_SIZE; z++) {
-            // Create ground layer bricks
             const isEvenRow = x % 2 === 0;
             const isEvenCol = z % 2 === 0;
             const colorIndex = (isEvenRow && isEvenCol) || (!isEvenRow && !isEvenCol) ? 0 : Math.floor(Math.random() * NUM_COLORS);
-            
             const brickId = String(gameState.nextBrickId++);
             const gridOffset = (GRID_SIZE - 1) * BRICK_SPACING * 0.5;
-            
-            gameState.bricks[brickId] = {
+            initialBricks.push({
                 id: brickId,
                 position: {
                     x: x * BRICK_SPACING - gridOffset,
@@ -211,11 +221,12 @@ function initializeWorld() {
                 },
                 rotation: { x: 0, y: 0, z: 0 },
                 colorIndex: colorIndex,
-                pieceId: '3958', // Default to 8x8 plate for the ground 3024=1x1 8x8=41539 2x2=3022 6x6=3958
-                type: 'ground' // Ground layer is protected from deletion
-            };
+                pieceId: '3022',
+                type: 'ground'
+            });
         }
     }
+    gameState.pendingBricks = initialBricks;
     worldDirtySinceSave = true;
 }
 
@@ -260,7 +271,7 @@ io.on('connection', (socket) => {
     // Send initial game state to the new player (full state)
     const initData = {
         playerId: socket.id,
-        state: JSON.parse(JSON.stringify(gameState._state)), // Send raw state
+        state: JSON.parse(JSON.stringify(gameState._state)), // Send raw state (chunk-nested)
         pieceList: PIECE_LIST,
         piecesData: Object.fromEntries(brickPiecesData),
         // Runtime chunk config for client
@@ -739,20 +750,37 @@ function handleBrickInteraction(player, click, mouseRay) {
         };
         // Compute chunk and stamp chunkKey BEFORE inserting into delta state
         addBrickToCollision(gameState, newBrick);
-        // Now insert into authoritative state so _new diff includes chunkKey
-        gameState.bricks[newBrickId] = newBrick;
+        // Insert under authoritative chunk
+        const key = newBrick.chunkKey;
+        const parts = (key && typeof key === 'string') ? key.split(',') : ['0','0','0'];
+        const cx = parseInt(parts[0] || '0', 10) | 0;
+        const cy = parseInt(parts[1] || '0', 10) | 0;
+        const cz = parseInt(parts[2] || '0', 10) | 0;
+        if (!gameState.chunks[key]) gameState.chunks[key] = { cx, cy, cz, bricks: {} };
+        if (!gameState.chunks[key].bricks) gameState.chunks[key].bricks = {};
+        gameState.chunks[key].bricks[newBrickId] = newBrick;
+        if (!gameState.brickIndex) gameState.brickIndex = {};
+        gameState.brickIndex[newBrickId] = key;
         worldDirtySinceSave = true;
         
     } else if (click.button === 2) { // Right click - remove brick
         // Delete only when the client provided a direct raycast brick id
         const targetBrickId = (typeof click.brickId === 'string') ? click.brickId : null;
         if (targetBrickId) {
-            const brickToRemove = gameState.bricks[targetBrickId];
+            const key = gameState.brickIndex[targetBrickId];
+            const chunk = key ? gameState.chunks[key] : null;
+            const brickToRemove = (chunk && chunk.bricks) ? chunk.bricks[targetBrickId] : null;
             if (brickToRemove && brickToRemove.type !== 'ground') { // Don't remove ground layer
-                const removed = gameState.bricks[targetBrickId];
                 // Remove from collision before deleting so we still have chunkKey
-                removeBrickFromCollision(gameState, removed);
-                delete gameState.bricks[targetBrickId];
+                removeBrickFromCollision(gameState, brickToRemove);
+                if (chunk && chunk.bricks) {
+                    delete chunk.bricks[targetBrickId];
+                    // If chunk is now empty, remove it from authoritative map
+                    if (Object.keys(chunk.bricks).length === 0) {
+                        delete gameState.chunks[key];
+                    }
+                }
+                if (gameState.brickIndex) delete gameState.brickIndex[targetBrickId];
                 worldDirtySinceSave = true;
             }
         }
@@ -843,7 +871,24 @@ process.on('uncaughtException', async (err) => {
 
 // Load brick stud data before starting server
 loadBrickStudData().then(() => {
-    // Build initial world BVH after world is initialized
+    // After GLTF/stud data is ready, finalize initial world: assign chunks from AABBs
+    if (Array.isArray(gameState.pendingBricks) && gameState.pendingBricks.length > 0) {
+        for (const b of gameState.pendingBricks) {
+            addBrickToCollision(gameState, b);
+            const key = b.chunkKey;
+            const parts = (key && typeof key === 'string') ? key.split(',') : ['0','0','0'];
+            const cx = parseInt(parts[0] || '0', 10) | 0;
+            const cy = parseInt(parts[1] || '0', 10) | 0;
+            const cz = parseInt(parts[2] || '0', 10) | 0;
+            if (!gameState.chunks[key]) gameState.chunks[key] = { cx, cy, cz, bricks: {} };
+            if (!gameState.chunks[key].bricks) gameState.chunks[key].bricks = {};
+            gameState.chunks[key].bricks[b.id] = b;
+            if (!gameState.brickIndex) gameState.brickIndex = {};
+            gameState.brickIndex[b.id] = key;
+        }
+        gameState.pendingBricks = [];
+    }
+    // Build per-chunk BVHs over the inserted boxes
     rebuildWorldBVH(gameState);
     // Start server
     const PORT = process.env.PORT || 3001;
@@ -854,8 +899,8 @@ loadBrickStudData().then(() => {
         console.log(`Your local IP addresses for remote access:`);
         console.log(`  - http://192.168.68.53:${PORT}`);
         console.log(`  - http://10.147.20.89:${PORT}`);
-        const brickCount = Object.keys(gameState.bricks || {}).length;
-        console.log(`World ready with ${brickCount} bricks`);
+        const brickCount = Object.values(gameState.chunks || {}).reduce((n, c) => n + Object.keys((c && c.bricks) || {}).length, 0);
+        console.log(`World ready with ${brickCount} bricks across ${Object.keys(gameState.chunks||{}).length} chunks`);
         
         // Log latency simulation status
         if (LATENCY_SIMULATION.enabled) {
