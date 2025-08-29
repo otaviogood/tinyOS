@@ -874,48 +874,50 @@ function addBrickToCollision(gameState, brick) {
     }
 }
 
-function addBricksToCollisionBatch(gameState, bricks) {
+function addBricksToCollisionChunk(gameState, bricks) {
     if (!Array.isArray(bricks) || bricks.length === 0) return;
 
-    let cx, cy, cz;
-    let chunk = null;
-    let key = null;
-
-    const boxesToAdd = [];
-    const ownersToAdd = [];
-    const addedBricks = [];
+    // Bucket bricks by authoritative chunk key derived from each brick's AABB center
+    const buckets = new Map(); // key -> { cx, cy, cz, boxes: [], owners: [], bricks: [] }
 
     for (const brick of bricks) {
         const box = getWorldAABBForPiece(brick.pieceId, brick.position, brick.rotation);
-        boxesToAdd.push(box.clone());
-        ownersToAdd.push(brick.id);
-        addedBricks.push(brick);
+        if (!box) continue;
+        const center = new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
+        const coords = getChunkCoordForPoint(center.x, center.y, center.z);
+        const key = getChunkKey(coords.cx, coords.cy, coords.cz);
+        let bucket = buckets.get(key);
+        if (!bucket) {
+            bucket = { cx: coords.cx|0, cy: coords.cy|0, cz: coords.cz|0, boxes: [], owners: [], bricks: [] };
+            buckets.set(key, bucket);
+        }
+        bucket.boxes.push(box.clone());
+        bucket.owners.push(brick.id);
+        bucket.bricks.push(brick);
     }
 
-    // Determine chunk once from the first valid box (loop-invariant)
-    const firstBox = boxesToAdd[0];
-    const center = new THREE.Vector3().addVectors(firstBox.min, firstBox.max).multiplyScalar(0.5);
-    const coords = getChunkCoordForPoint(center.x, center.y, center.z);
-    cx = coords.cx; cy = coords.cy; cz = coords.cz;
-    chunk = ensureChunk(cx, cy, cz);
-    key = chunk.key;
-
-    for (let i = 0; i < boxesToAdd.length; i++) {
-        chunk.boxes.push(boxesToAdd[i]);
-        chunk.owners.push(ownersToAdd[i]);
-    }
-
-    rebuildChunkBVH(chunk);
-    chunkCollision.totalBoxes += boxesToAdd.length;
+    if (buckets.size === 0) return;
 
     if (!gameState.chunks) gameState.chunks = {};
-    if (!gameState.chunks[key]) gameState.chunks[key] = { cx, cy, cz, bricks: {} };
-    const bricksMap = gameState.chunks[key].bricks || (gameState.chunks[key].bricks = {});
     if (!gameState.brickIndex) gameState.brickIndex = {};
-    for (const brick of addedBricks) {
-        brick.chunkKey = key;
-        bricksMap[brick.id] = brick;
-        gameState.brickIndex[brick.id] = key;
+
+    for (const [key, bucket] of buckets.entries()) {
+        const { cx, cy, cz } = bucket;
+        const chunk = ensureChunk(cx, cy, cz);
+        for (let i = 0; i < bucket.boxes.length; i++) {
+            chunk.boxes.push(bucket.boxes[i]);
+            chunk.owners.push(bucket.owners[i]);
+        }
+        rebuildChunkBVH(chunk);
+        chunkCollision.totalBoxes += bucket.boxes.length;
+
+        if (!gameState.chunks[key]) gameState.chunks[key] = { cx, cy, cz, bricks: {} };
+        const bricksMap = gameState.chunks[key].bricks || (gameState.chunks[key].bricks = {});
+        for (const brick of bucket.bricks) {
+            brick.chunkKey = key;
+            bricksMap[brick.id] = brick;
+            gameState.brickIndex[brick.id] = key;
+        }
     }
 }
 
@@ -1261,7 +1263,7 @@ module.exports = {
     rebuildWorldBVH,
     resolvePlayerCapsuleCollision,
     addBrickToCollision,
-    addBricksToCollisionBatch,
+    addBricksToCollisionChunk,
     removeBrickFromCollision,
 };
 

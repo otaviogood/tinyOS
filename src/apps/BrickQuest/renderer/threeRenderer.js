@@ -56,15 +56,26 @@ export function createBrickQuestRenderer(container, options = {}) {
 	const brickIdToInstanceRef = new Map(); // brickId -> { mesh, index, chunkKey, pieceId }
 	let instancedBrickMaterial = null;
 
+	// Bulk reconcile batching flags/collections
+	let bulkReconcileActive = false;
+	const _meshesNeedingUpdate = new Set();
+	const _groupsNeedingBounds = new Set();
+
 	/**
 	 * Ensure an InstancedMesh exists for the given chunkKey and pieceId.
 	 * Returns an InstancedMeshData record { mesh, capacity, count, instanceIdToBrickId: [], chunkKey, pieceId }.
 	 */
-	function ensureInstancedMesh(chunkKey, pieceId, parentGroup) {
+	function ensureInstancedMesh(chunkKey, pieceId, parentGroup, initialCapacityHint) {
 		let chunkMap = instancedChunkData.get(chunkKey);
 		if (!chunkMap) { chunkMap = new Map(); instancedChunkData.set(chunkKey, chunkMap); }
 		let data = chunkMap.get(pieceId);
-		if (data && data.mesh) return data;
+		if (data && data.mesh) {
+			if (Number.isFinite(initialCapacityHint) && (initialCapacityHint | 0) > (data.capacity | 0)) {
+				// Grow to at least the hinted capacity
+				data = growInstancedMeshToAtLeast(data, parentGroup, initialCapacityHint | 0);
+			}
+			return data;
+		}
 		let geometry = brickGeometries.get(pieceId) || (brickGeometries.size > 0 ? brickGeometries.values().next().value : null);
 		// Choose LOD geometry based on parent group's LOD hint (0=high, 1=low)
 		const useLow = !!(parentGroup && parentGroup.userData && parentGroup.userData.lod === 1);
@@ -73,7 +84,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			if (lowGeom) geometry = lowGeom;
 		}
 		if (!geometry) return null;
-		const initialCapacity = 64;
+		const initialCapacity = Number.isFinite(initialCapacityHint) ? Math.max(4, (initialCapacityHint | 0)) : 64;
 		const mesh = new THREE.InstancedMesh(geometry, instancedBrickMaterial || new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.0, envMapIntensity: 0.8 }), initialCapacity);
 		mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 		// Disable frustum culling because instance transforms extend beyond geometry bounds
@@ -96,6 +107,14 @@ export function createBrickQuestRenderer(container, options = {}) {
 		data = { mesh, capacity: initialCapacity, count: 0, chunkKey, pieceId };
 		chunkMap.set(pieceId, data);
 		return data;
+	}
+
+	function growInstancedMeshToAtLeast(data, parentGroup, minCapacity) {
+		let d = data;
+		while (d && (d.capacity | 0) < (minCapacity | 0)) {
+			d = growInstancedMesh(d, parentGroup);
+		}
+		return d;
 	}
 
 	function growInstancedMesh(data, parentGroup) {
@@ -264,8 +283,13 @@ export function createBrickQuestRenderer(container, options = {}) {
 		));
 		_tempMatrix4.compose(_tempPosition, _tempQuaternion, _tempScale);
 		mesh.setMatrixAt(index, _tempMatrix4);
-		// Expand this chunk group's world-space bounds with this instance
-		expandGroupBoundsForInstance(parent, (mesh.userData && mesh.userData.highGeom) ? mesh.userData.highGeom : mesh.geometry, _tempMatrix4, origin);
+		// Expand this chunk group's world-space bounds
+		if (bulkReconcileActive) {
+			if (parent && parent.userData) parent.userData.boundsDirty = true;
+			_groupsNeedingBounds.add(parent);
+		} else {
+			expandGroupBoundsForInstance(parent, (mesh.userData && mesh.userData.highGeom) ? mesh.userData.highGeom : mesh.geometry, _tempMatrix4, origin);
+		}
 		// Per-instance color
 		const matColor = brickMaterials && brickMaterials[brick.colorIndex] ? brickMaterials[brick.colorIndex].color : (brickMaterials && brickMaterials[0] ? brickMaterials[0].color : null);
 		if (matColor) {
@@ -280,15 +304,77 @@ export function createBrickQuestRenderer(container, options = {}) {
 		}
 		data.count = index + 1;
 		mesh.count = data.count;
-		mesh.instanceMatrix.needsUpdate = true;
-		if (mesh.computeBoundingSphere) mesh.computeBoundingSphere();
-		// Also update the geometry's bounding sphere if missing
-		if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) {
-			mesh.geometry.computeBoundingSphere();
+		if (bulkReconcileActive) {
+			_meshesNeedingUpdate.add(mesh);
+		} else {
+			mesh.instanceMatrix.needsUpdate = true;
+			if (mesh.computeBoundingSphere) mesh.computeBoundingSphere();
+			// Also update the geometry's bounding sphere if missing
+			if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) {
+				mesh.geometry.computeBoundingSphere();
+			}
+			if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 		}
-		if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 		mesh.userData.instanceIdToBrickId[index] = brick.id;
 		brickIdToInstanceRef.set(brick.id, { mesh, index, chunkKey: brick.chunkKey, pieceId });
+	}
+
+	// Fast path for bulk adds when parent group and origin are already known
+	function addBrickInstanceFast(parent, origin, chunkKey, brick) {
+		if (!parent || !origin || !chunkKey || CHUNK_SIZE == null) return;
+		const pieceId = brick.pieceId || "3022";
+		let data = ensureInstancedMesh(chunkKey, pieceId, parent);
+		if (!data) return;
+		if (data.count >= data.capacity) data = growInstancedMesh(data, parent);
+		const mesh = data.mesh;
+		const index = data.count;
+		_tempPosition.set(
+			brick.position.x - origin.x,
+			brick.position.y - origin.y,
+			brick.position.z - origin.z
+		);
+		const randomRotationRange = (Math.PI / 180) * 0.125;
+		const randomX = (Math.random() - 0.5) * 2 * randomRotationRange;
+		const randomY = (Math.random() - 0.5) * 2 * randomRotationRange;
+		const randomZ = (Math.random() - 0.5) * 2 * randomRotationRange;
+		_tempQuaternion.setFromEuler(new THREE.Euler(
+			(brick.rotation && brick.rotation.x || 0) + randomX,
+			(brick.rotation && brick.rotation.y || 0) + randomY,
+			(brick.rotation && brick.rotation.z || 0) + randomZ
+		));
+		_tempMatrix4.compose(_tempPosition, _tempQuaternion, _tempScale);
+		mesh.setMatrixAt(index, _tempMatrix4);
+		if (bulkReconcileActive) {
+			if (parent && parent.userData) parent.userData.boundsDirty = true;
+			_groupsNeedingBounds.add(parent);
+		} else {
+			expandGroupBoundsForInstance(parent, (mesh.userData && mesh.userData.highGeom) ? mesh.userData.highGeom : mesh.geometry, _tempMatrix4, origin);
+		}
+		const matColor = brickMaterials && brickMaterials[brick.colorIndex] ? brickMaterials[brick.colorIndex].color : (brickMaterials && brickMaterials[0] ? brickMaterials[0].color : null);
+		if (matColor) {
+			_tempColor.copy(matColor);
+			if (mesh.instanceColor) {
+				mesh.instanceColor.setXYZ(index,
+					THREE.MathUtils.clamp(_tempColor.r, 0, 1),
+					THREE.MathUtils.clamp(_tempColor.g, 0, 1),
+					THREE.MathUtils.clamp(_tempColor.b, 0, 1)
+				);
+			}
+		}
+		data.count = index + 1;
+		mesh.count = data.count;
+		if (bulkReconcileActive) {
+			_meshesNeedingUpdate.add(mesh);
+		} else {
+			mesh.instanceMatrix.needsUpdate = true;
+			if (mesh.computeBoundingSphere) mesh.computeBoundingSphere();
+			if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) {
+				mesh.geometry.computeBoundingSphere();
+			}
+			if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+		}
+		mesh.userData.instanceIdToBrickId[index] = brick.id;
+		brickIdToInstanceRef.set(brick.id, { mesh, index, chunkKey, pieceId });
 	}
 
 	function removeBrickInstance(brickId) {
@@ -1149,18 +1235,104 @@ export function createBrickQuestRenderer(container, options = {}) {
 	}
 
 	function reconcileChunksAndBricks(stateChunks, stateBricks) {
-		if (stateChunks && typeof stateChunks === 'object') {
-			for (const [key, c] of Object.entries(stateChunks)) {
-				const cx = Number.isFinite(c.cx) ? (c.cx | 0) : 0;
-				const cy = Number.isFinite(c.cy) ? (c.cy | 0) : 0;
-				const cz = Number.isFinite(c.cz) ? (c.cz | 0) : 0;
-				ensureChunkGroup(cx, cy, cz);
+		bulkReconcileActive = true;
+		try {
+			// Ensure groups exist for all chunks (derive coords from key to keep keys consistent)
+			if (stateChunks && typeof stateChunks === 'object') {
+				for (const [key, _c] of Object.entries(stateChunks)) {
+					const parts = String(key).split(',');
+					const cx = parseInt(parts[0] || '0', 10) | 0;
+					const cy = parseInt(parts[1] || '0', 10) | 0;
+					const cz = parseInt(parts[2] || '0', 10) | 0;
+					ensureChunkGroup(cx, cy, cz);
+				}
 			}
-		}
-		for (const [bid, b] of Object.entries(stateBricks || {})) {
-			if (!brickIdToInstanceRef.has(bid)) {
-				createBrickMesh({ id: bid, ...b });
+			const hasFlat = stateBricks && typeof stateBricks === 'object' && Object.keys(stateBricks).length > 0;
+			if (hasFlat) {
+				// Pre-count missing bricks per (chunkKey, pieceId)
+				const neededByMesh = new Map(); // key: `${chunkKey}|${pieceId}` -> count
+				const chunkFastCache = new Map(); // chunkKey -> { parent, origin }
+				for (const [bid, b] of Object.entries(stateBricks)) {
+					if (!b || !b.chunkKey) continue;
+					if (brickIdToInstanceRef.has(bid)) continue;
+					const pid = b.pieceId || "3022";
+					const mkey = `${b.chunkKey}|${pid}`;
+					neededByMesh.set(mkey, (neededByMesh.get(mkey) || 0) + 1);
+				}
+				// Pre-size meshes once
+				for (const [mkey, need] of neededByMesh.entries()) {
+					const sep = mkey.lastIndexOf('|');
+					const chunkKey = mkey.substring(0, sep);
+					const pieceId = mkey.substring(sep + 1);
+					const parts = String(chunkKey).split(',');
+					const cx = parseInt(parts[0] || '0', 10) | 0;
+					const cy = parseInt(parts[1] || '0', 10) | 0;
+					const cz = parseInt(parts[2] || '0', 10) | 0;
+					const parent = ensureChunkGroup(cx, cy, cz);
+					if (!chunkFastCache.has(chunkKey)) {
+						chunkFastCache.set(chunkKey, { parent, origin: getChunkOriginFromKey(chunkKey) });
+					}
+					const existing = (function(){ const cm = instancedChunkData.get(chunkKey); const d = cm ? cm.get(pieceId) : null; return d ? (d.count | 0) : 0; })();
+					ensureInstancedMesh(chunkKey, pieceId, parent, existing + (need | 0));
+				}
+				// Add all missing bricks
+				for (const [bid, b] of Object.entries(stateBricks)) {
+					if (!b || !b.chunkKey) continue;
+					if (brickIdToInstanceRef.has(bid)) continue;
+					const cache = chunkFastCache.get(b.chunkKey);
+					if (cache) {
+						addBrickInstanceFast(cache.parent, cache.origin, b.chunkKey, { id: bid, ...b });
+					} else {
+						// Fallback if not cached (should be rare)
+						createBrickMesh({ id: bid, ...b });
+					}
+				}
+			} else if (stateBricks == null) {
+				// Nested iteration path over chunks and their bricks (init only)
+				for (const [ckey, c] of Object.entries(stateChunks || {})) {
+					const br = (c && c.bricks) || {};
+					// Count missing per pieceId
+					const pieceCounts = new Map();
+					for (const [bid, b] of Object.entries(br)) {
+						if (brickIdToInstanceRef.has(bid)) continue;
+						const pid = (b && b.pieceId) || "3022";
+						pieceCounts.set(pid, (pieceCounts.get(pid) || 0) + 1);
+					}
+					if (pieceCounts.size > 0) {
+						const parts = String(ckey).split(',');
+						const cx = parseInt(parts[0] || '0', 10) | 0;
+						const cy = parseInt(parts[1] || '0', 10) | 0;
+						const cz = parseInt(parts[2] || '0', 10) | 0;
+						const parent = ensureChunkGroup(cx, cy, cz);
+						for (const [pid, count] of pieceCounts.entries()) {
+							const existing = (function(){ const cm = instancedChunkData.get(ckey); const d = cm ? cm.get(pid) : null; return d ? (d.count | 0) : 0; })();
+							ensureInstancedMesh(ckey, pid, parent, existing + (count | 0));
+						}
+						// Add bricks
+						const origin = getChunkOriginFromKey(ckey);
+						for (const [bid, b] of Object.entries(br)) {
+							if (brickIdToInstanceRef.has(bid)) continue;
+							addBrickInstanceFast(parent, origin, ckey, { id: bid, chunkKey: ckey, ...b });
+						}
+					}
+				}
+			} else {
+				// Explicit empty object passed: ensure groups only (no brick creation)
 			}
+		} finally {
+			// Flush batched GPU updates and bounds recomputation
+			for (const mesh of _meshesNeedingUpdate) {
+				try { mesh.instanceMatrix.needsUpdate = true; } catch (_) {}
+				try { if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; } catch (_) {}
+				try { if (mesh.computeBoundingSphere) mesh.computeBoundingSphere(); } catch (_) {}
+				try { if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) mesh.geometry.computeBoundingSphere(); } catch (_) {}
+			}
+			_meshesNeedingUpdate.clear();
+			for (const group of _groupsNeedingBounds) {
+				try { if (group) recomputeGroupBounds(group); } catch (_) {}
+			}
+			_groupsNeedingBounds.clear();
+			bulkReconcileActive = false;
 		}
 	}
 
@@ -1493,7 +1665,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 				setupPostProcessing();
 				gltfLoader = new GLTFLoader();
 				ensureStudHighlight();
+				console.time('[BrickQuest] loadBrickModelInternal');
 				await loadBrickModelInternal();
+				console.timeEnd('[BrickQuest] loadBrickModelInternal');
 				setLoading("");
 			} catch (e) {
 				onError(e);

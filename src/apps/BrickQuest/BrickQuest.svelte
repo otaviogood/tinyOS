@@ -126,42 +126,46 @@
         }
     }
 
-    // Three.js scene setup moved to threeRenderer.js
-
-    // Post-processing moved to threeRenderer.js
-
-    // Model loading moved to threeRenderer.js
-
-    // Stud highlight creation handled in threeRenderer.js
+    // Shared color palette (must stay in sync with server indices)
+    // const brickColorHexes = [
+    //     0xfd301b, // Red
+    //     0x0e78cf, // Blue
+    //     0x02b510, // Green
+    //     0xffd804, // Yellow
+    //     0x8b5cf6, // Purple
+    //     0xff9801, // Orange
+    //     0xffffff, // White
+    //     0xc0c0d0,  // Light Gray
+    //     0x707080,  // Dark Gray
+    //     0x303038,  // Black
+    // ];
 
     // Shared color palette (must stay in sync with server indices)
     const brickColorHexes = [
-        0xfd301b, // Red
-        0x0e78cf, // Blue
-        0x02b510, // Green
-        0xffd804, // Yellow
-        0x8b5cf6, // Purple
-        0xff9801, // Orange
-        0xffffff, // White
-        0xc0c0d0,  // Light Gray
-        0x707080,  // Dark Gray
-        0x303038,  // Black
+        0xc82008, // Bright Red
+        0x91501c, // Dark Orange
+        0xff7000, // Bright Orange
+        0x372100, // Dark Brown
+        0x897d62, // Sand Yellow
+        0xccb98d, // Brick Yellow
+        0xffd804, // Bright Yellow
+        0x008010, // Dark Green
+        0x00451a, // Earth Green
+        0x36abd3, // Dark Azur
+        0x1b2a34, // Black
+        0x0e78cf, // Earth Blue
+        0x720012, // New Dark Red
+        0xf0f0f0, // White
+        0xc0c0d0, // Medium Stone Grey
+        0x707080, // Dark Stone Grey
     ];
 
-    // Brick materials are created in threeRenderer.js
-
-    // Ghost material handled in threeRenderer.js
 
     function setGhostCollisionVisual(colliding) {
         renderer3d && renderer3d.setGhostCollisionVisual(colliding);
     }
 
-    // Ghost collision request is embedded into the regular inputDiff emit in sendInput
-    // Ghost mesh and placement handled in threeRenderer.js
-
     function initNetworking() {
-        // Stud highlight handled by renderer on init
-        
         // Resolve server URL from StartScreen or fallback
         const savedUrl = (typeof localStorage !== 'undefined' && localStorage.getItem('brickquest_server_url')) || 'http://localhost:3001';
         const name = (typeof localStorage !== 'undefined' && localStorage.getItem('brickquest_player_name')) || `builder${Math.floor(100 + Math.random()*900)}`;
@@ -173,6 +177,8 @@
         const desiredTorsoColor = brickColorHexes[isFinite(torsoIdx) ? torsoIdx : 1] | 0;
 
         // Connect to the server and send preferred colors up-front in auth payload
+        console.time('[BrickQuest] socket to init');
+        console.time('[BrickQuest] socket connect');
         socket = io(savedUrl, {
             transports: ['websocket'],
             upgrade: false,
@@ -180,13 +186,15 @@
         });
 
         // Connection state handlers (after socket is created)
-        socket.on('connect', () => { isConnected = true; });
+        socket.on('connect', () => { isConnected = true; console.timeEnd('[BrickQuest] socket connect'); });
         socket.on('disconnect', () => { isConnected = false; });
         socket.on('connect_error', () => { isConnected = false; });
         socket.on('reconnect', () => { isConnected = true; });
 
         // Handle initial connection
 		socket.on('init', (data) => {
+			console.timeEnd('[BrickQuest] socket to init');
+            console.time('[BrickQuest] init');
 			isConnected = true;
             playerId = data.playerId;
             
@@ -218,15 +226,8 @@
                 renderer3d.createPlayerMesh({ id: pid, ...player });
             }
             
-            // Ensure chunk groups and bricks reconcile under chunk parents
-            renderer3d.reconcileChunksAndBricks(gameState.chunks, (function(){
-                const flat = {};
-                for (const [k, c] of Object.entries(gameState.chunks || {})) {
-                    const br = (c && c.bricks) || {};
-                    for (const [bid, b] of Object.entries(br)) flat[bid] = { ...b, chunkKey: k };
-                }
-                return flat;
-            })());
+            // Ensure chunk groups and bricks reconcile; pass chunks only to use renderer nested fast-path
+            renderer3d.reconcileChunksAndBricks(gameState.chunks, null);
             // If debug was toggled previously, re-apply to ensure helpers get added to all groups
             if (chunkDebugVisible && renderer3d && renderer3d.setChunkDebugVisible) {
                 renderer3d.setChunkDebugVisible(true);
@@ -266,6 +267,7 @@
                 if (renderer3d && renderer3d.setAnchorMode) {
                     renderer3d.setAnchorMode(anchorMode);
                 }
+                console.timeEnd('[BrickQuest] init');
             }
             // Sync selected color index
             if (localPlayer && localPlayer.selectedColorIndex !== undefined) {

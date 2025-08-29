@@ -6,7 +6,7 @@ export function setupPBRLighting(scene) {
 	hemiLight.position.set(0, 50, 0);
 	scene.add(hemiLight);
 
-	const sunLight = new THREE.DirectionalLight(0xffffff, 2.5);
+	const sunLight = new THREE.DirectionalLight(0xffffff, 3.0);
 	sunLight.position.set(200, 300, 100);
 	sunLight.castShadow = true;
 	sunLight.shadow.mapSize.width = 2048;
@@ -33,7 +33,7 @@ export function setupPBRLighting(scene) {
 export function setupEquirectangularSkybox(scene, camera, onLoaded, onError) {
 	const textureLoader = new THREE.TextureLoader();
 	textureLoader.load(
-		'/apps/lego_sky2.png',
+		'/apps/lego_sky4.png',
 		function(texture) {
 			const farDistance = (camera && typeof camera.far === 'number') ? camera.far : 5000;
 			const radius = Math.max(10, farDistance * 0.98);

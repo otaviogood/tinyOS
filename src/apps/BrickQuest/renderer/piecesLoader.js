@@ -39,6 +39,7 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 		gltfLoader.load(
 			"/apps/bricks/all_pieces.gltf",
 			function (gltf) {
+				console.time('[BrickQuest] loadBrickModel');
 				const legoPartsLibrary = gltf.scene.getObjectByName("LegoPartsLibrary");
 				if (!legoPartsLibrary) {
 					reject(new Error("LegoPartsLibrary not found in GLTF"));
@@ -73,24 +74,11 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 					}
 					if (partMesh && partMesh.geometry) {
 						const geometry = partMesh.geometry.clone();
-						try {
-							piece.updateWorldMatrix(true, false);
-							partMesh.updateWorldMatrix(true, false);
-							const pieceWorld = piece.matrixWorld;
-							const partWorld = partMesh.matrixWorld;
-							const pieceWorldInv = new THREE.Matrix4().copy(pieceWorld).invert();
-							const localToPiece = new THREE.Matrix4().multiplyMatrices(pieceWorldInv, partWorld);
-							geometry.applyMatrix4(localToPiece);
-						} catch (e) {
-							console.warn(`Failed to bake transform for piece ${pieceId}:`, e);
-						}
-						if (!geometry.attributes.normal) geometry.computeVertexNormals();
-						geometry.normalizeNormals();
 						// Keep geometry as-authored; material ignores per-vertex color (we use per-instance colors)
 						// Ensure bounds exist for better culling even though InstancedMesh disables frustum culling
 						geometry.computeBoundingBox();
 						geometry.computeBoundingSphere();
-						try { geometry.computeBoundsTree(); } catch (_) {}
+						geometry.computeBoundsTree();
 						brickGeometries.set(pieceId, geometry);
 						loadedCount++;
 					}
@@ -112,19 +100,8 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 					}
 					if (partNoStudsMesh && partNoStudsMesh.geometry) {
 						const colGeom = partNoStudsMesh.geometry.clone();
-						try {
-							piece.updateWorldMatrix(true, false);
-							partNoStudsMesh.updateWorldMatrix(true, false);
-							const pieceWorld = piece.matrixWorld;
-							const pnsWorld = partNoStudsMesh.matrixWorld;
-							const pieceWorldInv = new THREE.Matrix4().copy(pieceWorld).invert();
-							const localToPiece = new THREE.Matrix4().multiplyMatrices(pieceWorldInv, pnsWorld);
-							colGeom.applyMatrix4(localToPiece);
-						} catch (e) {
-							console.warn(`Failed to bake transform for partnostuds ${pieceId}:`, e);
-						}
-						if (!colGeom.attributes.normal) colGeom.computeVertexNormals();
-						colGeom.normalizeNormals();
+						// if (!colGeom.attributes.normal) colGeom.computeVertexNormals();
+						// colGeom.normalizeNormals();
 						try { colGeom.computeBoundsTree(); } catch (_) {}
 						collisionGeometries.set(pieceId, colGeom);
 					}
@@ -148,19 +125,8 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 						}
 						if (convexMesh && convexMesh.geometry) {
 							const lodGeom = convexMesh.geometry.clone();
-							try {
-								piece.updateWorldMatrix(true, false);
-								convexMesh.updateWorldMatrix(true, false);
-								const pieceWorld = piece.matrixWorld;
-								const convexWorld = convexMesh.matrixWorld;
-								const pieceWorldInv = new THREE.Matrix4().copy(pieceWorld).invert();
-								const localToPiece = new THREE.Matrix4().multiplyMatrices(pieceWorldInv, convexWorld);
-								lodGeom.applyMatrix4(localToPiece);
-							} catch (e) {
-								console.warn(`Failed to bake transform for convex ${pieceId}:`, e);
-							}
-							if (!lodGeom.attributes.normal) lodGeom.computeVertexNormals();
-							lodGeom.normalizeNormals();
+							// if (!lodGeom.attributes.normal) lodGeom.computeVertexNormals();
+							// lodGeom.normalizeNormals();
 							lodGeom.computeBoundingBox();
 							lodGeom.computeBoundingSphere();
 							try { lodGeom.computeBoundsTree(); } catch (_) {}
@@ -170,6 +136,7 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 				}
 				setLoading("");
 				resolve();
+				console.timeEnd('[BrickQuest] loadBrickModel');
 			},
 			function (progress) {
 				if (progress.lengthComputable) {

@@ -21,7 +21,7 @@ const {
     rebuildWorldBVH,
     resolvePlayerCapsuleCollision,
     addBrickToCollision,
-    addBricksToCollisionBatch,
+    addBricksToCollisionChunk,
     removeBrickFromCollision,
     CHUNK_SIZE_XZ,
     CHUNK_SIZE_Y,
@@ -51,7 +51,7 @@ const io = socketIO(server, {
 const TICK_RATE = 60; // Server tick rate in Hz
 const SEND_RATE = 60; // How often to send updates to clients in Hz
 // Color configuration
-const NUM_COLORS = 10; // Total number of brick colors supported by the client palette
+const NUM_COLORS = 16; // Total number of brick colors supported by the client palette
 const MAX_COLOR_INDEX = NUM_COLORS - 1;
 
 // Persistence configuration
@@ -234,7 +234,7 @@ io.on('connection', (socket) => {
         lastHeardAt: Date.now()
     };
 
-    console.log(`[${new Date().toLocaleTimeString()}] Player connected: ${socket.id} (${playerName})`);
+    console.log(`[${new Date().getSeconds()}.${new Date().getMilliseconds()}] Player connected: ${socket.id} (${playerName})`);
 
     // Send initial game state to the new player (full state)
     const initData = {
@@ -245,6 +245,7 @@ io.on('connection', (socket) => {
         // Runtime chunk config for client
         chunkConfig: { size: CHUNK_SIZE_XZ, height: CHUNK_SIZE_Y }
     };
+    console.log(`[${new Date().getSeconds()}.${new Date().getMilliseconds()}] Done init data`);
 
     simulateLatency(() => {
         socket.emit('init', initData);
@@ -782,9 +783,12 @@ setInterval(() => {
 
 // Send state updates to clients
 setInterval(() => {
+    // If there are no connected clients, skip generating diffs and clear any pending dirties
+    const connectedCount = (io && io.sockets && io.sockets.sockets) ? io.sockets.sockets.size : 0;
+    if (!connectedCount) return;
+
     // Generate diff of all changes
     const diff = gameState._diff();
-    
     if (diff) {
         simulateLatency(() => {
             io.emit('stateDiff', {
@@ -792,7 +796,6 @@ setInterval(() => {
                 timestamp: Date.now()
             });
         }, 'stateDiff');
-        
         // Clear dirty tracking for next frame
         gameState._clear();
     }
@@ -838,14 +841,22 @@ process.on('uncaughtException', async (err) => {
 
         const loaded = tryLoadWorldFromDisk();
         if (!loaded) {
-            console.log(`[${new Date().toLocaleTimeString()}] Creating new world via worldgen (chunk 0,0,0)`);
-            addBricksToCollisionBatch(gameState, generateChunk(0, 0, 0, gameState));
+            console.log(`[${new Date().getSeconds()}.${new Date().getMilliseconds()}] Creating new world via worldgen (chunks -2..1,-2..1 around origin)`);
+            for (let cx = -2; cx <= 1; cx++) {
+                for (let cz = -2; cz <= 1; cz++) {
+                    addBricksToCollisionChunk(gameState, generateChunk(cx, 0, cz, gameState));
+                }
+            }
+            console.log(`[${new Date().getSeconds()}.${new Date().getMilliseconds()}] Worldgen complete`);
             worldDirtySinceSave = true;
         } else {
             console.log(`[${new Date().toLocaleTimeString()}] Using persisted world from disk`);
             // Build per-chunk BVHs from authoritative bricks loaded from disk
             rebuildWorldBVH(gameState);
         }
+
+        // Clear any startup dirty flags; clients receive a full snapshot via 'init'
+        gameState._clear();
 
         const PORT = process.env.PORT || 3001;
         const HOST = process.env.HOST || '0.0.0.0';
