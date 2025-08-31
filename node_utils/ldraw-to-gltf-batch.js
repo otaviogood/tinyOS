@@ -95,6 +95,14 @@ class LDrawBatchParser extends LDrawParserAdvanced {
         // Process the file
         await this.processFile(partPath);
         
+        // Skip exporting pieces that have neither studs nor anti-studs detected
+        const studCount = Array.isArray(this.studData) ? this.studData.length : 0;
+        const antiCount = Array.isArray(this.antiStudData) ? this.antiStudData.length : 0;
+        if (studCount === 0 && antiCount === 0) {
+            console.log(`Skipping ${pieceInfo.partNumber}: no studs or anti-studs found`);
+            return null;
+        }
+
         // Store the piece data
         return {
             partNumber: pieceInfo.partNumber,

@@ -34,6 +34,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let gammaPassRef = null;
 	let outputPassRef = null;
 
+	// Lighting references
+	let sunLightRef = null;
+
 	// Preview scene objects
 	let previewScene = null;
 	let previewCamera = null;
@@ -523,6 +526,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let previewMesh = null;
 	let previewMaterial = null;
 	let previewRotationSpeed = 0.01;
+	let previewEnabled = true;
 
     // disposed via threeUtils
 
@@ -1515,7 +1519,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		}
 		
 		// Render preview
-		renderPreview();
+		if (previewEnabled) renderPreview();
 		if (localPlayer && localPlayer.position) {
 			const eyeHeight = 30;
 			const playerEye = new THREE.Vector3(localPlayer.position.x, localPlayer.position.y + eyeHeight, localPlayer.position.z);
@@ -1547,6 +1551,36 @@ export function createBrickQuestRenderer(container, options = {}) {
 					sprite.position.set(playerMesh.position.x, baseY + 65, playerMesh.position.z);
 					// Hide local player's label in first-person view
 					sprite.visible = !(localPlayer && localPlayer.id === pid && !isThirdPerson);
+				}
+			}
+		}
+		// Keep the sun light following the camera so shadow coverage tracks the player
+		if (sunLightRef && camera) {
+			// Position the sun relative to camera to maintain coverage
+			const lightDir = new THREE.Vector3(-0.6, -1.0, -0.4).normalize();
+			const lightDistance = 600; // move light back along direction
+			// Place light some distance opposite the lightDir from the camera
+			const lightPos = camera.position.clone().sub(lightDir.clone().multiplyScalar(lightDistance)).add(new THREE.Vector3(0, 200, 0));
+			sunLightRef.position.copy(lightPos);
+			// Aim toward camera position (or slightly ahead) to ensure target in view
+			const targetPos = camera.position.clone();
+			if (sunLightRef.target) {
+				sunLightRef.target.position.copy(targetPos);
+				sunLightRef.target.updateMatrixWorld();
+			}
+			// Optionally, expand shadow camera frustum a bit if render distance increased
+			if (sunLightRef.shadow && sunLightRef.shadow.camera) {
+				const cam = sunLightRef.shadow.camera;
+				// Keep orthographic bounds large enough to cover chunks around the player
+				const orthoSize = 900; // matches/extends lighting.js defaults
+				if (cam.left !== -orthoSize) {
+					cam.left = -orthoSize;
+					cam.right = orthoSize;
+					cam.top = orthoSize;
+					cam.bottom = -orthoSize;
+					cam.near = 1;
+					cam.far = Math.max(1500, (RENDER_DISTANCE | 0));
+					cam.updateProjectionMatrix();
 				}
 			}
 		}
@@ -1660,7 +1694,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 					renderer.domElement.style.contain = 'layout paint';
 					renderer.domElement.style.touchAction = 'none';
 				}
-				setupPBRLighting(scene);
+				// Lighting
+				const lights = setupPBRLighting(scene) || {};
+				sunLightRef = lights.sunLight || scene.getObjectByName('SunLight') || null;
 				setupEquirectangularSkybox();
 				setupPostProcessing();
 				gltfLoader = new GLTFLoader();
@@ -1770,6 +1806,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 		getSSAODebugView,
 		// Preview
 		setupPreview,
+		// Preview sharing and helpers for external thumbnail rendering
+		getPreviewRenderer() { return previewRenderer; },
+		getGeometryForPieceId(id) { return id != null ? brickGeometries.get(String(id)) || null : null; },
+		getBrickMaterials() { return brickMaterials || []; },
+		setPreviewEnabled(v) { previewEnabled = !!v; },
 	};
 }
 

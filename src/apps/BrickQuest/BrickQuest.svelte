@@ -8,6 +8,7 @@
     import { Animator, frameCount, animateCount } from "../../animator";
     import { createBrickQuestRenderer } from "./renderer/threeRenderer.js";
     import StartScreen from "./StartScreen.svelte";
+    import Picker from "./Picker.svelte";
     import io from "socket.io-client";
     import { createDeltaState, applyDiff } from "./client-delta.js";
 
@@ -58,6 +59,8 @@
     let smoothedRTT = 0; // Exponentially smoothed RTT
 
     let showStart = true; // DEBUG: Skip start screen
+    let showPicker = false;
+    let recaptureOnNextEscUp = false; // when picker closed via ESC, recapture on keyup
 
 	// Performance HUD (per-frame timing)
 	let lastFrameMs = 0;
@@ -67,6 +70,9 @@
 	let ssaoDebug = false;
 	let showStats = false; // HUD stats collapsed by default
 	let chunkDebugVisible = false; // toggled with backtick
+	// Preserve yaw across server-selected piece echo after eyedrop
+	let preserveYawOnNextPieceChange = false;
+	let pendingSampledYaw = 0;
 
     onMount(async () => {
         const onStart = async () => { showStart = false; await nextTick(); await safeStartGame(); };
@@ -142,20 +148,20 @@
 
     // Shared color palette (must stay in sync with server indices)
     const brickColorHexes = [
-        0xc82008, // Bright Red
+        0xb40000, // Bright Red
         0x91501c, // Dark Orange
         0xff7000, // Bright Orange
         0x372100, // Dark Brown
         0x897d62, // Sand Yellow
         0xccb98d, // Brick Yellow
-        0xffd804, // Bright Yellow
-        0x008010, // Dark Green
+        0xfac80a, // Bright Yellow
+        0x00852b, // Dark Green
         0x00451a, // Earth Green
         0x36abd3, // Dark Azur
         0x1b2a34, // Black
         0x0e78cf, // Earth Blue
         0x720012, // New Dark Red
-        0xf0f0f0, // White
+        0xf4f4f4, // White
         0xc0c0d0, // Medium Stone Grey
         0x707080, // Dark Stone Grey
     ];
@@ -313,8 +319,14 @@
                             if (player.selectedPieceIndex !== undefined && player.selectedPieceIndex !== selectedPieceIndex) {
                                 selectedPieceIndex = player.selectedPieceIndex;
                                 // Renderer will use piecesData directly
-                                // Reset rotation when piece changes
-                                ghostYaw = 0;
+                                // Reset rotation when piece changes unless we have a preserved yaw
+                                if (preserveYawOnNextPieceChange && typeof pendingSampledYaw === 'number') {
+                                    ghostYaw = pendingSampledYaw;
+                                    preserveYawOnNextPieceChange = false;
+                                    pendingSampledYaw = 0;
+                                } else {
+                                    ghostYaw = 0;
+                                }
                                 // Keep ghost in sync when server changes our selected piece
                                 renderer3d.setSelectedPieceIndex(selectedPieceIndex);
                                 renderer3d.setGhostYaw(ghostYaw);
@@ -432,9 +444,13 @@
                 inputState.keys[key] = true;
             }
             
-            // ESC key exits pointer lock
+            // ESC key exits pointer lock (unless picker is open)
             if (e.key === 'Escape') {
-                document.exitPointerLock();
+                if (showPicker) {
+                    // handled by picker
+                } else {
+                    document.exitPointerLock();
+                }
             }
             
             // Piece selection with - and = keys
@@ -489,6 +505,85 @@
             } else if (key === 'c') {
                 // Toggle simple third-person follow camera (debug)
                 isThirdPerson = !isThirdPerson;
+            } else if (key === 'p') {
+                if (!showPicker) {
+                    // Open picker overlay
+                    showPicker = true;
+                    recaptureOnNextEscUp = false;
+                    // Disable preview rotation render while picker open
+                    if (renderer3d && renderer3d.setPreviewEnabled) renderer3d.setPreviewEnabled(false);
+                    // Release pointer lock so mouse can be used
+                    if (document.pointerLockElement === container) {
+                        document.exitPointerLock();
+                    }
+                } else {
+                    // Close picker and resume gameplay
+                    showPicker = false;
+                    recaptureOnNextEscUp = false;
+                    if (renderer3d && renderer3d.setPreviewEnabled) renderer3d.setPreviewEnabled(true);
+                    if (container && container.requestPointerLock) {
+                        try { container.requestPointerLock(); } catch(_) {}
+                    }
+                }
+            } else if (key === 'r') {
+                // Eyedropper: pick hovered piece, color, and rotation (yaw)
+                if (showPicker) return; // ignore while picker open
+                const hoveredBrickId = renderer3d && renderer3d.getPickedBrickId && renderer3d.getPickedBrickId();
+                if (!hoveredBrickId) return;
+                // Resolve pieceId and colorIndex from game state (prefer brickIndex if present)
+                let pieceId = null;
+                let brickColorIndex = null;
+                let sampledBrick = null;
+                if (gameState && gameState.brickIndex && gameState.brickIndex[hoveredBrickId]) {
+                    const ck = gameState.brickIndex[hoveredBrickId];
+                    const chunk = gameState.chunks && gameState.chunks[ck];
+                    const b = chunk && chunk.bricks && chunk.bricks[hoveredBrickId];
+                    sampledBrick = b || null;
+                    pieceId = b && b.pieceId;
+                    if (b && b.colorIndex != null) brickColorIndex = b.colorIndex | 0;
+                } else if (gameState && gameState.chunks) {
+                    for (const [ck, chunk] of Object.entries(gameState.chunks)) {
+                        const b = chunk && chunk.bricks && chunk.bricks[hoveredBrickId];
+                        if (b && b.pieceId) { sampledBrick = b; pieceId = b.pieceId; if (b.colorIndex != null) brickColorIndex = b.colorIndex | 0; break; }
+                    }
+                }
+                if (!pieceId || !Array.isArray(pieceList) || pieceList.length === 0) return;
+                // Sample yaw rotation from the brick if available
+                let sampledYaw = 0;
+                if (sampledBrick && sampledBrick.rotation && typeof sampledBrick.rotation.y === 'number') {
+                    sampledYaw = sampledBrick.rotation.y;
+                }
+                const targetIndex = pieceList.findIndex((p) => p && String(p.id) === String(pieceId));
+                if (targetIndex < 0) return;
+                // Compute shortest wrap delta and request change via server
+                const n = pieceList.length | 0;
+                const cur = selectedPieceIndex | 0;
+                let d = ((targetIndex - cur) % n + n) % n;
+                let dBack = d - n;
+                const delta = (Math.abs(dBack) < d) ? dBack : d;
+                // If the piece is already selected, avoid sending a pieceChange event
+                if (delta !== 0) {
+                    // Mark that we want to preserve sampled yaw when the server echoes the piece change
+                    preserveYawOnNextPieceChange = true;
+                    pendingSampledYaw = 0; // will set below if available
+                    changePiece(delta);
+                }
+                // Also pick the color if available
+                if (Number.isFinite(brickColorIndex)) {
+                    const clamped = Math.max(0, Math.min(brickColorHexes.length - 1, brickColorIndex | 0));
+                    setColor(clamped);
+                }
+                // Apply sampled yaw after piece change (since changePiece resets yaw)
+                if (typeof sampledYaw === 'number') {
+                    if (delta === 0) {
+                        // No piece change; apply immediately
+                        ghostYaw = sampledYaw;
+                        renderer3d.setGhostYaw(ghostYaw);
+                    } else {
+                        // Defer until server echo of selectedPieceIndex so our local reset doesn't override
+                        pendingSampledYaw = sampledYaw;
+                    }
+                }
             }
         });
 
@@ -505,6 +600,13 @@
             else if (key === 'arrowright') key = 'd';
             if (inputState.keys.hasOwnProperty(key)) {
                 inputState.keys[key] = false;
+            }
+            // If we just closed picker due to ESC, recapture on ESC keyup
+            if ((e.key === 'Escape' || key === 'escape') && recaptureOnNextEscUp) {
+                recaptureOnNextEscUp = false;
+                if (container && container.requestPointerLock) {
+                    try { container.requestPointerLock(); } catch(_) {}
+                }
             }
         });
     }
@@ -648,6 +750,8 @@
     }
 
     function handlePointerDown(event) {
+        // If picker is open, ignore game clicks
+        if (showPicker) return;
         // Request pointer lock for FPS-style mouse controls
         if (document.pointerLockElement !== container) {
             container.requestPointerLock();
@@ -777,6 +881,7 @@
 				<div>- / = : Switch Piece</div>
 				<div>Z / X : Rotate Piece</div>
 				<div>, / . : Switch Color</div>
+				<div>R : Pick Hovered Piece + Color + Rotation</div>
 				<div>' : Cycle anti-stud</div>
 				<!-- <div>Q: Toggle SSAO</div> -->
 				<!-- <div>Shift+Q: SSAO Debug Output</div> -->
@@ -813,6 +918,40 @@
                     </div>
                 {/if}
         </div>
+
+        {#if showPicker}
+            <Picker
+                {pieceList}
+                {renderer3d}
+                {selectedPieceIndex}
+                on:select={(e) => {
+                    const i = e.detail;
+                    // Send delta to server based on current index to target index
+                    const n = pieceList.length | 0;
+                    if (n > 0 && Number.isFinite(i)) {
+                        const cur = selectedPieceIndex | 0;
+                        // compute shortest wrap delta
+                        let d = ((i - cur) % n + n) % n; // forward distance
+                        let dBack = d - n; // backward distance (negative)
+                        const delta = (Math.abs(dBack) < d) ? dBack : d;
+                        changePiece(delta);
+                    }
+                    showPicker = false;
+                    if (renderer3d && renderer3d.setPreviewEnabled) renderer3d.setPreviewEnabled(true);
+                    // Recapture pointer lock for gameplay
+                    if (container && container.requestPointerLock) {
+                        try { container.requestPointerLock(); } catch(_) {}
+                    }
+                }}
+                on:close={() => {
+                    showPicker = false;
+                    if (renderer3d && renderer3d.setPreviewEnabled) renderer3d.setPreviewEnabled(true);
+                    if (container && container.requestPointerLock) {
+                        try { container.requestPointerLock(); } catch(_) {}
+                    }
+                }}
+            />
+        {/if}
 
         <CloseButton />
             {/if}

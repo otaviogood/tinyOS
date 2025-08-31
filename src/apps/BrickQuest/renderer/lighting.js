@@ -7,6 +7,7 @@ export function setupPBRLighting(scene) {
 	scene.add(hemiLight);
 
 	const sunLight = new THREE.DirectionalLight(0xffffff, 3.0);
+	sunLight.name = 'SunLight';
 	sunLight.position.set(200, 300, 100);
 	sunLight.castShadow = true;
 	sunLight.shadow.mapSize.width = 2048;
@@ -28,6 +29,9 @@ export function setupPBRLighting(scene) {
 	const rimLight = new THREE.DirectionalLight(0xffffff, 0.5);
 	rimLight.position.set(0, 0, -200);
 	scene.add(rimLight);
+
+	// Return references for downstream control (optional to use)
+	return { sunLight, hemiLight, fillLight, rimLight };
 }
 
 export function setupEquirectangularSkybox(scene, camera, onLoaded, onError) {
