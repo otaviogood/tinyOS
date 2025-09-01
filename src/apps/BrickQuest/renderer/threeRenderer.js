@@ -47,6 +47,10 @@ export function createBrickQuestRenderer(container, options = {}) {
 	// Last render stats (aggregated across composer passes per frame)
 	let lastDrawCalls = 0;
 	let lastTriangles = 0;
+	let lastGpuMs = 0;
+	let glCtx = null;
+	let gpuTimerExt = null;
+	const gpuQueries = [];
 
 	// Resources
 	let brickMaterials = null; // array of MeshStandardMaterial
@@ -1650,7 +1654,31 @@ export function createBrickQuestRenderer(container, options = {}) {
 			renderer.info.autoReset = false;
 			if (typeof renderer.info.reset === 'function') renderer.info.reset();
 		}
+		// Begin GPU timer for this frame's submitted work
+		if (gpuTimerExt && glCtx) {
+			const q = glCtx.createQuery();
+			glCtx.beginQuery(gpuTimerExt.TIME_ELAPSED_EXT, q);
+			gpuQueries.push(q);
+		}
 		composer.render();
+		// End GPU timer query
+		if (gpuTimerExt && glCtx) {
+			glCtx.endQuery(gpuTimerExt.TIME_ELAPSED_EXT);
+			// Poll oldest pending query (results are ready 1-3 frames later)
+			if (gpuQueries.length > 0) {
+				const q = gpuQueries[0];
+				const available = glCtx.getQueryParameter(q, glCtx.QUERY_RESULT_AVAILABLE);
+				const disjoint = glCtx.getParameter(gpuTimerExt.GPU_DISJOINT_EXT);
+				if (available) {
+					if (!disjoint) {
+						const ns = glCtx.getQueryParameter(q, glCtx.QUERY_RESULT);
+						lastGpuMs = ns / 1e6;
+					}
+					glCtx.deleteQuery(q);
+					gpuQueries.shift();
+				}
+			}
+		}
 		// Update per-frame stats for HUD
 		if (renderer && renderer.info) {
 			lastDrawCalls = renderer.info.render.calls | 0;
@@ -1689,6 +1717,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 					renderer.info.autoReset = false;
 				}
 				container.appendChild(renderer.domElement);
+				// Setup GPU timing (WebGL2 timer queries)
+				glCtx = renderer.getContext();
+				gpuTimerExt = glCtx.getExtension('EXT_disjoint_timer_query_webgl2');
 				// Hint to the browser compositor for stable fps
 				if (renderer.domElement && renderer.domElement.style) {
 					renderer.domElement.style.contain = 'layout paint';
@@ -1758,7 +1789,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		setSelectedStudIndex(i) { selectedStudIndex = Math.max(0, i | 0); ensureGhostMesh(false); },
 		setAnchorMode(m) { selectedAnchorMode = (m === 'stud') ? 'stud' : 'anti'; ensureGhostMesh(false); },
 		// Simple render stats for HUD
-		getRenderStats() { return { drawCalls: lastDrawCalls | 0, triangles: lastTriangles | 0 }; },
+		getRenderStats() { return { drawCalls: lastDrawCalls | 0, triangles: lastTriangles | 0, gpuMs: lastGpuMs || 0 }; },
 		// Picking
 		getMouseWorldPosition,
 		getPickedBrickId() { return (lastRayHitValid && lastHitBrickId) ? lastHitBrickId : null; },

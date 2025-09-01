@@ -276,9 +276,12 @@ class LDrawBatchParser extends LDrawParserAdvanced {
             };
 
             // Special shrunk node: fully smooth normals shared by position, then offset along normals
+            // Additionally clamp shrunk vertices to the original 'part' AABB reduced by 1/16 per axis
             const addShrunkMeshNode = (colorMap, shrinkDistance = 0.4, smoothAngle = 179.9) => {
                 if (!colorMap || colorMap.size === 0) return undefined;
                 const primitives = [];
+                let totalClamped = 0;
+                let maxOvershoot = 0;
                 colorMap.forEach((geoms, color) => {
                     if (!geoms || geoms.length === 0) return;
                     if (!materialMap.has(color)) {
@@ -305,7 +308,26 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                     });
                     if (vertices.length === 0 || indices.length === 0) return;
                     const merged = calculateSmoothNormalsAndMerge(vertices, indices, smoothAngle);
+
+                    // Compute original PART AABB from merged (pre-shrink)
+                    let minX = Infinity, minY = Infinity, minZ = Infinity;
+                    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+                    for (let i = 0; i < merged.vertices.length; i += 3) {
+                        const x = merged.vertices[i], y = merged.vertices[i + 1], z = merged.vertices[i + 2];
+                        if (x < minX) minX = x; if (x > maxX) maxX = x;
+                        if (y < minY) minY = y; if (y > maxY) maxY = y;
+                        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+                    }
+                    const clampMargin = 1 / 16;
+                    let sMinX = minX + clampMargin, sMaxX = maxX - clampMargin;
+                    let sMinY = minY + clampMargin, sMaxY = maxY - clampMargin;
+                    let sMinZ = minZ + clampMargin, sMaxZ = maxZ - clampMargin;
+                    if (sMinX > sMaxX) { const cx = (minX + maxX) * 0.5; sMinX = cx; sMaxX = cx; }
+                    if (sMinY > sMaxY) { const cy = (minY + maxY) * 0.5; sMinY = cy; sMaxY = cy; }
+                    if (sMinZ > sMaxZ) { const cz = (minZ + maxZ) * 0.5; sMinZ = cz; sMaxZ = cz; }
+
                     const shrunkVertices = new Float32Array(merged.vertices.length);
+                    let clampedHere = 0;
                     for (let i = 0; i < merged.vertices.length; i += 3) {
                         const nx = merged.normals[i];
                         const ny = merged.normals[i + 1];
@@ -313,10 +335,22 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                         const px = merged.vertices[i];
                         const py = merged.vertices[i + 1];
                         const pz = merged.vertices[i + 2];
-                        shrunkVertices[i] = px - nx * shrinkDistance;
-                        shrunkVertices[i + 1] = py - ny * shrinkDistance;
-                        shrunkVertices[i + 2] = pz - nz * shrinkDistance;
+                        let qx = px - nx * shrinkDistance;
+                        let qy = py - ny * shrinkDistance;
+                        let qz = pz - nz * shrinkDistance;
+                        let wasClamped = false;
+                        if (qx < sMinX) { maxOvershoot = Math.max(maxOvershoot, sMinX - qx); qx = sMinX; wasClamped = true; }
+                        else if (qx > sMaxX) { maxOvershoot = Math.max(maxOvershoot, qx - sMaxX); qx = sMaxX; wasClamped = true; }
+                        if (qy < sMinY) { maxOvershoot = Math.max(maxOvershoot, sMinY - qy); qy = sMinY; wasClamped = true; }
+                        else if (qy > sMaxY) { maxOvershoot = Math.max(maxOvershoot, qy - sMaxY); qy = sMaxY; wasClamped = true; }
+                        if (qz < sMinZ) { maxOvershoot = Math.max(maxOvershoot, sMinZ - qz); qz = sMinZ; wasClamped = true; }
+                        else if (qz > sMaxZ) { maxOvershoot = Math.max(maxOvershoot, qz - sMaxZ); qz = sMaxZ; wasClamped = true; }
+                        if (wasClamped) clampedHere++;
+                        shrunkVertices[i] = qx;
+                        shrunkVertices[i + 1] = qy;
+                        shrunkVertices[i + 2] = qz;
                     }
+                    totalClamped += clampedHere;
                     const normalBuffer = new Float32Array(merged.normals);
                     const indexBuffer = new Uint16Array(merged.indices);
                     // Position
@@ -359,7 +393,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                 const meshIndex = meshes.length;
                 meshes.push({ primitives });
                 const nodeIndex = nodes.length;
-                nodes.push({ name: 'shrunk', mesh: meshIndex, extras: { type: 'shrunk' } });
+                nodes.push({ name: 'shrunk', mesh: meshIndex, extras: { type: 'shrunk', clampMargin: 1/16, clampedVertexCount: totalClamped, maxOvershoot } });
                 return nodeIndex;
             };
 
@@ -626,9 +660,12 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                 };
 
                 // Special shrunk node for individual export as well
+                // Includes clamping to original 'part' AABB reduced by 1/16 per axis
                 const addShrunkMeshNode = (colorMap, shrinkDistance = 0.4, smoothAngle = 179.9) => {
                     if (!colorMap || colorMap.size === 0) return undefined;
                     const primitives = [];
+                    let totalClamped = 0;
+                    let maxOvershoot = 0;
                     colorMap.forEach((geoms, color) => {
                         if (!geoms || geoms.length === 0) return;
                         if (!materialMap.has(color)) {
@@ -655,7 +692,26 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                         });
                         if (vertices.length === 0 || indices.length === 0) return;
                         const merged = calculateSmoothNormalsAndMerge(vertices, indices, smoothAngle);
+
+                        // Compute original PART AABB
+                        let minX = Infinity, minY = Infinity, minZ = Infinity;
+                        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+                        for (let i = 0; i < merged.vertices.length; i += 3) {
+                            const x = merged.vertices[i], y = merged.vertices[i + 1], z = merged.vertices[i + 2];
+                            if (x < minX) minX = x; if (x > maxX) maxX = x;
+                            if (y < minY) minY = y; if (y > maxY) maxY = y;
+                            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+                        }
+                        const clampMargin = 1 / 16;
+                        let sMinX = minX + clampMargin, sMaxX = maxX - clampMargin;
+                        let sMinY = minY + clampMargin, sMaxY = maxY - clampMargin;
+                        let sMinZ = minZ + clampMargin, sMaxZ = maxZ - clampMargin;
+                        if (sMinX > sMaxX) { const cx = (minX + maxX) * 0.5; sMinX = cx; sMaxX = cx; }
+                        if (sMinY > sMaxY) { const cy = (minY + maxY) * 0.5; sMinY = cy; sMaxY = cy; }
+                        if (sMinZ > sMaxZ) { const cz = (minZ + maxZ) * 0.5; sMinZ = cz; sMaxZ = cz; }
+
                         const shrunkVertices = new Float32Array(merged.vertices.length);
+                        let clampedHere = 0;
                         for (let i = 0; i < merged.vertices.length; i += 3) {
                             const nx = merged.normals[i];
                             const ny = merged.normals[i + 1];
@@ -663,10 +719,22 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                             const px = merged.vertices[i];
                             const py = merged.vertices[i + 1];
                             const pz = merged.vertices[i + 2];
-                            shrunkVertices[i] = px - nx * shrinkDistance;
-                            shrunkVertices[i + 1] = py - ny * shrinkDistance;
-                            shrunkVertices[i + 2] = pz - nz * shrinkDistance;
+                            let qx = px - nx * shrinkDistance;
+                            let qy = py - ny * shrinkDistance;
+                            let qz = pz - nz * shrinkDistance;
+                            let wasClamped = false;
+                            if (qx < sMinX) { maxOvershoot = Math.max(maxOvershoot, sMinX - qx); qx = sMinX; wasClamped = true; }
+                            else if (qx > sMaxX) { maxOvershoot = Math.max(maxOvershoot, qx - sMaxX); qx = sMaxX; wasClamped = true; }
+                            if (qy < sMinY) { maxOvershoot = Math.max(maxOvershoot, sMinY - qy); qy = sMinY; wasClamped = true; }
+                            else if (qy > sMaxY) { maxOvershoot = Math.max(maxOvershoot, qy - sMaxY); qy = sMaxY; wasClamped = true; }
+                            if (qz < sMinZ) { maxOvershoot = Math.max(maxOvershoot, sMinZ - qz); qz = sMinZ; wasClamped = true; }
+                            else if (qz > sMaxZ) { maxOvershoot = Math.max(maxOvershoot, qz - sMaxZ); qz = sMaxZ; wasClamped = true; }
+                            if (wasClamped) clampedHere++;
+                            shrunkVertices[i] = qx;
+                            shrunkVertices[i + 1] = qy;
+                            shrunkVertices[i + 2] = qz;
                         }
+                        totalClamped += clampedHere;
                         const normalBuffer = new Float32Array(merged.normals);
                         const indexBuffer = new Uint16Array(merged.indices);
                         // Position
@@ -709,7 +777,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                     const meshIndex = meshes.length;
                     meshes.push({ primitives });
                     const nodeIndex = nodes.length;
-                    nodes.push({ name: 'shrunk', mesh: meshIndex, extras: { type: 'shrunk' } });
+                    nodes.push({ name: 'shrunk', mesh: meshIndex, extras: { type: 'shrunk', clampMargin: 1/16, clampedVertexCount: totalClamped, maxOvershoot } });
                     return nodeIndex;
                 };
 

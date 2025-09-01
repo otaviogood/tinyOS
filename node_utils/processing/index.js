@@ -314,6 +314,25 @@ function processIR(ir, options = {}) {
 
         // Also add a fully smooth, shrunk variant derived from 'part' geometry (includes studs)
         if (sourceType === 'part') {
+            // Compute original bounding box from 'part' (pre-shrink)
+            let minX = Infinity, minY = Infinity, minZ = Infinity;
+            let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+            for (let i = 0; i < merged.vertices.length; i += 3) {
+                const x = merged.vertices[i], y = merged.vertices[i + 1], z = merged.vertices[i + 2];
+                if (x < minX) minX = x; if (x > maxX) maxX = x;
+                if (y < minY) minY = y; if (y > maxY) maxY = y;
+                if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+            }
+            // Shrink that bbox by 1/16 in LDraw units (same magnitudes here)
+            const bboxMargin = 1 / 16; // 0.0625
+            let sMinX = minX + bboxMargin, sMaxX = maxX - bboxMargin;
+            let sMinY = minY + bboxMargin, sMaxY = maxY - bboxMargin;
+            let sMinZ = minZ + bboxMargin, sMaxZ = maxZ - bboxMargin;
+            // Handle degenerate small extents
+            if (sMinX > sMaxX) { const cx = (minX + maxX) * 0.5; sMinX = cx; sMaxX = cx; }
+            if (sMinY > sMaxY) { const cy = (minY + maxY) * 0.5; sMinY = cy; sMaxY = cy; }
+            if (sMinZ > sMaxZ) { const cz = (minZ + maxZ) * 0.5; sMinZ = cz; sMaxZ = cz; }
+
             const mergedSmooth = calculateSmoothNormalsAndMerge(vertices, indices, shrunkSmoothAngle);
             // Shrink positions along their smooth normals
             const shrunkVertices = new Float32Array(mergedSmooth.vertices.length);
@@ -324,9 +343,16 @@ function processIR(ir, options = {}) {
                 const px = mergedSmooth.vertices[i];
                 const py = mergedSmooth.vertices[i + 1];
                 const pz = mergedSmooth.vertices[i + 2];
-                shrunkVertices[i] = px - nx * shrinkDistance;
-                shrunkVertices[i + 1] = py - ny * shrinkDistance;
-                shrunkVertices[i + 2] = pz - nz * shrinkDistance;
+                let qx = px - nx * shrinkDistance;
+                let qy = py - ny * shrinkDistance;
+                let qz = pz - nz * shrinkDistance;
+                // Clamp to shrunk bbox: if outside, nudge to the plane
+                if (qx < sMinX) qx = sMinX; else if (qx > sMaxX) qx = sMaxX;
+                if (qy < sMinY) qy = sMinY; else if (qy > sMaxY) qy = sMaxY;
+                if (qz < sMinZ) qz = sMinZ; else if (qz > sMaxZ) qz = sMaxZ;
+                shrunkVertices[i] = qx;
+                shrunkVertices[i + 1] = qy;
+                shrunkVertices[i + 2] = qz;
             }
             const shrunkNormals = new Float32Array(mergedSmooth.normals);
             const shrunkIndices = new Uint16Array(mergedSmooth.indices);

@@ -1,6 +1,26 @@
 // @ts-nocheck
 import * as THREE from "three";
 
+// Convert Float32 normals to normalized Int16 for bandwidth savings
+function quantizeNormalsToInt16(geometry) {
+    if (!geometry || !geometry.attributes || !geometry.attributes.normal) return;
+    const attr = geometry.attributes.normal;
+    // Already quantized
+    if (attr.array instanceof Int16Array) return;
+    const count = attr.count | 0;
+    const src = attr.array;
+    if (!src || !Number.isFinite(count) || count <= 0) return;
+    const dst = new Int16Array(count * 3);
+    for (let i = 0; i < count * 3; i++) {
+        const v = src[i];
+        // Clamp to [-1, 1] and scale to Int16 range
+        const clamped = v < -1 ? -1 : (v > 1 ? 1 : v);
+        dst[i] = Math.round(clamped * 32767);
+    }
+    const newAttr = new THREE.BufferAttribute(dst, 3, true /* normalized */);
+    geometry.setAttribute('normal', newAttr);
+}
+
 export async function fetchPieceIdsFromCSV() {
 	try {
 		const res = await fetch('/apps/bricks/exported_pieces.csv', { cache: 'no-cache' });
@@ -76,6 +96,8 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 						const geometry = partMesh.geometry.clone();
 						// Keep geometry as-authored; material ignores per-vertex color (we use per-instance colors)
 						// Ensure bounds exist for better culling even though InstancedMesh disables frustum culling
+						// Quantize normals to Int16 normalized
+						quantizeNormalsToInt16(geometry);
 						geometry.computeBoundingBox();
 						geometry.computeBoundingSphere();
 						geometry.computeBoundsTree();
@@ -100,8 +122,8 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 					}
 					if (partNoStudsMesh && partNoStudsMesh.geometry) {
 						const colGeom = partNoStudsMesh.geometry.clone();
-						// if (!colGeom.attributes.normal) colGeom.computeVertexNormals();
-						// colGeom.normalizeNormals();
+						// Quantize normals to Int16 normalized (if present)
+						quantizeNormalsToInt16(colGeom);
 						try { colGeom.computeBoundsTree(); } catch (_) {}
 						collisionGeometries.set(pieceId, colGeom);
 					}
@@ -125,8 +147,8 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 						}
 						if (convexMesh && convexMesh.geometry) {
 							const lodGeom = convexMesh.geometry.clone();
-							// if (!lodGeom.attributes.normal) lodGeom.computeVertexNormals();
-							// lodGeom.normalizeNormals();
+							// Quantize normals to Int16 normalized (if present)
+							quantizeNormalsToInt16(lodGeom);
 							lodGeom.computeBoundingBox();
 							lodGeom.computeBoundingSphere();
 							try { lodGeom.computeBoundsTree(); } catch (_) {}

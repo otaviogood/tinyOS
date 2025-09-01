@@ -58,12 +58,21 @@
     let currentRTT = 0; // Current round-trip time in milliseconds
     let smoothedRTT = 0; // Exponentially smoothed RTT
 
+    // Network diff backlog (fast-forward queue)
+    let pendingStateDiffs = [];
+    // Ensure we render at least periodically even under backlog
+    let framesSinceLastFullLoop = 0;
+    // Backlog handling constants
+    const BACKLOG_SKIP_THRESHOLD = 1; // queued > this means we're behind
+    const BACKLOG_LIMIT = 15; // max diffs per skip-frame AND max consecutive skip frames
+
     let showStart = true; // DEBUG: Skip start screen
     let showPicker = false;
     let recaptureOnNextEscUp = false; // when picker closed via ESC, recapture on keyup
 
 	// Performance HUD (per-frame timing)
-	let lastFrameMs = 0;
+	let cpuMs = 0;
+	let gpuMs = 0;
 	let drawCalls = 0;
 	let triangles = 0;
 	let ssaoEnabled = true;
@@ -285,134 +294,9 @@
         });
 
 
-        // Handle state diff updates
+        // Handle state diff updates: enqueue for processing in tick to avoid backlog stalls
         socket.on('stateDiff', (data) => {
-            const { diff, timestamp } = data;
-            
-            // Apply diff to game state
-            applyDiff(gameState, diff);
-            
-            // Trigger Svelte reactivity by reassigning gameState to itself
-            gameState = gameState;
-            
-            // Process changes
-            if (diff.players) {
-                for (const [pid, playerDiff] of Object.entries(diff.players)) {
-                    if (playerDiff._deleted) {
-                        renderer3d.removePlayerMesh(pid);
-                    } else if (playerDiff._new) {
-                        renderer3d.createPlayerMesh({ id: pid, ...gameState.players[pid] });
-                    } else {
-                        // If color fields changed, rebuild the player mesh so materials update
-                        if (playerDiff.colorLegs !== undefined || playerDiff.colorTorso !== undefined) {
-                            renderer3d.createPlayerMesh({ id: pid, ...gameState.players[pid] });
-                        } else {
-                            renderer3d.updatePlayerMesh({ id: pid, ...gameState.players[pid] });
-                        }
-                    }
-
-                    // Local player-specific updates
-                    if (pid === playerId) {
-                        const player = gameState.players[playerId];
-                        if (player) {
-                            // Update selected piece if changed
-                            if (player.selectedPieceIndex !== undefined && player.selectedPieceIndex !== selectedPieceIndex) {
-                                selectedPieceIndex = player.selectedPieceIndex;
-                                // Renderer will use piecesData directly
-                                // Reset rotation when piece changes unless we have a preserved yaw
-                                if (preserveYawOnNextPieceChange && typeof pendingSampledYaw === 'number') {
-                                    ghostYaw = pendingSampledYaw;
-                                    preserveYawOnNextPieceChange = false;
-                                    pendingSampledYaw = 0;
-                                } else {
-                                    ghostYaw = 0;
-                                }
-                                // Keep ghost in sync when server changes our selected piece
-                                renderer3d.setSelectedPieceIndex(selectedPieceIndex);
-                                renderer3d.setGhostYaw(ghostYaw);
-                            }
-                            // Update selected color if changed on server
-                            if (player.selectedColorIndex !== undefined && player.selectedColorIndex !== selectedColorIndex) {
-                                selectedColorIndex = Math.max(0, Math.min(brickColorHexes.length - 1, player.selectedColorIndex));
-                                renderer3d && renderer3d.setSelectedColorIndex(selectedColorIndex);
-                            }
-                            // Sync indices and mode from server if changed
-                            if (Number.isFinite(player.selectedAntiStudIndex) && player.selectedAntiStudIndex !== selectedAntiStudIndex) {
-                                selectedAntiStudIndex = Math.max(0, player.selectedAntiStudIndex | 0);
-                                renderer3d.setSelectedAntiStudIndex(selectedAntiStudIndex);
-                            }
-                            if (Number.isFinite(player.selectedStudIndex) && player.selectedStudIndex !== selectedStudIndex) {
-                                selectedStudIndex = Math.max(0, player.selectedStudIndex | 0);
-                                if (renderer3d && renderer3d.setSelectedStudIndex) {
-                                    renderer3d.setSelectedStudIndex(selectedStudIndex);
-                                }
-                            }
-                            if (typeof player.anchorMode === 'string' && player.anchorMode !== anchorMode) {
-                                anchorMode = player.anchorMode;
-                                if (renderer3d && renderer3d.setAnchorMode) {
-                                    renderer3d.setAnchorMode(anchorMode);
-                                }
-                            }
-                            
-                            // RTT calculation
-                            if (player.lastFrameCounter !== undefined) {
-                                const sentTime = sentFrames.get(player.lastFrameCounter);
-                                if (sentTime) {
-                                    currentRTT = Date.now() - sentTime;
-                                    smoothedRTT = smoothedRTT === 0 ? currentRTT : smoothedRTT * 0.99 + currentRTT * 0.01;
-                                    sentFrames.delete(player.lastFrameCounter);
-                                }
-                            }
-                            // Apply authoritative ghost pose and collision
-                            if (player.ghostPose) {
-                                renderer3d.applyAuthoritativeGhostPose(player.ghostPose);
-                            }
-                            if (typeof player.ghostColliding === 'boolean') {
-                                renderer3d.setGhostCollisionVisual(player.ghostColliding);
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Process brick changes
-            if (diff.chunks) {
-                // Reconcile groups for any added chunks, but do NOT prune here
-                renderer3d.reconcileChunksAndBricks(gameState.chunks, {});
-                if (chunkDebugVisible && renderer3d && renderer3d.setChunkDebugVisible) {
-                    // Ensure helpers exist for any newly created groups
-                    renderer3d.setChunkDebugVisible(true);
-                }
-                for (const [ckey, cDiff] of Object.entries(diff.chunks)) {
-                    const chunk = gameState.chunks && gameState.chunks[ckey];
-                    // If chunk is deleted, remove its visual group and all instances
-                    if (cDiff && cDiff._deleted) {
-                        if (renderer3d && renderer3d.removeChunkGroupAndInstances) {
-                            renderer3d.removeChunkGroupAndInstances(ckey);
-                        }
-                        continue;
-                    }
-                    if (!chunk) continue;
-                    // If the entire chunk is new, create all of its bricks
-                    if (cDiff && cDiff._new) {
-                        const bricksMap = (chunk && chunk.bricks) || {};
-                        for (const [bid, b] of Object.entries(bricksMap)) {
-                            renderer3d.createBrickMesh({ id: bid, chunkKey: ckey, ...b });
-                        }
-                        continue;
-                    }
-                    if (cDiff && cDiff.bricks) {
-                        for (const [bid, bDiff] of Object.entries(cDiff.bricks)) {
-                            if (bDiff && bDiff._deleted) {
-                                renderer3d.removeBrickMesh(bid);
-                            } else if (bDiff && bDiff._new) {
-                                const brick = chunk && chunk.bricks ? chunk.bricks[bid] : null;
-                                if (brick) renderer3d.createBrickMesh({ id: bid, chunkKey: ckey, ...brick });
-                            }
-                        }
-                    }
-                }
-            }
+            pendingStateDiffs.push(data);
         });
 
         // Start lightweight keepalive to ensure server hears from us even when idle
@@ -708,11 +592,151 @@
 
     function removePlayerMesh(playerId) { renderer3d.removePlayerMesh(playerId); }
 
+    // Apply a single state diff (used both live and when draining backlog)
+    function applySingleStateDiff(diff) {
+        // Apply diff to game state
+        applyDiff(gameState, diff);
+        // Trigger Svelte reactivity by reassigning gameState to itself
+        gameState = gameState;
+        // Players
+        if (diff.players) {
+            for (const [pid, playerDiff] of Object.entries(diff.players)) {
+                if (playerDiff._deleted) {
+                    renderer3d.removePlayerMesh(pid);
+                } else if (playerDiff._new) {
+                    renderer3d.createPlayerMesh({ id: pid, ...gameState.players[pid] });
+                } else {
+                    if (playerDiff.colorLegs !== undefined || playerDiff.colorTorso !== undefined) {
+                        renderer3d.createPlayerMesh({ id: pid, ...gameState.players[pid] });
+                    } else {
+                        renderer3d.updatePlayerMesh({ id: pid, ...gameState.players[pid] });
+                    }
+                }
+                // Local player-specific updates
+                if (pid === playerId) {
+                    const player = gameState.players[playerId];
+                    if (player) {
+                        if (player.selectedPieceIndex !== undefined && player.selectedPieceIndex !== selectedPieceIndex) {
+                            selectedPieceIndex = player.selectedPieceIndex;
+                            if (preserveYawOnNextPieceChange && typeof pendingSampledYaw === 'number') {
+                                ghostYaw = pendingSampledYaw;
+                                preserveYawOnNextPieceChange = false;
+                                pendingSampledYaw = 0;
+                            } else {
+                                ghostYaw = 0;
+                            }
+                            renderer3d.setSelectedPieceIndex(selectedPieceIndex);
+                            renderer3d.setGhostYaw(ghostYaw);
+                        }
+                        if (player.selectedColorIndex !== undefined && player.selectedColorIndex !== selectedColorIndex) {
+                            selectedColorIndex = Math.max(0, Math.min(brickColorHexes.length - 1, player.selectedColorIndex));
+                            renderer3d && renderer3d.setSelectedColorIndex(selectedColorIndex);
+                        }
+                        if (Number.isFinite(player.selectedAntiStudIndex) && player.selectedAntiStudIndex !== selectedAntiStudIndex) {
+                            selectedAntiStudIndex = Math.max(0, player.selectedAntiStudIndex | 0);
+                            renderer3d.setSelectedAntiStudIndex(selectedAntiStudIndex);
+                        }
+                        if (Number.isFinite(player.selectedStudIndex) && player.selectedStudIndex !== selectedStudIndex) {
+                            selectedStudIndex = Math.max(0, player.selectedStudIndex | 0);
+                            if (renderer3d && renderer3d.setSelectedStudIndex) {
+                                renderer3d.setSelectedStudIndex(selectedStudIndex);
+                            }
+                        }
+                        if (typeof player.anchorMode === 'string' && player.anchorMode !== anchorMode) {
+                            anchorMode = player.anchorMode;
+                            if (renderer3d && renderer3d.setAnchorMode) {
+                                renderer3d.setAnchorMode(anchorMode);
+                            }
+                        }
+                        // RTT calculation (latest encountered wins)
+                        if (player.lastFrameCounter !== undefined) {
+                            const sentTime = sentFrames.get(player.lastFrameCounter);
+                            if (sentTime) {
+                                currentRTT = Date.now() - sentTime;
+                                smoothedRTT = smoothedRTT === 0 ? currentRTT : smoothedRTT * 0.99 + currentRTT * 0.01;
+                                sentFrames.delete(player.lastFrameCounter);
+                            }
+                        }
+                        if (player.ghostPose) {
+                            renderer3d.applyAuthoritativeGhostPose(player.ghostPose);
+                        }
+                        if (typeof player.ghostColliding === 'boolean') {
+                            renderer3d.setGhostCollisionVisual(player.ghostColliding);
+                        }
+                    }
+                }
+            }
+        }
+        // Bricks/chunks
+        if (diff.chunks) {
+            renderer3d.reconcileChunksAndBricks(gameState.chunks, {});
+            if (chunkDebugVisible && renderer3d && renderer3d.setChunkDebugVisible) {
+                renderer3d.setChunkDebugVisible(true);
+            }
+            for (const [ckey, cDiff] of Object.entries(diff.chunks)) {
+                const chunk = gameState.chunks && gameState.chunks[ckey];
+                if (cDiff && cDiff._deleted) {
+                    if (renderer3d && renderer3d.removeChunkGroupAndInstances) {
+                        renderer3d.removeChunkGroupAndInstances(ckey);
+                    }
+                    continue;
+                }
+                if (!chunk) continue;
+                if (cDiff && cDiff._new) {
+                    const bricksMap = (chunk && chunk.bricks) || {};
+                    for (const [bid, b] of Object.entries(bricksMap)) {
+                        renderer3d.createBrickMesh({ id: bid, chunkKey: ckey, ...b });
+                    }
+                    continue;
+                }
+                if (cDiff && cDiff.bricks) {
+                    for (const [bid, bDiff] of Object.entries(cDiff.bricks)) {
+                        if (bDiff && bDiff._deleted) {
+                            renderer3d.removeBrickMesh(bid);
+                        } else if (bDiff && bDiff._new) {
+                            const brick = chunk && chunk.bricks ? chunk.bricks[bid] : null;
+                            if (brick) renderer3d.createBrickMesh({ id: bid, chunkKey: ckey, ...brick });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    function drainPendingDiffs(maxToProcess = Infinity) {
+        if (!pendingStateDiffs.length) return 0;
+        let processed = 0;
+        while (pendingStateDiffs.length && processed < maxToProcess) {
+            const evt = pendingStateDiffs.shift();
+            if (evt && evt.diff) {
+                applySingleStateDiff(evt.diff);
+            }
+            processed++;
+        }
+        return processed;
+    }
+
+    function processBacklogAndMaybeSkip() {
+        if (pendingStateDiffs.length <= 0) return false;
+        const maxToProcess = (pendingStateDiffs.length > BACKLOG_SKIP_THRESHOLD && framesSinceLastFullLoop < BACKLOG_LIMIT)
+            ? BACKLOG_LIMIT
+            : Infinity;
+        drainPendingDiffs(maxToProcess);
+        if (pendingStateDiffs.length > 0 && framesSinceLastFullLoop < BACKLOG_LIMIT) {
+            framesSinceLastFullLoop++;
+            return true;
+        }
+        return false;
+    }
+
 
 
     function onWindowResize() { renderer3d && renderer3d.onResize(); }
 
 	function tick() {
+		// Apply any queued diffs first. Only skip the frame if there is a real backlog,
+		// but force a full loop at least every 10 frames to keep visuals responsive.
+		if (processBacklogAndMaybeSkip()) return;
 		if (!renderer3d || !renderer3d.renderTick) return;
 		// Measure CPU time for this frame's update + render
 		const t0 = performance.now();
@@ -722,12 +746,13 @@
 		const localWithId = localPlayer ? { id: playerId, ...localPlayer } : null;
 		const isMoving = !!(inputState.keys.w || inputState.keys.a || inputState.keys.s || inputState.keys.d);
 		renderer3d.renderTick(localWithId, yaw, pitch, isThirdPerson, isMoving);
-		const dt = performance.now() - t0;
-
-		// Update last frame time only
-		lastFrameMs = dt;
+		cpuMs = performance.now() - t0;
+		framesSinceLastFullLoop = 0; // reset after a full loop
 		const rs = renderer3d.getRenderStats && renderer3d.getRenderStats();
-		if (rs) { drawCalls = rs.drawCalls | 0; triangles = rs.triangles | 0; }
+		if (rs) {
+			drawCalls = rs.drawCalls | 0; triangles = rs.triangles | 0;
+			if (Number.isFinite(rs.gpuMs)) gpuMs = rs.gpuMs;
+		}
 	}
 
     function handlePointerMove(event) {
@@ -852,7 +877,8 @@
 					class:max-h-[24rem]={showStats}
 					class:opacity-100={showStats}
 				>
-					<div>frame ms: {lastFrameMs.toFixed(2)}</div>
+					<div>CPU ms: {cpuMs.toFixed(1)}</div>
+					<div>GPU ms: {gpuMs.toFixed(1)}</div>
 					<div>draw calls: {drawCalls}</div>
 					<div>triangles: {triangles}</div>
 					<div>Bricks: {Object.values(gameState.chunks||{}).reduce((n,c)=>n+Object.keys((c&&c.bricks)||{}).length,0)}</div>
