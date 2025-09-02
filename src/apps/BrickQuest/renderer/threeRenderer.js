@@ -4,7 +4,6 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { SSAOPass } from "three/examples/jsm/postprocessing/SSAOPass.js";
 import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
@@ -26,10 +25,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let gltfLoader = null;
 
 	// Post-processing feature flags
-	let ssaoEnabled = false;
-	let ssaoDebugView = false;
-	let ssaoDebugForcedEnable = false;
-	let ssaoPassRef = null;
 	let smaaPassRef = null;
 	let gammaPassRef = null;
 	let outputPassRef = null;
@@ -544,82 +539,16 @@ export function createBrickQuestRenderer(container, options = {}) {
         setupSkyboxExternal(scene, camera, (mesh) => { skyboxMesh = mesh; }, onError);
     }
 
-	function getSSAOPass() { return ssaoPassRef; }
-
 	function setupPostProcessing() {
 		composer = new EffectComposer(renderer);
 		const renderPass = new RenderPass(scene, camera);
 		composer.addPass(renderPass);
-		ssaoPassRef = new SSAOPass(scene, camera, container.clientWidth, container.clientHeight);
-		// Tune for BrickQuest world scale (stud spacing ~20 units)
-		ssaoPassRef.kernelRadius = 14;
-		ssaoPassRef.minDistance = 2.0;
-		ssaoPassRef.maxDistance = 80.0;
-		ssaoPassRef.output = ssaoDebugView ? SSAOPass.OUTPUT.SSAO : SSAOPass.OUTPUT.Default;
-		ssaoPassRef.enabled = !!ssaoEnabled;
-		// composer.addPass(ssaoPassRef);
 		smaaPassRef = new SMAAPass(container.clientWidth, container.clientHeight);
 		// composer.addPass(smaaPassRef);
 		gammaPassRef = new ShaderPass(GammaCorrectionShader);
 		composer.addPass(gammaPassRef);
 		outputPassRef = new OutputPass();
 		composer.addPass(outputPassRef);
-	}
-
-	function setSSAOEnabled(enabled) {
-		ssaoEnabled = !!enabled;
-		if (!composer) return;
-		const ssaoPass = getSSAOPass();
-		if (ssaoPass) ssaoPass.enabled = ssaoEnabled;
-		// Move SSAO pass to the end (before output) when enabled to maximize visual impact
-		if (ssaoPass && outputPassRef && gammaPassRef) {
-			const passes = composer.passes;
-			// Remove existing references
-			passes.splice(passes.indexOf(ssaoPass), 1);
-			// Insert before gamma and output
-			const gammaIdx = passes.indexOf(gammaPassRef);
-			const insertIdx = gammaIdx >= 0 ? gammaIdx : passes.length - 1;
-			passes.splice(insertIdx, 0, ssaoPass);
-		}
-	}
-
-	function toggleSSAO() {
-		setSSAOEnabled(!ssaoEnabled);
-	}
-
-	function getSSAOEnabled() {
-		return !!ssaoEnabled;
-	}
-
-	function setSSAODebugView(enabled) {
-		ssaoDebugView = !!enabled;
-		const ssaoPass = getSSAOPass();
-		if (!ssaoPass) return;
-		ssaoPass.output = ssaoDebugView ? SSAOPass.OUTPUT.SSAO : SSAOPass.OUTPUT.Default;
-		if (ssaoDebugView) {
-			// Ensure SSAO is enabled while in debug view
-			if (!ssaoEnabled) {
-				ssaoDebugForcedEnable = true;
-				setSSAOEnabled(true);
-			}
-			// Disable downstream passes that could hide the raw output
-			if (gammaPassRef) gammaPassRef.enabled = false;
-		} else {
-			if (ssaoDebugForcedEnable) {
-				// Restore previous disabled state when leaving debug if we forced it on
-				ssaoDebugForcedEnable = false;
-				setSSAOEnabled(false);
-			}
-			if (gammaPassRef) gammaPassRef.enabled = true;
-		}
-	}
-
-	function toggleSSAODebugView() {
-		setSSAODebugView(!ssaoDebugView);
-	}
-
-	function getSSAODebugView() {
-		return !!ssaoDebugView;
 	}
 
 	function setupBrickMaterials() {
@@ -1170,7 +1099,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 	// Simple chunk LOD settings
 	let LOD_DISTANCE = 1000; // world units from camera to chunk AABB center to switch to convex
 	// Centralized far render distance (used for camera.far and chunk culling)
-	let RENDER_DISTANCE = 5000; // world units
+	let RENDER_DISTANCE = 10000; // world units
 
 	function setChunkConfig(cfg) { setChunkConfigExternal({ CHUNK_SIZE, CHUNK_HEIGHT }, cfg); CHUNK_SIZE = (cfg && typeof cfg.size === 'number') ? cfg.size : null; CHUNK_HEIGHT = (cfg && typeof cfg.height === 'number') ? cfg.height : null; }
 
@@ -1460,7 +1389,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 		camera.updateProjectionMatrix();
 		renderer.setSize(width, height);
 		composer.setSize(width, height);
-		if (ssaoPassRef) ssaoPassRef.setSize(width, height);
 	}
 
 	function applyAuthoritativeGhostPose(gp) {
@@ -1828,13 +1756,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 		resetAllMeshes,
 		// Render
 		renderTick,
-		// Post-processing toggles
-		setSSAOEnabled,
-		toggleSSAO,
-		getSSAOEnabled,
-		setSSAODebugView,
-		toggleSSAODebugView,
-		getSSAODebugView,
 		// Preview
 		setupPreview,
 		// Preview sharing and helpers for external thumbnail rendering

@@ -4,6 +4,8 @@
 	import * as THREE from 'three';
 	import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 	import { Animator } from '../../animator';
+	import ColorPalette from './ColorPalette.svelte';
+	import { brickColorHexes } from './colors.js';
 
 	let container;
 	let scene, camera, renderer;
@@ -15,10 +17,6 @@
 	let cachedHeadGeom = null;
 	let loadingText = 'Loading parts...';
 
-	const brickColorHexes = [
-		0xfd301b, 0x0e78cf, 0x02b510, 0xffd804, 0x8b5cf6,
-		0xff9801, 0xffffff, 0xc0c0d0, 0x707080, 0x303038
-	];
 
 	let serverUrl = localStorage.getItem('brickquest_server_url') || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001');
     let playerName = (localStorage.getItem('brickquest_player_name')) || genDefaultName();
@@ -212,7 +210,7 @@
 
 <div class="w-full h-full relative text-white z-10">
     <div class="absolute inset-0" bind:this={container} style="contain: layout paint; touch-action: none;" />
-    <div class="absolute top-6 left-6 bg-black bg-opacity-60 p-4 rounded-xl max-w-xl z-20" style="contain: paint;">
+    <div class="absolute top-6 left-6 bg-black bg-opacity-60 p-4 rounded-xl z-20" style="contain: paint;">
         <form autocomplete="off" on:submit|preventDefault={confirmAndStart}>
             <div class="text-3xl font-bold mb-2">BrickQuest</div>
             <div class="opacity-80 mb-3">Choose your name and colors</div>
@@ -223,16 +221,22 @@
                 <input id="nameInput" name="brickquest_nickname" class="w-96 px-3 py-2 rounded bg-white text-black outline-none" bind:value={playerName} placeholder={genDefaultName()} maxlength="10" autocomplete="new-password" aria-autocomplete="none" spellcheck="false" autocorrect="off" autocapitalize="off" inputmode="text" />
             </div>
             <div class="mb-2 font-semibold">Torso color</div>
-            <div class="flex items-center gap-2 bg-black bg-opacity-50 p-2 rounded mb-4 w-fit">
-                {#each brickColorHexes as hex, i}
-                    <button type="button" class="w-7 h-7 rounded-sm" style="background-color: {`#${hex.toString(16).padStart(6,'0')}`}; {i === torsoIndex ? 'outline: 3px solid white; outline-offset: 2px;' : 'outline: 1px solid rgba(255,255,255,0.3); outline-offset: 2px;'}" on:click={() => setTorso(i)} aria-label={`Torso color ${i}`} />
-                {/each}
+            <div class="mb-4 w-fit">
+                <ColorPalette
+                    colors={brickColorHexes}
+                    selectedIndex={torsoIndex}
+                    ariaLabelPrefix="Torso color"
+                    on:change={(e) => setTorso(e.detail)}
+                />
             </div>
             <div class="mb-2 font-semibold">Legs color</div>
-            <div class="flex items-center gap-2 bg-black bg-opacity-50 p-2 rounded mb-4 w-fit">
-                {#each brickColorHexes as hex, i}
-                    <button type="button" class="w-7 h-7 rounded-sm" style="background-color: {`#${hex.toString(16).padStart(6,'0')}`}; {i === legsIndex ? 'outline: 3px solid white; outline-offset: 2px;' : 'outline: 1px solid rgba(255,255,255,0.3); outline-offset: 2px;'}" on:click={() => setLegs(i)} aria-label={`Legs color ${i}`} />
-                {/each}
+            <div class="mb-4 w-fit">
+                <ColorPalette
+                    colors={brickColorHexes}
+                    selectedIndex={legsIndex}
+                    ariaLabelPrefix="Legs color"
+                    on:change={(e) => setLegs(e.detail)}
+                />
             </div>
             <button type="submit" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 active:scale-95 rounded text-white font-bold">Start</button>
         </form>

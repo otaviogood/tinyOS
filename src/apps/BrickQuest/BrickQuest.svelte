@@ -8,6 +8,8 @@
     import { Animator, frameCount, animateCount } from "../../animator";
     import { createBrickQuestRenderer } from "./renderer/threeRenderer.js";
     import StartScreen from "./StartScreen.svelte";
+    import ColorPalette from "./ColorPalette.svelte";
+    import { brickColorHexes } from "./colors.js";
     import Picker from "./Picker.svelte";
     import io from "socket.io-client";
     import { createDeltaState, applyDiff } from "./client-delta.js";
@@ -75,8 +77,6 @@
 	let gpuMs = 0;
 	let drawCalls = 0;
 	let triangles = 0;
-	let ssaoEnabled = true;
-	let ssaoDebug = false;
 	let showStats = false; // HUD stats collapsed by default
 	let chunkDebugVisible = false; // toggled with backtick
 	// Preserve yaw across server-selected piece echo after eyedrop
@@ -124,14 +124,6 @@
         await renderer3d.init();
         window.addEventListener("resize", onWindowResize);
         
-        // Initialize SSAO indicator state
-        if (renderer3d && renderer3d.getSSAOEnabled) {
-            ssaoEnabled = !!renderer3d.getSSAOEnabled();
-        }
-        if (renderer3d && renderer3d.getSSAODebugView) {
-            ssaoDebug = !!renderer3d.getSSAODebugView();
-        }
-        
         // Setup preview after a small delay to ensure DOM is ready
         await nextTick();
         if (previewContainer) {
@@ -141,39 +133,6 @@
         }
     }
 
-    // Shared color palette (must stay in sync with server indices)
-    // const brickColorHexes = [
-    //     0xfd301b, // Red
-    //     0x0e78cf, // Blue
-    //     0x02b510, // Green
-    //     0xffd804, // Yellow
-    //     0x8b5cf6, // Purple
-    //     0xff9801, // Orange
-    //     0xffffff, // White
-    //     0xc0c0d0,  // Light Gray
-    //     0x707080,  // Dark Gray
-    //     0x303038,  // Black
-    // ];
-
-    // Shared color palette (must stay in sync with server indices)
-    const brickColorHexes = [
-        0xb40000, // Bright Red
-        0x91501c, // Dark Orange
-        0xff7000, // Bright Orange
-        0x372100, // Dark Brown
-        0x897d62, // Sand Yellow
-        0xccb98d, // Brick Yellow
-        0xfac80a, // Bright Yellow
-        0x00852b, // Dark Green
-        0x00451a, // Earth Green
-        0x36abd3, // Dark Azur
-        0x1b2a34, // Black
-        0x0e78cf, // Earth Blue
-        0x720012, // New Dark Red
-        0xf4f4f4, // White
-        0xc0c0d0, // Medium Stone Grey
-        0x707080, // Dark Stone Grey
-    ];
 
 
     function setGhostCollisionVisual(colliding) {
@@ -363,22 +322,6 @@
             } else if (e.key === ';' || e.code === 'Semicolon') {
                 // Delegate reverse cycling to server; keep client thin
                 inputState.events.push({ type: 'cycleAnchor', delta: -1 });
-            } else if (key === 'q' && !e.shiftKey) {
-                // Toggle SSAO
-                if (renderer3d && renderer3d.toggleSSAO) {
-                    renderer3d.toggleSSAO();
-                    if (renderer3d.getSSAOEnabled) {
-                        ssaoEnabled = !!renderer3d.getSSAOEnabled();
-                    }
-                }
-            } else if (key === 'q' && e.shiftKey) {
-                // Toggle SSAO debug output
-                if (renderer3d && renderer3d.toggleSSAODebugView) {
-                    renderer3d.toggleSSAODebugView();
-                    if (renderer3d.getSSAODebugView) {
-                        ssaoDebug = !!renderer3d.getSSAODebugView();
-                    }
-                }
             } else if (e.key === '`' || e.code === 'Backquote') {
                 // Toggle chunk debug helpers
                 if (renderer3d && renderer3d.setChunkDebugVisible) {
@@ -909,23 +852,17 @@
 				<div>, / . : Switch Color</div>
 				<div>R : Pick Hovered Piece + Color + Rotation</div>
 				<div>' : Cycle anti-stud</div>
-				<!-- <div>Q: Toggle SSAO</div> -->
-				<!-- <div>Shift+Q: SSAO Debug Output</div> -->
 			</div>
 		</div>
 
         <!-- Color palette (bottom-left) -->
         <div class="absolute bottom-4 left-4 z-20" style="contain: paint;">
-            <div class="flex items-center gap-2 bg-black bg-opacity-50 p-2 rounded">
-                {#each brickColorHexes as hex, i}
-                    <button
-                        class="w-7 h-7 rounded-sm"
-                        aria-label={`Select color ${i}`}
-                        style="background-color: {`#${hex.toString(16).padStart(6,'0')}`}; {i === selectedColorIndex ? 'outline: 3px solid white; outline-offset: 2px;' : 'outline: 1px solid rgba(255,255,255,0.3); outline-offset: 2px;'}"
-                        on:click={() => setColor(i)}
-                    />
-                {/each}
-            </div>
+            <ColorPalette
+                colors={brickColorHexes}
+                selectedIndex={selectedColorIndex}
+                ariaLabelPrefix="Select color"
+                on:change={(e) => setColor(e.detail)}
+            />
         </div>
 
         <!-- Piece preview (bottom-right) -->
