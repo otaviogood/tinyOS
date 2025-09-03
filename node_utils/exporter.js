@@ -27,7 +27,16 @@ function buildGLTF(processed, options = {}) {
     });
 
     const nodes = [];
-    const rootNode = { name: 'LDrawModel', children: [], extras: { studs: processed.studs || [], antiStuds: processed.antiStuds || [], miniAntiStuds: processed.miniAntiStuds || [] } };
+    const rootExtras = { studs: processed.studs || [], antiStuds: processed.antiStuds || [], miniAntiStuds: processed.miniAntiStuds || [] };
+    if (processed.convexHull) {
+        // Export convex hull metadata: bbox and up to 4 cut planes
+        rootExtras.convexHull = {
+            bboxMin: processed.convexHull.bboxMin || null,
+            bboxMax: processed.convexHull.bboxMax || null,
+            planes: (processed.convexHull.planes || []).map(p => ({ n: p.n, d: p.d }))
+        };
+    }
+    const rootNode = { name: 'LDrawModel', children: [], extras: rootExtras };
     nodes.push(rootNode);
 
     const childOrder = [];

@@ -8,355 +8,159 @@ const { MeshBVH } = require('three-mesh-bvh');
 const brickPiecesData = new Map(); // pieceId -> { studs: [], antiStuds: [] }
 const pieceCollisionCache = new Map(); // pieceId -> { geomNoStuds, geomNoStudsShrunk, bboxNoStuds }
 
-// Note: Shrunk geometry is now authored at export time and stored as a 'shrunk' node in GLTF.
-
-// Load piece list dynamically from exported_pieces.csv
+// Load piece list from exported_pieces.csv
 function loadPieceListFromCSV() {
-    try {
-        const csvPath = path.join(__dirname, '..', 'public', 'apps', 'bricks', 'exported_pieces.csv');
-        const csvText = fs.readFileSync(csvPath, 'utf8');
-        const lines = csvText.split(/\r?\n/);
-        const seen = new Set();
-        const result = [];
-        for (const raw of lines) {
-            if (!raw) continue;
-            const line = raw.trim();
-            if (!line) continue;
-            const parts = line.split(',');
-            if (!parts.length) continue;
-            const id = (parts[0] || '').trim();
-            if (!id || seen.has(id)) continue;
-            const color = ((parts[1] || '').trim()) || 'white';
-            const name = (parts.slice(2).join(',') || '').trim();
-            result.push({ id, color, name });
-            seen.add(id);
-        }
-        return result;
-    } catch (e) {
-        console.error('Failed to load exported_pieces.csv, falling back to minimal piece list:', e);
-        // Minimal fallback to keep server functional
-        return [
-            { id: '3001', color: 'white', name: 'brick 2x4' },
-            { id: '3022', color: 'blue', name: 'plate 2x2' },
-            { id: '41539', color: 'blue', name: 'plate 8x8' },
-        ];
+    const csvPath = path.join(__dirname, '..', 'public', 'apps', 'bricks', 'exported_pieces.csv');
+    const csvText = fs.readFileSync(csvPath, 'utf8');
+    const lines = csvText.split(/\r?\n/);
+    const seen = new Set();
+    const result = [];
+    for (const raw of lines) {
+        if (!raw) continue;
+        const line = raw.trim();
+        if (!line) continue;
+        const parts = line.split(',');
+        if (!parts.length) continue;
+        const id = (parts[0] || '').trim();
+        if (!id || seen.has(id)) continue;
+        const color = ((parts[1] || '').trim()) || 'white';
+        const name = (parts.slice(2).join(',') || '').trim();
+        result.push({ id, color, name });
+        seen.add(id);
     }
+    return result;
 }
 
 const PIECE_LIST = loadPieceListFromCSV();
 
+// Helper to load geometry from a GLTF node
+function loadGeometryFromNode(node) {
+    if (!node) return null;
+    
+    const mesh = node.getMesh();
+    if (!mesh) return null;
+    
+    const prim = mesh.listPrimitives()[0];
+    if (!prim) return null;
+    
+    const posAcc = prim.getAttribute('POSITION');
+    if (!posAcc) return null;
+    
+    const idxAcc = prim.getIndices();
+    const positionArray = posAcc.getArray();
+    const indexArray = idxAcc ? idxAcc.getArray() : null;
+    
+    const geometry = new THREE.BufferGeometry();
+    const posTyped = positionArray.buffer
+        ? new Float32Array(positionArray.buffer, positionArray.byteOffset, positionArray.length)
+        : new Float32Array(positionArray);
+    geometry.setAttribute('position', new THREE.BufferAttribute(posTyped, 3));
+    
+    if (indexArray) {
+        const TypedIdx = indexArray.constructor;
+        const idxTyped = indexArray.buffer
+            ? new TypedIdx(indexArray.buffer, indexArray.byteOffset, indexArray.length)
+            : new TypedIdx(indexArray);
+        geometry.setIndex(new THREE.BufferAttribute(idxTyped, 1));
+    }
+    
+    // Bake node's local transform into geometry
+    const t = node.getTranslation() || [0, 0, 0];
+    const r = node.getRotation() || [0, 0, 0, 1];
+    const s = node.getScale() || [1, 1, 1];
+    const mat = new THREE.Matrix4().compose(
+        new THREE.Vector3(t[0], t[1], t[2]),
+        new THREE.Quaternion(r[0], r[1], r[2], r[3]),
+        new THREE.Vector3(s[0], s[1], s[2])
+    );
+    geometry.applyMatrix4(mat);
+    
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    geometry.computeBoundsTree();
+    
+    return geometry;
+}
+
 // Load brick stud data AND partnostuds geometry from GLTF file for all pieces
 async function loadBrickStudData() {
-    try {
-        const gltfPath = path.join(__dirname, '..', 'public', 'apps', 'bricks', 'all_pieces.gltf');
-        const io = new NodeIO();
-        const document = await io.read(gltfPath);
+    const gltfPath = path.join(__dirname, '..', 'public', 'apps', 'bricks', 'all_pieces.gltf');
+    const io = new NodeIO();
+    const document = await io.read(gltfPath);
 
-        // Find the root node that contains the LEGO parts library
-        const rootNode = document.getRoot().listNodes().find((node) => node.getName() === 'LegoPartsLibrary');
-        if (!rootNode) {
-            console.error('LegoPartsLibrary not found in GLTF');
-            return;
-        }
-
-        let loadedCount = 0;
-        for (const pieceInfo of PIECE_LIST) {
-            const piece = rootNode.listChildren().find((child) => child.getName() === pieceInfo.id);
-            if (!piece) {
-                console.warn(`Piece ${pieceInfo.id} not found in GLTF`);
-                continue;
-            }
-
-            // Extract stud data from extras
-            const extras = piece.getExtras();
-            const pieceData = {
-                studs: [],
-                antiStuds: [],
-            };
-
-            if (extras) {
-                if (extras.studs) {
-                    pieceData.studs = extras.studs;
-                }
-                if (extras.antiStuds) {
-                    pieceData.antiStuds = extras.antiStuds;
-                }
-            }
-
-            brickPiecesData.set(pieceInfo.id, pieceData);
-
-            // Extract 'part', 'partnostuds', 'shrunk' and 'convex' geometries for collision
-            // - partnostuds: used for existing world bricks (no studs) broad & narrow phase
-            // - shrunk: used for the moving/ghost piece when available
-            // - convex: convex hull mesh for narrow-phase (capsule vs convex)
-            // - part: fallback if partnostuds is missing
-            const partNode = piece.listChildren().find((child) => child.getName() === 'part');
-            const partNoStudsNode = piece.listChildren().find((child) => child.getName() === 'partnostuds');
-            const shrunkNode = piece.listChildren().find((child) => child.getName() === 'shrunk');
-            const convexNode = piece.listChildren().find((child) => child.getName() === 'convex');
-
-            let geomPart = null;
-            let geomPartNoStuds = null;
-            let geomShrunk = null;
-            let geomConvex = null;
-
-            if (!partNode) {
-                console.warn(`part not found for piece ${pieceInfo.id}`);
-            } else {
-                const mesh = partNode.getMesh();
-                if (!mesh) {
-                    console.warn(`part node has no mesh for piece ${pieceInfo.id}`);
-                } else {
-                    const prim = mesh.listPrimitives()[0];
-                    if (!prim) {
-                        console.warn(`No primitives in part mesh for piece ${pieceInfo.id}`);
-                    } else {
-                        const posAcc = prim.getAttribute('POSITION');
-                        const idxAcc = prim.getIndices();
-                        if (!posAcc) {
-                            console.warn(`part primitive missing POSITION for piece ${pieceInfo.id}`);
-                        } else {
-                            const positionArray = posAcc.getArray();
-                            const indexArray = idxAcc ? idxAcc.getArray() : null;
-
-                            const geometry = new THREE.BufferGeometry();
-                            const posTyped = positionArray.buffer
-                                ? new Float32Array(positionArray.buffer, positionArray.byteOffset, positionArray.length)
-                                : new Float32Array(positionArray);
-                            geometry.setAttribute('position', new THREE.BufferAttribute(posTyped, 3));
-                            if (indexArray) {
-                                const TypedIdx = indexArray.constructor;
-                                const idxTyped = indexArray.buffer
-                                    ? new TypedIdx(indexArray.buffer, indexArray.byteOffset, indexArray.length)
-                                    : new TypedIdx(indexArray);
-                                geometry.setIndex(new THREE.BufferAttribute(idxTyped, 1));
-                            }
-                            // Bake 'part' node's local transform into geometry so it's in piece-local space
-                            try {
-                                const t = partNode.getTranslation?.() || [0, 0, 0];
-                                const r = partNode.getRotation?.() || [0, 0, 0, 1];
-                                const s = partNode.getScale?.() || [1, 1, 1];
-                                const mat = new THREE.Matrix4().compose(
-                                    new THREE.Vector3(t[0], t[1], t[2]),
-                                    new THREE.Quaternion(r[0], r[1], r[2], r[3]),
-                                    new THREE.Vector3(s[0], s[1], s[2])
-                                );
-                                geometry.applyMatrix4(mat);
-                            } catch (e) {
-                                console.warn(`Failed to bake transform for part ${pieceInfo.id}:`, e);
-                            }
-
-                            geometry.computeVertexNormals();
-                            geometry.computeBoundingBox();
-                            geometry.computeBoundsTree();
-                            geomPart = geometry;
-                        }
-                    }
-                }
-            }
-
-            if (!partNoStudsNode) {
-                // If missing, we'll fallback to 'part' geometry later
-                console.warn(`partnostuds not found for piece ${pieceInfo.id}`);
-            } else {
-                const mesh = partNoStudsNode.getMesh();
-                if (!mesh) {
-                    console.warn(`partnostuds node has no mesh for piece ${pieceInfo.id}`);
-                } else {
-                    const prim = mesh.listPrimitives()[0];
-                    if (!prim) {
-                        console.warn(`No primitives in partnostuds mesh for piece ${pieceInfo.id}`);
-                    } else {
-                        const posAcc = prim.getAttribute('POSITION');
-                        const idxAcc = prim.getIndices();
-                        if (!posAcc) {
-                            console.warn(`partnostuds primitive missing POSITION for piece ${pieceInfo.id}`);
-                        } else {
-                            const positionArray = posAcc.getArray();
-                            const indexArray = idxAcc ? idxAcc.getArray() : null;
-
-                            const geometry = new THREE.BufferGeometry();
-                            const posTyped = positionArray.buffer
-                                ? new Float32Array(positionArray.buffer, positionArray.byteOffset, positionArray.length)
-                                : new Float32Array(positionArray);
-                            geometry.setAttribute('position', new THREE.BufferAttribute(posTyped, 3));
-                            if (indexArray) {
-                                const TypedIdx = indexArray.constructor;
-                                const idxTyped = indexArray.buffer
-                                    ? new TypedIdx(indexArray.buffer, indexArray.byteOffset, indexArray.length)
-                                    : new TypedIdx(indexArray);
-                                geometry.setIndex(new THREE.BufferAttribute(idxTyped, 1));
-                            }
-                            // Bake 'partnostuds' node's local transform into geometry so it's in piece-local space
-                            try {
-                                const t = partNoStudsNode.getTranslation?.() || [0, 0, 0];
-                                const r = partNoStudsNode.getRotation?.() || [0, 0, 0, 1];
-                                const s = partNoStudsNode.getScale?.() || [1, 1, 1];
-                                const mat = new THREE.Matrix4().compose(
-                                    new THREE.Vector3(t[0], t[1], t[2]),
-                                    new THREE.Quaternion(r[0], r[1], r[2], r[3]),
-                                    new THREE.Vector3(s[0], s[1], s[2])
-                                );
-                                geometry.applyMatrix4(mat);
-                            } catch (e) {
-                                console.warn(`Failed to bake transform for partnostuds ${pieceInfo.id}:`, e);
-                            }
-
-                            geometry.computeVertexNormals();
-                            geometry.computeBoundingBox();
-                            geometry.computeBoundsTree();
-                            geomPartNoStuds = geometry;
-                        }
-                    }
-                }
-            }
-
-            if (!shrunkNode) {
-                // No runtime shrinking fallback; rely on exported 'shrunk' geometry only
-                console.warn(`shrunk not found for piece ${pieceInfo.id}`);
-            } else {
-                const mesh = shrunkNode.getMesh();
-                if (!mesh) {
-                    console.warn(`shrunk node has no mesh for piece ${pieceInfo.id}`);
-                } else {
-                    const prim = mesh.listPrimitives()[0];
-                    if (!prim) {
-                        console.warn(`No primitives in shrunk mesh for piece ${pieceInfo.id}`);
-                    } else {
-                        const posAcc = prim.getAttribute('POSITION');
-                        const idxAcc = prim.getIndices();
-                        if (!posAcc) {
-                            console.warn(`shrunk primitive missing POSITION for piece ${pieceInfo.id}`);
-                        } else {
-                            const positionArray = posAcc.getArray();
-                            const indexArray = idxAcc ? idxAcc.getArray() : null;
-
-                            const geometry = new THREE.BufferGeometry();
-                            const posTyped = positionArray.buffer
-                                ? new Float32Array(positionArray.buffer, positionArray.byteOffset, positionArray.length)
-                                : new Float32Array(positionArray);
-                            geometry.setAttribute('position', new THREE.BufferAttribute(posTyped, 3));
-                            if (indexArray) {
-                                const TypedIdx = indexArray.constructor;
-                                const idxTyped = indexArray.buffer
-                                    ? new TypedIdx(indexArray.buffer, indexArray.byteOffset, indexArray.length)
-                                    : new TypedIdx(indexArray);
-                                geometry.setIndex(new THREE.BufferAttribute(idxTyped, 1));
-                            }
-                            // Bake 'shrunk' node's local transform into geometry so it's in piece-local space
-                            try {
-                                const t = shrunkNode.getTranslation?.() || [0, 0, 0];
-                                const r = shrunkNode.getRotation?.() || [0, 0, 0, 1];
-                                const s = shrunkNode.getScale?.() || [1, 1, 1];
-                                const mat = new THREE.Matrix4().compose(
-                                    new THREE.Vector3(t[0], t[1], t[2]),
-                                    new THREE.Quaternion(r[0], r[1], r[2], r[3]),
-                                    new THREE.Vector3(s[0], s[1], s[2])
-                                );
-                                geometry.applyMatrix4(mat);
-                            } catch (e) {
-                                console.warn(`Failed to bake transform for shrunk ${pieceInfo.id}:`, e);
-                            }
-
-                            geometry.computeVertexNormals();
-                            geometry.computeBoundingBox();
-                            geometry.computeBoundsTree();
-                            geomShrunk = geometry;
-                        }
-                    }
-                }
-            }
-
-            // Assume convex exists and is valid
-            {
-                const mesh = convexNode.getMesh();
-                const prim = mesh.listPrimitives()[0];
-                const posAcc = prim.getAttribute('POSITION');
-                const idxAcc = prim.getIndices();
-                const positionArray = posAcc.getArray();
-                const indexArray = idxAcc ? idxAcc.getArray() : null;
-
-                const geometry = new THREE.BufferGeometry();
-                const posTyped = positionArray.buffer
-                    ? new Float32Array(positionArray.buffer, positionArray.byteOffset, positionArray.length)
-                    : new Float32Array(positionArray);
-                geometry.setAttribute('position', new THREE.BufferAttribute(posTyped, 3));
-                if (indexArray) {
-                    const TypedIdx = indexArray.constructor;
-                    const idxTyped = indexArray.buffer
-                        ? new TypedIdx(indexArray.buffer, indexArray.byteOffset, indexArray.length)
-                        : new TypedIdx(indexArray);
-                    geometry.setIndex(new THREE.BufferAttribute(idxTyped, 1));
-                }
-                // Bake 'convex' node's local transform into geometry so it's in piece-local space
-                const t = convexNode.getTranslation?.() || [0, 0, 0];
-                const r = convexNode.getRotation?.() || [0, 0, 0, 1];
-                const s = convexNode.getScale?.() || [1, 1, 1];
-                const mat = new THREE.Matrix4().compose(
-                    new THREE.Vector3(t[0], t[1], t[2]),
-                    new THREE.Quaternion(r[0], r[1], r[2], r[3]),
-                    new THREE.Vector3(s[0], s[1], s[2])
-                );
-                geometry.applyMatrix4(mat);
-
-                geometry.computeVertexNormals();
-                geometry.computeBoundingBox();
-                geometry.computeBoundsTree();
-                geomConvex = geometry;
-            }
-
-            const chosenStaticGeom = geomPartNoStuds || geomPart;
-            if (chosenStaticGeom) {
-                pieceCollisionCache.set(pieceInfo.id, {
-                    // Reuse existing keys so the rest of the code path remains unchanged
-                    // Now map to 'partnostuds' when available; fallback to 'part'
-                    geomNoStuds: chosenStaticGeom,
-                    geomNoStudsShrunk: geomShrunk,
-                    bboxNoStuds: chosenStaticGeom.boundingBox ? chosenStaticGeom.boundingBox.clone() : null,
-                    geomConvex: geomConvex,
-                });
-            }
-            loadedCount++;
-
-            console.log(
-                `Loaded piece ${pieceInfo.id}: ${pieceData.studs.length} studs, ${pieceData.antiStuds.length} anti-studs`
-            );
-        }
-
-        console.log(`Successfully loaded ${loadedCount} pieces out of ${PIECE_LIST.length}`);
-    } catch (error) {
-        console.error('Error loading brick stud data from GLTF:', error);
-        // Initialize empty data for all pieces if loading fails
-        for (const pieceInfo of PIECE_LIST) {
-            brickPiecesData.set(pieceInfo.id, { studs: [], antiStuds: [] });
-        }
+    // Find the root node that contains the LEGO parts library
+    const rootNode = document.getRoot().listNodes().find((node) => node.getName() === 'LegoPartsLibrary');
+    if (!rootNode) {
+        throw new Error('LegoPartsLibrary not found in GLTF');
     }
+
+    let loadedCount = 0;
+    for (const pieceInfo of PIECE_LIST) {
+        const piece = rootNode.listChildren().find((child) => child.getName() === pieceInfo.id);
+        if (!piece) {
+            console.warn(`Piece ${pieceInfo.id} not found in GLTF`);
+            continue;
+        }
+
+        // Extract stud data from extras
+        const extras = piece.getExtras() || {};
+        brickPiecesData.set(pieceInfo.id, {
+            studs: extras.studs || [],
+            antiStuds: extras.antiStuds || [],
+        });
+
+        // Extract geometries for collision
+        const partNoStudsNode = piece.listChildren().find((child) => child.getName() === 'partnostuds');
+        const shrunkNode = piece.listChildren().find((child) => child.getName() === 'shrunk');
+        const convexNode = piece.listChildren().find((child) => child.getName() === 'convex');
+
+        // Load geometries - skip piece if partnostuds is missing
+        const geomPartNoStuds = loadGeometryFromNode(partNoStudsNode);
+        if (!geomPartNoStuds) {
+            console.warn(`partnostuds missing for piece ${pieceInfo.id}, skipping`);
+            continue;
+        }
+        
+        const geomShrunk = loadGeometryFromNode(shrunkNode); // Optional
+        const geomConvex = loadGeometryFromNode(convexNode);
+        if (!geomConvex) {
+            console.warn(`convex missing for piece ${pieceInfo.id}, skipping`);
+            continue;
+        }
+
+        // Store in cache
+        pieceCollisionCache.set(pieceInfo.id, {
+            geomNoStuds: geomPartNoStuds,
+            geomNoStudsShrunk: geomShrunk, // May be null
+            bboxNoStuds: geomPartNoStuds.boundingBox.clone(),
+            geomConvex: geomConvex,
+        });
+        
+        loadedCount++;
+    }
+
+    console.log(`Successfully loaded ${loadedCount} pieces out of ${PIECE_LIST.length}`);
 }
 
 function getQuaternionFromRotation(rotation) {
-    // rotation can be:
-    // - number (treated as yaw)
-    // - { x, y, z } Euler angles in radians
-    if (rotation == null) {
+    if (!rotation) {
         return new THREE.Quaternion();
     }
     if (typeof rotation === 'number') {
         return new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotation, 0));
     }
-    const rx = Number.isFinite(rotation.x) ? rotation.x : 0;
-    const ry = Number.isFinite(rotation.y) ? rotation.y : 0;
-    const rz = Number.isFinite(rotation.z) ? rotation.z : 0;
-    return new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz));
+    return new THREE.Quaternion().setFromEuler(new THREE.Euler(
+        rotation.x || 0,
+        rotation.y || 0, 
+        rotation.z || 0
+    ));
 }
 
 function getWorldAABBForPiece(pieceId, position, rotation) {
     const cache = pieceCollisionCache.get(pieceId);
-    if (!cache) return null;
-    const { bboxNoStuds } = cache;
-    const box = bboxNoStuds.clone();
-    if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y) || !Number.isFinite(position.z)) {
-        return null;
-    }
+    if (!cache || !position) return null;
+    
+    const box = cache.bboxNoStuds.clone();
     const quat = getQuaternionFromRotation(rotation);
     const mat = new THREE.Matrix4().compose(
         new THREE.Vector3(position.x, position.y, position.z),
@@ -374,107 +178,7 @@ function aabbIntersects(a, b) {
     );
 }
 
-function testGhostCollision(payload, gameState) {
-    const { pieceId, position } = payload || {};
-    if (!pieceId || !position) return false;
-    if (!Number.isFinite(position.x) || !Number.isFinite(position.y) || !Number.isFinite(position.z)) return false;
-
-    const ghostCache = pieceCollisionCache.get(pieceId);
-    if (!ghostCache) return true;
-    // Use shrunk geometry for the ghost to tolerate touching-without-overlap
-    const ghostGeom = ghostCache.geomNoStudsShrunk || ghostCache.geomNoStuds;
-
-    const ghostAABB = getWorldAABBForPiece(pieceId, position, payload.rotation ?? payload.rotationY ?? 0);
-    if (!ghostAABB) return false;
-    const candidates = [];
-    // Use chunked AABB BVHs to collect overlapping bricks efficiently
-    queryBVHForAABB(ghostAABB, (boxIndex, _box, brickId, chunkKey) => {
-        let brick = null;
-        if (gameState && gameState.chunks && chunkKey && gameState.chunks[chunkKey] && gameState.chunks[chunkKey].bricks) {
-            brick = gameState.chunks[chunkKey].bricks[brickId];
-        } else if (gameState && gameState.brickIndex && gameState.chunks) {
-            const key = gameState.brickIndex[brickId];
-            const ch = key && gameState.chunks[key];
-            brick = ch && ch.bricks ? ch.bricks[brickId] : null;
-        }
-        if (!brick) return;
-        if (!pieceCollisionCache.get(brick.pieceId)) return;
-        candidates.push(brick);
-    });
-
-    // Also block if ghost overlaps any player's capsule AABB
-    if (gameState && gameState.players) {
-        for (const player of Object.values(gameState.players)) {
-            if (!player || !player.position) continue;
-            const px = player.position.x;
-            const py = player.position.y;
-            const pz = player.position.z;
-            const sy0 = py - CAPSULE_HALF_HEIGHT;
-            const sy1 = py + CAPSULE_HALF_HEIGHT;
-            const capsuleAABB = new THREE.Box3(
-                new THREE.Vector3(px - CAPSULE_RADIUS, sy0 - CAPSULE_RADIUS, pz - CAPSULE_RADIUS),
-                new THREE.Vector3(px + CAPSULE_RADIUS, sy1 + CAPSULE_RADIUS, pz + CAPSULE_RADIUS)
-            );
-            if (aabbIntersects(ghostAABB, capsuleAABB)) {
-                return true;
-            }
-        }
-    }
-
-    if (candidates.length === 0) return false;
-
-    const bvh = ghostGeom.boundsTree || new MeshBVH(ghostGeom);
-
-    const candidateData = candidates.map((b) => {
-        const cache = pieceCollisionCache.get(b.pieceId);
-        const bRot = b.rotation || { x: 0, y: 0, z: 0 };
-        const bQuat = getQuaternionFromRotation(bRot);
-        const mat = new THREE.Matrix4().compose(
-            new THREE.Vector3(b.position.x, b.position.y, b.position.z),
-            bQuat,
-            new THREE.Vector3(1, 1, 1)
-        );
-        // Use 'partnostuds' for existing bricks (geomNoStuds is mapped to partnostuds when available)
-        const geom = cache.geomNoStuds;
-        if (!geom.boundsTree) geom.computeBoundsTree();
-        if (!geom.boundingBox) geom.computeBoundingBox();
-        return { geometry: geom, matrixWorld: mat };
-    });
-
-    // Use a single precise intersection test with exported 'shrunk' geometry
-    const gQuat = getQuaternionFromRotation(payload.rotation ?? payload.rotationY ?? 0);
-    const ghostMat = new THREE.Matrix4().compose(
-        new THREE.Vector3(position.x, position.y, position.z),
-        gQuat,
-        new THREE.Vector3(1, 1, 1)
-    );
-    const ghostMatInv = new THREE.Matrix4().copy(ghostMat).invert();
-
-    for (const c of candidateData) {
-        // Heuristic fallback: treat as colliding if AABB sizes are nearly equal (within 1%)
-        // and centers are nearly identical (within 0.1 units) in world space.
-        try {
-            const candWorldBox = c.geometry.boundingBox.clone().applyMatrix4(c.matrixWorld);
-            const gSize = new THREE.Vector3().subVectors(ghostAABB.max, ghostAABB.min);
-            const cSize = new THREE.Vector3().subVectors(candWorldBox.max, candWorldBox.min);
-            const gCenter = new THREE.Vector3().addVectors(ghostAABB.min, ghostAABB.max).multiplyScalar(0.5);
-            const cCenter = new THREE.Vector3().addVectors(candWorldBox.min, candWorldBox.max).multiplyScalar(0.5);
-            const rel = (a, b) => Math.abs(a - b) / Math.max(1e-6, Math.max(Math.abs(a), Math.abs(b)));
-            const dimsClose = (rel(gSize.x, cSize.x) < 0.01) && (rel(gSize.y, cSize.y) < 0.01) && (rel(gSize.z, cSize.z) < 0.01);
-            const centerClose = (Math.abs(gCenter.x - cCenter.x) < 0.1) && (Math.abs(gCenter.y - cCenter.y) < 0.1) && (Math.abs(gCenter.z - cCenter.z) < 0.1);
-            if (dimsClose && centerClose) {
-                return true;
-            }
-        } catch (_) {}
-        const otherToGhostLocal = new THREE.Matrix4().multiplyMatrices(ghostMatInv, c.matrixWorld);
-        const hit = bvh.intersectsGeometry(c.geometry, otherToGhostLocal);
-        if (hit) {
-            return true; // direct collision
-        }
-    }
-
-    return false;
-}
+// Removed: testGhostCollision (use testGhostCollisionWithDebug instead)
 
 // Temp objects reused across calls to reduce allocations
 const _tmpMat4 = new THREE.Matrix4();
@@ -499,8 +203,10 @@ function testGhostCollisionWithDebug(payload, gameState) {
     let tBroadEnd = t0;
     let tBuildEnd = t0;
     let tNarrowEnd = t0;
-    if (!pieceId || !position) return { colliding: false, broadCount, prunedCount };
-    if (!Number.isFinite(position.x) || !Number.isFinite(position.y) || !Number.isFinite(position.z)) return { colliding: false, broadCount, prunedCount };
+    
+    if (!pieceId || !position) {
+        return { colliding: false, broadCount, prunedCount };
+    }
 
     const ghostCache = pieceCollisionCache.get(pieceId);
     if (!ghostCache) return { colliding: true, broadCount, prunedCount };
@@ -512,16 +218,16 @@ function testGhostCollisionWithDebug(payload, gameState) {
     if (!ghostAABB) return { colliding: false, broadCount, prunedCount };
     const candidates = [];
     queryBVHForAABB(ghostAABB, (boxIndex, _box, brickId, chunkKey) => {
-        let brick = null;
-        if (gameState && gameState.chunks && chunkKey && gameState.chunks[chunkKey] && gameState.chunks[chunkKey].bricks) {
-            brick = gameState.chunks[chunkKey].bricks[brickId];
-        } else if (gameState && gameState.brickIndex && gameState.chunks) {
+        // Try to get brick from the chunk indicated by BVH
+        let brick = gameState?.chunks?.[chunkKey]?.bricks?.[brickId];
+        
+        // Fallback: use brickIndex if chunk lookup fails (shouldn't happen normally)
+        if (!brick && gameState?.brickIndex?.[brickId]) {
             const key = gameState.brickIndex[brickId];
-            const ch = key && gameState.chunks[key];
-            brick = ch && ch.bricks ? ch.bricks[brickId] : null;
+            brick = gameState?.chunks?.[key]?.bricks?.[brickId];
         }
-        if (!brick) return;
-        if (!pieceCollisionCache.get(brick.pieceId)) return;
+        
+        if (!brick || !pieceCollisionCache.get(brick.pieceId)) return;
         candidates.push(brick);
     });
     broadCount = candidates.length | 0;
@@ -1179,15 +885,16 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
                     if (dMinZ < best) { best = dMinZ; nx = 0; ny = 0; nz = -1; penetration = dMinZ; }
                     if (dMaxZ < best) { best = dMaxZ; nx = 0; ny = 0; nz = 1; penetration = dMaxZ; }
                 }
-                let brick = null;
-                if (gameState && gameState.chunks && chunkKey && gameState.chunks[chunkKey] && gameState.chunks[chunkKey].bricks) {
-                    brick = gameState.chunks[chunkKey].bricks[brickId];
-                } else if (gameState && gameState.brickIndex && gameState.chunks) {
+                // Try to get brick from the chunk indicated by BVH
+                let brick = gameState?.chunks?.[chunkKey]?.bricks?.[brickId];
+                
+                // Fallback: use brickIndex if chunk lookup fails (shouldn't happen normally)
+                if (!brick && gameState?.brickIndex?.[brickId]) {
                     const key = gameState.brickIndex[brickId];
-                    const ch = key && gameState.chunks[key];
-                    brick = ch && ch.bricks ? ch.bricks[brickId] : null;
+                    brick = gameState?.chunks?.[key]?.bricks?.[brickId];
                 }
-                if (!brick) return; // skip candidates without a resolved brick
+                
+                if (!brick) return;
                 candidates.push({ idx, box, brick, corr: { nx, ny, nz, penetration } });
             }
         });
@@ -1257,7 +964,6 @@ module.exports = {
     PIECE_LIST,
     brickPiecesData,
     loadBrickStudData,
-    testGhostCollision,
     testGhostCollisionWithDebug,
     getWorldAABBForPiece,
     rebuildWorldBVH,

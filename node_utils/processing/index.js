@@ -54,10 +54,18 @@ function computeConvexHullFromGeoms(geoms) {
     });
     if (!isFinite(minX) || !isFinite(maxX)) return null;
     const planes = [];
+    const cutPlanes = [];
     const addPlane = (n, d) => { // ensure normalized
         const len = Math.hypot(n[0], n[1], n[2]);
         if (len < EPS) return;
         planes.push({ n: [n[0] / len, n[1] / len, n[2] / len], d: d / len });
+    };
+    const addCutPlane = (n, d) => { // normalized and tracked as cutting planes (non-AABB)
+        const len = Math.hypot(n[0], n[1], n[2]);
+        if (len < EPS) return;
+        const plane = { n: [n[0] / len, n[1] / len, n[2] / len], d: d / len };
+        planes.push(plane);
+        cutPlanes.push(plane);
     };
     // 6 AABB planes: n·x <= d
     addPlane([1, 0, 0], maxX);
@@ -139,7 +147,7 @@ function computeConvexHullFromGeoms(geoms) {
             }
         }
         if (!best || best.cut < 1e-3) break;
-        addPlane(best.n, best.d);
+        addCutPlane(best.n, best.d);
         currentHullVerts = hullVerticesFromPlanes(planes);
         if (currentHullVerts.length === 0) break;
     }
@@ -205,7 +213,15 @@ function computeConvexHullFromGeoms(geoms) {
     const idxArr = new Uint16Array(verticesArr.length / 3);
     for (let i = 0; i < idxArr.length; i++) idxArr[i] = i;
 
-    return { vertices: verticesArr, normals: normalsArr, indices: idxArr, color: baseColor };
+    return {
+        vertices: verticesArr,
+        normals: normalsArr,
+        indices: idxArr,
+        color: baseColor,
+        bboxMin: [minX, minY, minZ],
+        bboxMax: [maxX, maxY, maxZ],
+        cutPlanes
+    };
 }
 
 function postProcessStudsIR(ir) {
@@ -395,6 +411,13 @@ function processIR(ir, options = {}) {
             byteOffset += convex.indices.byteLength;
             processed.meshes.push({ primitives: [{ attributes: { POSITION: processed.accessors.length - 3, NORMAL: processed.accessors.length - 2 }, indices: processed.accessors.length - 1, material: convex.color }] });
             processed.meshTypes.push('convex');
+
+            // Record convex hull metadata for extras
+            processed.convexHull = {
+                bboxMin: Array.isArray(convex.bboxMin) ? convex.bboxMin : null,
+                bboxMax: Array.isArray(convex.bboxMax) ? convex.bboxMax : null,
+                planes: Array.isArray(convex.cutPlanes) ? convex.cutPlanes.map(p => ({ n: p.n, d: p.d })) : []
+            };
         }
     } catch (e) {
         // non-fatal

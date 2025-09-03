@@ -398,9 +398,18 @@ class LDrawBatchParser extends LDrawParserAdvanced {
             };
 
             // Convex node from part-no-studs geometry using 45° plane cuts
+            let convexHullMeta = null;
             const addConvexMeshNode = (geoms) => {
                 const convex = computeConvexHullFromGeoms(geoms);
                 if (!convex) return undefined;
+                // capture metadata for extras
+                if (Array.isArray(convex.bboxMin) && Array.isArray(convex.bboxMax)) {
+                    convexHullMeta = {
+                        bboxMin: convex.bboxMin,
+                        bboxMax: convex.bboxMax,
+                        planes: Array.isArray(convex.cutPlanes) ? convex.cutPlanes.map(p => ({ n: p.n, d: p.d })) : []
+                    };
+                }
                 const color = convex.color;
                 if (!materialMap.has(color)) {
                     const r = ((color >> 16) & 0xff) / 255;
@@ -461,6 +470,12 @@ class LDrawBatchParser extends LDrawParserAdvanced {
             if (shrunkNodeIdx !== undefined) orderedChildren.push(shrunkNodeIdx);
             if (convexNodeIdx !== undefined) orderedChildren.push(convexNodeIdx);
             pieceNode.children = orderedChildren;
+
+            // Attach convex hull metadata into piece extras if available
+            if (convexHullMeta) {
+                pieceNode.extras = pieceNode.extras || {};
+                pieceNode.extras.convexHull = convexHullMeta;
+            }
 
             // Record as exported if it produced any geometry nodes
             if (orderedChildren.length > 0) {
@@ -788,9 +803,18 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                 const partNoStudNodeIdx = addTypeMeshNode('partnostuds', typeToColorGroups.get('part'), g => !g.fromStudPrimitive);
                 const shrunkNodeIdx = addShrunkMeshNode(typeToColorGroups.get('part'));
                 // Convex from part-no-studs
+                let convexHullMeta = null;
                 const addConvexMeshNode = (geoms) => {
                     const convex = computeConvexHullFromGeoms(geoms);
                     if (!convex) return undefined;
+                    // capture metadata for extras
+                    if (Array.isArray(convex.bboxMin) && Array.isArray(convex.bboxMax)) {
+                        convexHullMeta = {
+                            bboxMin: convex.bboxMin,
+                            bboxMax: convex.bboxMax,
+                            planes: Array.isArray(convex.cutPlanes) ? convex.cutPlanes.map(p => ({ n: p.n, d: p.d })) : []
+                        };
+                    }
                     const color = convex.color;
                     if (!materialMap.has(color)) {
                         const r = ((color >> 16) & 0xff) / 255;
@@ -844,6 +868,12 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                 if (shrunkNodeIdx !== undefined) orderedChildren.push(shrunkNodeIdx);
                 if (convexNodeIdx !== undefined) orderedChildren.push(convexNodeIdx);
                 rootNode.children = orderedChildren;
+
+                // Attach convex hull metadata to root extras if available
+                if (convexHullMeta) {
+                    rootNode.extras = rootNode.extras || {};
+                    rootNode.extras.convexHull = convexHullMeta;
+                }
 
                 // Combine buffers
                 const totalSize = totalBufferData.reduce((sum, buf) => sum + buf.byteLength, 0);
