@@ -16,7 +16,6 @@ const {
     PIECE_LIST,
     brickPiecesData,
     loadBrickStudData,
-    testGhostCollision,
     testGhostCollisionWithDebug,
     rebuildWorldBVH,
     resolvePlayerCapsuleCollision,
@@ -705,7 +704,7 @@ function handleBrickInteraction(player, click, mouseRay) {
         const { pieceId, position, rotation } = placement;
         
         // Authoritative collision check before placing (include rotation)
-        const colliding = testGhostCollision({ pieceId, position, rotation }, gameState);
+        const { colliding } = testGhostCollisionWithDebug({ pieceId, position, rotation }, gameState);
         if (colliding) return;
 
         const newBrickId = String(gameState.nextBrickId++);

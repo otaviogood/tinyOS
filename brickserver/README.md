@@ -13,6 +13,10 @@ npm install
 ```bash
 npm start
 ```
+Or start it with nodemon watching for changes and autorestarting:
+```bash
+npm run dev
+```
 
 The server will run on port 3001 by default.
 

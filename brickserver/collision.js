@@ -128,12 +128,18 @@ async function loadBrickStudData() {
             continue;
         }
 
+        // Determine if this piece should use AABB-only collision (no plane cuts defined)
+        const ch = extras && extras.convexHull ? extras.convexHull : null;
+        const planeList = ch && Array.isArray(ch.planes) ? ch.planes : null;
+        const boxOnly = !planeList || planeList.length === 0;
+
         // Store in cache
         pieceCollisionCache.set(pieceInfo.id, {
             geomNoStuds: geomPartNoStuds,
             geomNoStudsShrunk: geomShrunk, // May be null
             bboxNoStuds: geomPartNoStuds.boundingBox.clone(),
             geomConvex: geomConvex,
+            boxOnly: boxOnly,
         });
         
         loadedCount++;
@@ -263,6 +269,7 @@ function testGhostCollisionWithDebug(payload, gameState) {
         } };
     }
 
+    const ghostBoxOnly = !!ghostCache.boxOnly;
     const bvh = ghostGeom.boundsTree || new MeshBVH(ghostGeom);
 
     const candidateData = candidates.map((b) => {
@@ -277,7 +284,7 @@ function testGhostCollisionWithDebug(payload, gameState) {
         const geom = cache.geomNoStuds;
         if (!geom.boundsTree) geom.computeBoundsTree();
         if (!geom.boundingBox) geom.computeBoundingBox();
-        return { geometry: geom, matrixWorld: mat };
+        return { geometry: geom, matrixWorld: mat, boxOnly: !!cache.boxOnly };
     });
     tBuildEnd = process.hrtime.bigint();
 
@@ -325,6 +332,18 @@ function testGhostCollisionWithDebug(payload, gameState) {
             continue;
         }
         prunedCount++;
+        // If either piece is box-only, treat this as an AABB-only collision
+        if (ghostBoxOnly || c.boxOnly) {
+            tNarrowEnd = process.hrtime.bigint();
+            const tEnd = tNarrowEnd;
+            return { colliding: true, broadCount, prunedCount, timings: {
+                aabbMs: Number(tAabbEnd - t0) / 1e6,
+                broadMs: Number(tBroadEnd - tAabbEnd) / 1e6,
+                buildMs: Number(tBuildEnd - tBroadEnd) / 1e6,
+                narrowMs: Number(tNarrowEnd - tNarrowStart) / 1e6,
+                totalMs: Number(tEnd - t0) / 1e6,
+            } };
+        }
         const hit = bvh.intersectsGeometry(c.geometry, otherToGhostLocal);
         if (hit) {
             tNarrowEnd = process.hrtime.bigint();
@@ -786,7 +805,7 @@ function distSqSegmentTriangle(p0, p1, a, b, c, outClosestSeg, outClosestTri) {
 
 function narrowPhaseCapsuleVsConvex(geometry, matrixWorld, p0World, p1World, radius) {
     if (!geometry || !geometry.boundsTree) return null;
-    const best = { penetration: -Infinity, nx: 0, ny: 0, nz: 0 };
+    const best = { penetration: -Infinity, nx: 0, ny: 0, nz: 0, surfNx: 0, surfNy: 0, surfNz: 0 };
     _capsuleNarrowTmp.matInv.copy(matrixWorld).invert();
     _capsuleNarrowTmp.normMat3.getNormalMatrix(matrixWorld);
     _capsuleNarrowTmp.p0Local.copy(p0World).applyMatrix4(_capsuleNarrowTmp.matInv);
@@ -814,12 +833,20 @@ function narrowPhaseCapsuleVsConvex(geometry, matrixWorld, p0World, p1World, rad
                 _capsuleNarrowTmp.normalWorld.copy(_capsuleNarrowTmp.closestSeg).sub(_capsuleNarrowTmp.closestTri);
                 // Transform normal to world (triangle is local)
                 _capsuleNarrowTmp.normalWorld.applyMatrix3(_capsuleNarrowTmp.normMat3).normalize();
+                // Triangle face normal in world space (surface normal)
+                const triEdge1 = _tmpVec3d.subVectors(_capsuleNarrowTmp.triB, _capsuleNarrowTmp.triA);
+                const triEdge2 = _tmpVec3e.subVectors(_capsuleNarrowTmp.triC, _capsuleNarrowTmp.triA);
+                const triNormalWorld = _tmpVec3f.copy(triEdge1).cross(triEdge2).applyMatrix3(_capsuleNarrowTmp.normMat3);
+                if (triNormalWorld.lengthSq() > 1e-12) triNormalWorld.normalize();
                 const penetration = radius - Math.sqrt(Math.max(0, dist2));
                 if (penetration > best.penetration) {
                     best.penetration = penetration;
                     best.nx = _capsuleNarrowTmp.normalWorld.x;
                     best.ny = _capsuleNarrowTmp.normalWorld.y;
                     best.nz = _capsuleNarrowTmp.normalWorld.z;
+                    best.surfNx = triNormalWorld.x;
+                    best.surfNy = triNormalWorld.y;
+                    best.surfNz = triNormalWorld.z;
                 }
                 return false; // record hit but continue traversal to find deepest contact
             }
@@ -835,6 +862,7 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
 
     const pos = new THREE.Vector3(player.position.x, player.position.y, player.position.z);
     const vel = new THREE.Vector3(player.velocity.x, player.velocity.y, player.velocity.z);
+    const initialVelY = player.velocity.y;
     let grounded = false;
 
     for (let iter = 0; iter < iterations; iter++) {
@@ -863,6 +891,19 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
             if (distSq < r*r) {
                 const dist = Math.sqrt(Math.max(1e-12, distSq));
                 let nx, ny, nz, penetration;
+                // Compute AABB face normal (surface normal) via minimum translation to exit expanded box
+                const minX = box.min.x - r, maxX = box.max.x + r;
+                const minY = box.min.y - r, maxY = box.max.y + r;
+                const minZ = box.min.z - r, maxZ = box.max.z + r;
+                const dMinX = Math.abs(px - minX), dMaxX = Math.abs(maxX - px);
+                const dMinY = Math.abs(pos.y - minY), dMaxY = Math.abs(maxY - pos.y);
+                const dMinZ = Math.abs(pz - minZ), dMaxZ = Math.abs(maxZ - pz);
+                let surfNx = -1, surfNy = 0, surfNz = 0; let bestMove = dMinX;
+                if (dMaxX < bestMove) { bestMove = dMaxX; surfNx = 1; surfNy = 0; surfNz = 0; }
+                if (dMinY < bestMove) { bestMove = dMinY; surfNx = 0; surfNy = -1; surfNz = 0; }
+                if (dMaxY < bestMove) { bestMove = dMaxY; surfNx = 0; surfNy = 1; surfNz = 0; }
+                if (dMinZ < bestMove) { bestMove = dMinZ; surfNx = 0; surfNy = 0; surfNz = -1; }
+                if (dMaxZ < bestMove) { bestMove = dMaxZ; surfNx = 0; surfNy = 0; surfNz = 1; }
                 if (dist > 1e-6) {
                     // Use gradient direction when meaningful
                     nx = dx / dist;
@@ -871,12 +912,6 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
                     penetration = r - dist;
                 } else {
                     // Degenerate case: center is essentially on the expanded box. Choose axis-aligned MTV.
-                    const minX = box.min.x - r, maxX = box.max.x + r;
-                    const minY = box.min.y - r, maxY = box.max.y + r;
-                    const minZ = box.min.z - r, maxZ = box.max.z + r;
-                    const dMinX = Math.abs(px - minX), dMaxX = Math.abs(maxX - px);
-                    const dMinY = Math.abs(pos.y - minY), dMaxY = Math.abs(maxY - pos.y);
-                    const dMinZ = Math.abs(pz - minZ), dMaxZ = Math.abs(maxZ - pz);
                     // Find smallest move to exit the expanded box
                     let best = dMinX; nx = -1; ny = 0; nz = 0; penetration = dMinX;
                     if (dMaxX < best) { best = dMaxX; nx = 1; ny = 0; nz = 0; penetration = dMaxX; }
@@ -895,7 +930,7 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
                 }
                 
                 if (!brick) return;
-                candidates.push({ idx, box, brick, corr: { nx, ny, nz, penetration } });
+                candidates.push({ idx, box, brick, corr: { nx, ny, nz, penetration, surfNx, surfNy, surfNz } });
             }
         });
 
@@ -906,6 +941,10 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
         const p1 = new THREE.Vector3(pos.x, sy1, pos.z);
         for (const c of candidates) {
             const cache = pieceCollisionCache.get(c.brick.pieceId);
+            if (cache && cache.boxOnly) {
+                // Keep AABB-based correction; skip narrow-phase
+                continue;
+            }
             const convexGeom = cache.geomConvex; // assume convex always exists
             if (!convexGeom.boundsTree) convexGeom.computeBoundsTree();
             const bRot = c.brick.rotation || { x: 0, y: 0, z: 0 };
@@ -929,9 +968,19 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
         // Apply the largest penetration first
         corrections.sort((a, b) => b.penetration - a.penetration);
         const corr = corrections[0];
-        pos.x += corr.nx * corr.penetration;
-        pos.y += corr.ny * corr.penetration;
-        pos.z += corr.nz * corr.penetration;
+        let dpx = corr.nx * corr.penetration;
+        let dpy = corr.ny * corr.penetration;
+        let dpz = corr.nz * corr.penetration;
+        // On steep surfaces, do not allow correction to move the player upward
+        {
+            const sNy = Number.isFinite(corr.surfNy) ? corr.surfNy : corr.ny;
+            if (sNy < 0.5 && sNy > 0.01 && dpy > 0) {
+                dpy = 0;
+            }
+        }
+        pos.x += dpx;
+        pos.y += dpy;
+        pos.z += dpz;
 
         // Slide velocity: remove component into the normal
         const vn = vel.x * corr.nx + vel.y * corr.ny + vel.z * corr.nz;
@@ -941,10 +990,21 @@ function resolvePlayerCapsuleCollision(gameState, player, iterations = 3) {
             vel.z -= vn * corr.nz;
         }
 
+        // Prevent wall climbing on steep surfaces: if surface normal has small up component
+        // and we didn't start with upward velocity, zero any upward tangential component.
+        {
+            const sNy = Number.isFinite(corr.surfNy) ? corr.surfNy : corr.ny;
+            if (sNy < 0.5 && sNy > 0.01) {
+                // console.log('[collision] wall climbing', `ny=${sNy.toFixed(3)}`);
+                if (vel.y >= 0.0) vel.y *= 0.5;
+            }
+        }
+
         // Consider grounded if we were pushed out along a mostly-upward normal
         // and we were moving downwards or very slowly vertically
         if (corr.ny > 0.5 && player.velocity.y <= 0) {
             grounded = true;
+
         }
     }
 
