@@ -30,6 +30,11 @@ const { generateChunk } = require('./worldgen/generateChunk');
 const app = express();
 const server = http.createServer(app);
 
+// Ensure Nagle's algorithm is disabled to avoid coalescing small frames (adds ~200ms latency)
+server.on('connection', (sock) => {
+    try { sock.setNoDelay(true); } catch (_) {}
+});
+
 // Enable CORS for all origins
 app.use(cors());
 
@@ -43,7 +48,11 @@ const io = socketIO(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
-    }
+    },
+    // Force pure WebSocket and disable per-message deflate to minimize latency
+    transports: ['websocket'],
+    allowUpgrades: false,
+    perMessageDeflate: false,
 });
 
 // Game configuration
@@ -60,79 +69,6 @@ const AUTOSAVE_INTERVAL_MS = 10_000; // 10 seconds
 // Inactivity/keepalive configuration
 const INACTIVE_PLAYER_TIMEOUT_MS = 2000; // Drop players if no input/keepalive received within this window
 const INACTIVE_SWEEP_INTERVAL_MS = 500; // How often to scan for inactive players
-
-// Latency simulation configuration
-// Try these presets by copying and pasting:
-//
-// No latency (ideal conditions):
-// enabled: false
-//
-// Low latency (good connection):
-// enabled: true, minLatency: 10, maxLatency: 50, packetLoss: 0.01, jitter: true, burstMode: false
-//
-// High latency (poor connection):
-// enabled: true, minLatency: 200, maxLatency: 500, packetLoss: 0.05, jitter: true, burstMode: false
-//
-// Unstable connection with bursts:
-// enabled: true, minLatency: 50, maxLatency: 150, packetLoss: 0.02, jitter: true, burstMode: true, burstChance: 0.1, burstMultiplier: 5
-//
-const LATENCY_SIMULATION = {
-    enabled: false, // Set to false to disable latency simulation entirely
-    minLatency: 8, // Minimum latency in milliseconds
-    maxLatency: 150, // Maximum latency in milliseconds
-    packetLoss: 0.02, // 2% packet loss (0.0 to 1.0)
-    jitter: true, // Add random jitter to latency
-    burstMode: false, // Simulate burst latency spikes
-    burstChance: 0.05, // 5% chance of burst latency
-    burstMultiplier: 3 // Multiply latency by this during bursts
-};
-
-// Latency simulation helpers
-function getSimulatedLatency() {
-    if (!LATENCY_SIMULATION.enabled) return 0;
-    
-    let baseLatency = LATENCY_SIMULATION.minLatency + 
-        Math.random() * (LATENCY_SIMULATION.maxLatency - LATENCY_SIMULATION.minLatency);
-    
-    // Add jitter if enabled
-    if (LATENCY_SIMULATION.jitter) {
-        const jitterAmount = baseLatency * 0.2; // 20% jitter
-        baseLatency += (Math.random() - 0.5) * jitterAmount;
-    }
-    
-    // Apply burst latency if enabled
-    if (LATENCY_SIMULATION.burstMode && Math.random() < LATENCY_SIMULATION.burstChance) {
-        baseLatency *= LATENCY_SIMULATION.burstMultiplier;
-        console.log(`🔥 Burst latency spike: ${Math.round(baseLatency)}ms`);
-    }
-    
-    return Math.max(0, Math.round(baseLatency));
-}
-
-function shouldDropPacket() {
-    return LATENCY_SIMULATION.enabled && Math.random() < LATENCY_SIMULATION.packetLoss;
-}
-
-function simulateLatency(callback, eventName = 'unknown') {
-    if (!LATENCY_SIMULATION.enabled) {
-        callback();
-        return;
-    }
-    
-    // Simulate packet loss
-    if (shouldDropPacket()) {
-        console.log(`📦 Dropped packet: ${eventName}`);
-        return; // Don't execute callback - packet is "lost"
-    }
-    
-    const latency = getSimulatedLatency();
-    
-    if (latency > 0) {
-        setTimeout(callback, latency);
-    } else {
-        callback();
-    }
-}
 
 // Game state using delta tracking
 const gameState = createDeltaState();
@@ -246,13 +182,10 @@ io.on('connection', (socket) => {
     };
     console.log(`[${new Date().getSeconds()}.${new Date().getMilliseconds()}] Done init data`);
 
-    simulateLatency(() => {
-        socket.emit('init', initData);
-    }, 'init');
+    socket.emit('init', initData);
 
     // Handle player input
     socket.on('inputDiff', (inputDiff) => {
-        simulateLatency(() => {
             const player = gameState.players[socket.id];
             if (!player) return;
 
@@ -311,7 +244,6 @@ io.on('connection', (socket) => {
                             const cur = Number.isFinite(player.selectedPieceIndex) ? (player.selectedPieceIndex | 0) : 0;
                             const d = Number.isFinite(event.delta) ? (event.delta | 0) : 0;
                             player.selectedPieceIndex = n > 0 ? (((cur + d) % n + n) % n) : 0;
-                            console.log(`Player ${socket.id} selected piece: ${PIECE_LIST[player.selectedPieceIndex].id}`);
                             // Reset anchor state when switching pieces to keep authoritative behavior consistent
                             const newPieceId = (PIECE_LIST[player.selectedPieceIndex] && PIECE_LIST[player.selectedPieceIndex].id) || null;
                             const pdata = newPieceId ? brickPiecesData.get(newPieceId) : null;
@@ -507,7 +439,6 @@ io.on('connection', (socket) => {
 
             // Apply gravity
             player.velocity.y -= 300 * (1/60);
-        }, 'inputDiff');
     });
 
     // Handle disconnection
@@ -757,7 +688,10 @@ function handleBrickInteraction(player, click, mouseRay) {
 
 // Game update loop
 let lastUpdateTime = Date.now();
+const frameTimes = [];
+let lastFrameLogTs = 0;
 setInterval(() => {
+    const frameStartNs = process.hrtime.bigint();
     const currentTime = Date.now();
     const deltaTime = (currentTime - lastUpdateTime) / 1000;
     lastUpdateTime = currentTime;
@@ -778,6 +712,22 @@ setInterval(() => {
             player.velocity.y = Math.max(0, player.velocity.y);
         }
     }
+
+    const frameEndNs = process.hrtime.bigint();
+    const frameMs = Number(frameEndNs - frameStartNs) / 1e6;
+    const ts = Date.now();
+    frameTimes.push({ ts, ms: frameMs });
+    while (frameTimes.length && frameTimes[0].ts < (ts - 3000)) frameTimes.shift();
+    let worst1sMs = 0;
+    for (let i = 0; i < frameTimes.length; i++) {
+        if (frameTimes[i].ts >= (ts - 1000) && frameTimes[i].ms > worst1sMs) worst1sMs = frameTimes[i].ms;
+    }
+    if (ts - lastFrameLogTs >= 1000) {
+        lastFrameLogTs = ts;
+        const barsCount = Math.max(0, Math.round(worst1sMs));
+        const bars = '_'.repeat(barsCount);
+        console.log(`[frame] ${frameMs.toFixed(3)} ms (worst 1s ${worst1sMs.toFixed(3)} ms) ${bars}`);
+    }
 }, 1000 / TICK_RATE);
 
 // Send state updates to clients
@@ -789,18 +739,14 @@ setInterval(() => {
     // Generate diff of all changes
     const diff = gameState._diff();
     if (diff) {
-        simulateLatency(() => {
-            io.emit('stateDiff', {
-                diff: diff,
-                timestamp: Date.now()
-            });
-        }, 'stateDiff');
+        io.compress(false).emit('stateDiff', {
+            diff: diff,
+            timestamp: Date.now()
+        });
         // Clear dirty tracking for next frame
         gameState._clear();
     }
 }, 1000 / SEND_RATE);
-
-// Startup moved below to a single async block that awaits brick load first
 
 // Start periodic autosave
 const autosaveInterval = setInterval(() => {
@@ -864,15 +810,6 @@ process.on('uncaughtException', async (err) => {
             console.log(`Local network access: http://${HOST}:${PORT}`);
             const brickCount = Object.values(gameState.chunks || {}).reduce((n, c) => n + Object.keys((c && c.bricks) || {}).length, 0);
             console.log(`World ready with ${brickCount} bricks across ${Object.keys(gameState.chunks||{}).length} chunks`);
-            if (LATENCY_SIMULATION.enabled) {
-                console.log(`🌐 Latency simulation ENABLED:`);
-                console.log(`   - Latency: ${LATENCY_SIMULATION.minLatency}-${LATENCY_SIMULATION.maxLatency}ms`);
-                console.log(`   - Packet loss: ${(LATENCY_SIMULATION.packetLoss * 100).toFixed(1)}%`);
-                console.log(`   - Jitter: ${LATENCY_SIMULATION.jitter ? 'ON' : 'OFF'}`);
-                console.log(`   - Burst mode: ${LATENCY_SIMULATION.burstMode ? 'ON' : 'OFF'}`);
-            } else {
-                console.log(`🌐 Latency simulation DISABLED`);
-            }
         });
     } catch (e) {
         console.error('Fatal startup error:', e);

@@ -37,7 +37,7 @@ export function setupPBRLighting(scene) {
 export function setupEquirectangularSkybox(scene, camera, onLoaded, onError) {
 	const textureLoader = new THREE.TextureLoader();
 	textureLoader.load(
-		'/apps/lego_sky4.png',
+		'/apps/sky4.webp',
 		function(texture) {
 			const farDistance = (camera && typeof camera.far === 'number') ? camera.far : 5000;
 			const radius = Math.max(10, farDistance * 0.98);

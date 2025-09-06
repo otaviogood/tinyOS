@@ -26,7 +26,6 @@ Handshake auth (sent by client on connect):
 
 - **Physics tick**: 60 Hz (server-side movement, gravity)
 - **Send rate**: 60 Hz (emits `stateDiff` only when there are changes)
-- Optional latency simulation can add delay, jitter, and packet loss on the server; protocol semantics remain the same.
 
 ## Schemas
 
