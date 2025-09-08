@@ -62,6 +62,16 @@
 
     // Network diff backlog (fast-forward queue)
     let pendingStateDiffs = [];
+    // Simple client-side delay buffer (arrival-time based)
+    const MIN_DELAY_MS = 17; // ~1 frame at 60 fps
+    let renderDelayMs = MIN_DELAY_MS; // initial delay; tune between 100-150ms
+    const MAX_DELAY_MS = 400;
+    const MAX_BUFFER_MS = 300; // if buffered span exceeds this, catch up
+    const UNDERFLOW_BUMP_MS = 10; // add when starving
+    const OVERFLOW_TRIM_MS = 20; // remove when too full
+    let pendingByArrival = []; // [{ t: performance.now(), diff }]
+    let lastAppliedArrivalTs = 0;
+    let bufferEmptySinceTs = 0; // track continuous empty-buffer duration
     // Ensure we render at least periodically even under backlog
     let framesSinceLastFullLoop = 0;
     // Backlog handling constants
@@ -250,12 +260,20 @@
             }
             // Ensure ghost is created/updated after we know piece list and geometries
             renderer3d.setSelectedPieceIndex(selectedPieceIndex);
+
+            // Reset delay buffer on fresh init
+            try {
+                pendingByArrival = [];
+                lastAppliedArrivalTs = performance.now();
+                renderDelayMs = MIN_DELAY_MS;
+            } catch(_) {}
         });
 
 
-        // Handle state diff updates: enqueue for processing in tick to avoid backlog stalls
+        // Handle state diff updates: enqueue with arrival timestamp for delay buffer playback
         socket.on('stateDiff', (data) => {
-            pendingStateDiffs.push(data);
+            const t = performance.now();
+            pendingByArrival.push({ t, diff: data && data.diff });
         });
 
         // Start lightweight keepalive to ensure server hears from us even when idle
@@ -677,6 +695,43 @@
     function onWindowResize() { renderer3d && renderer3d.onResize(); }
 
 	function tick() {
+		// Apply diffs using simple delay buffer based on arrival time
+		const now = performance.now();
+		const cutoff = now - renderDelayMs;
+		while (pendingByArrival.length && pendingByArrival[0].t <= cutoff) {
+			const evt = pendingByArrival.shift();
+			lastAppliedArrivalTs = evt.t;
+			if (evt && evt.diff) {
+				applySingleStateDiff(evt.diff);
+			}
+		}
+		// Adjust delay to avoid underflow/overflow
+		if (pendingByArrival.length === 0) {
+			// Buffer empty: reduce delay slowly to lower latency after sustained emptiness
+			if (!bufferEmptySinceTs) bufferEmptySinceTs = now;
+			else if (now - bufferEmptySinceTs >= 1000) {
+				renderDelayMs = Math.max(MIN_DELAY_MS, renderDelayMs - 5);
+				bufferEmptySinceTs = now;
+			}
+		} else {
+			bufferEmptySinceTs = 0;
+			const spanMs = pendingByArrival[pendingByArrival.length - 1].t - pendingByArrival[0].t;
+			const margin = 8; // hysteresis to avoid twitchy adjustments
+			if (spanMs > renderDelayMs + margin) {
+				// Buffer is larger than current delay can cover: bump delay upward proportionally
+				const err = spanMs - renderDelayMs;
+				const step = Math.min(OVERFLOW_TRIM_MS, Math.max(5, Math.round(err * 0.5)));
+				renderDelayMs = Math.min(MAX_DELAY_MS, renderDelayMs + step);
+			} else if (spanMs < renderDelayMs - 2 * margin) {
+				// We are delaying more than needed: slowly bring delay down
+				renderDelayMs = Math.max(MIN_DELAY_MS, renderDelayMs - 1);
+			}
+			// Safety: if span explodes far beyond cap, nudge more aggressively
+			if (spanMs > MAX_BUFFER_MS) {
+				renderDelayMs = Math.min(MAX_DELAY_MS, Math.max(renderDelayMs, spanMs - margin));
+			}
+		}
+
 		// Apply any queued diffs first. Only skip the frame if there is a real backlog,
 		// but force a full loop at least every 10 frames to keep visuals responsive.
 		if (processBacklogAndMaybeSkip()) return;
@@ -824,6 +879,9 @@
 					<div>GPU ms: {gpuMs.toFixed(1)}</div>
 					<div>draw calls: {drawCalls}</div>
 					<div>triangles: {triangles}</div>
+					<div>Render delay ms: {Math.round(renderDelayMs)}</div>
+					<div>Delay buffer span ms: {pendingByArrival.length > 1 ? Math.round(pendingByArrival[pendingByArrival.length - 1].t - pendingByArrival[0].t) : 0}</div>
+					<div>Delay buffer items: {pendingByArrival.length}</div>
 					<div>Bricks: {Object.values(gameState.chunks||{}).reduce((n,c)=>n+Object.keys((c&&c.bricks)||{}).length,0)}</div>
 					<div>Players: {Object.keys(gameState.players).length}</div>
 					<div>RTT: {Math.round(smoothedRTT)}ms Current: {currentRTT}</div>
