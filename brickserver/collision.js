@@ -6,7 +6,7 @@ const { MeshBVH } = require('three-mesh-bvh');
 
 // Brick stud data from GLTF - will store data for all pieces
 const brickPiecesData = new Map(); // pieceId -> { studs: [], antiStuds: [] }
-const pieceCollisionCache = new Map(); // pieceId -> { geomNoStuds, geomNoStudsShrunk, bboxNoStuds }
+const pieceCollisionCache = new Map(); // pieceId -> { geomNoStuds, geomNoStudsShrunk, bboxNoStuds, geomConvex, bboxConvexShrunk, boxOnly }
 
 // Load piece list from exported_pieces.csv
 function loadPieceListFromCSV() {
@@ -121,12 +121,27 @@ async function loadBrickStudData() {
             continue;
         }
         
-        const geomShrunk = loadGeometryFromNode(shrunkNode); // Optional
+        const geomShrunk = loadGeometryFromNode(shrunkNode); // Optional (not relied on)
         const geomConvex = loadGeometryFromNode(convexNode);
         if (!geomConvex) {
             console.warn(`convex missing for piece ${pieceInfo.id}, skipping`);
             continue;
         }
+
+        // Compute shrunk AABB from convex geometry by reducing each side by epsilon (1/16 LDU)
+        const SHRINK_EPSILON = 1 / 16; // 0.0625 in LDraw units
+        if (!geomConvex.boundingBox) geomConvex.computeBoundingBox();
+        const srcBox = geomConvex.boundingBox;
+        const halfX = Math.max(1e-4, (srcBox.max.x - srcBox.min.x) * 0.5);
+        const halfY = Math.max(1e-4, (srcBox.max.y - srcBox.min.y) * 0.5);
+        const halfZ = Math.max(1e-4, (srcBox.max.z - srcBox.min.z) * 0.5);
+        const epsX = Math.min(SHRINK_EPSILON, halfX - 1e-4);
+        const epsY = Math.min(SHRINK_EPSILON, halfY - 1e-4);
+        const epsZ = Math.min(SHRINK_EPSILON, halfZ - 1e-4);
+        const bboxConvexShrunk = new THREE.Box3(
+            new THREE.Vector3(srcBox.min.x + epsX, srcBox.min.y + epsY, srcBox.min.z + epsZ),
+            new THREE.Vector3(srcBox.max.x - epsX, srcBox.max.y - epsY, srcBox.max.z - epsZ)
+        );
 
         // Determine if this piece should use AABB-only collision (no plane cuts defined)
         const ch = extras && extras.convexHull ? extras.convexHull : null;
@@ -139,6 +154,7 @@ async function loadBrickStudData() {
             geomNoStudsShrunk: geomShrunk, // May be null
             bboxNoStuds: geomPartNoStuds.boundingBox.clone(),
             geomConvex: geomConvex,
+            bboxConvexShrunk: bboxConvexShrunk,
             boxOnly: boxOnly,
         });
         
@@ -269,8 +285,10 @@ function testGhostCollisionWithDebug(payload, gameState) {
         } };
     }
 
-    const ghostBoxOnly = !!ghostCache.boxOnly;
-    const bvh = ghostGeom.boundsTree || new MeshBVH(ghostGeom);
+    // Use shrunk triangle mesh for ghost narrow-phase when available
+    const ghostTriGeom = (ghostCache.geomNoStudsShrunk && ghostCache.geomNoStudsShrunk.boundsTree ? ghostCache.geomNoStudsShrunk : ghostCache.geomNoStudsShrunk) || ghostCache.geomConvex || ghostGeom;
+    if (!ghostTriGeom.boundsTree) ghostTriGeom.computeBoundsTree();
+    const bvh = ghostTriGeom.boundsTree;
 
     const candidateData = candidates.map((b) => {
         const cache = pieceCollisionCache.get(b.pieceId);
@@ -284,7 +302,10 @@ function testGhostCollisionWithDebug(payload, gameState) {
         const geom = cache.geomNoStuds;
         if (!geom.boundsTree) geom.computeBoundsTree();
         if (!geom.boundingBox) geom.computeBoundingBox();
-        return { geometry: geom, matrixWorld: mat, boxOnly: !!cache.boxOnly };
+        // Use shrunk triangle mesh for candidate narrow-phase when available
+        const triGeom = (cache.geomNoStudsShrunk && cache.geomNoStudsShrunk.boundsTree ? cache.geomNoStudsShrunk : cache.geomNoStudsShrunk) || cache.geomConvex || geom;
+        if (triGeom && !triGeom.boundsTree) try { triGeom.computeBoundsTree(); } catch (_) {}
+        return { geometry: geom, triGeometry: triGeom, matrixWorld: mat, boxOnly: !!cache.boxOnly, bboxShrunk: cache.bboxConvexShrunk };
     });
     tBuildEnd = process.hrtime.bigint();
 
@@ -296,8 +317,11 @@ function testGhostCollisionWithDebug(payload, gameState) {
     );
     const ghostMatInv = new THREE.Matrix4().copy(ghostMat).invert();
 
-    // Ghost-local AABB for quick prune
-    const ghostLocalAABB = ghostGeom.boundingBox;
+    // Build a world-space shrunk AABB for the ghost for consistent heuristics
+    const ghostAABBShrunkWorld = (ghostCache.bboxConvexShrunk ? ghostCache.bboxConvexShrunk.clone().applyMatrix4(ghostMat) : ghostAABB.clone());
+
+    // Ghost-local AABB for quick prune: use shrunk convex where available
+    const ghostLocalAABB = ghostCache.bboxConvexShrunk || ghostGeom.boundingBox;
 
     const tNarrowStart = process.hrtime.bigint();
     for (const c of candidateData) {
@@ -305,10 +329,10 @@ function testGhostCollisionWithDebug(payload, gameState) {
         // That can miss the triangle intersection test.
         // Heuristic fallback: sizes ~equal (<=1%) and centers ~equal (<=0.1)
         try {
-            const candWorldBox = c.geometry.boundingBox.clone().applyMatrix4(c.matrixWorld);
-            const gSize = new THREE.Vector3().subVectors(ghostAABB.max, ghostAABB.min);
+            const candWorldBox = (c.bboxShrunk ? c.bboxShrunk.clone() : c.geometry.boundingBox.clone()).applyMatrix4(c.matrixWorld);
+            const gSize = new THREE.Vector3().subVectors(ghostAABBShrunkWorld.max, ghostAABBShrunkWorld.min);
             const cSize = new THREE.Vector3().subVectors(candWorldBox.max, candWorldBox.min);
-            const gCenter = new THREE.Vector3().addVectors(ghostAABB.min, ghostAABB.max).multiplyScalar(0.5);
+            const gCenter = new THREE.Vector3().addVectors(ghostAABBShrunkWorld.min, ghostAABBShrunkWorld.max).multiplyScalar(0.5);
             const cCenter = new THREE.Vector3().addVectors(candWorldBox.min, candWorldBox.max).multiplyScalar(0.5);
             const rel = (a, b) => Math.abs(a - b) / Math.max(1e-6, Math.max(Math.abs(a), Math.abs(b)));
             const dimsClose = (rel(gSize.x, cSize.x) < 0.01) && (rel(gSize.y, cSize.y) < 0.01) && (rel(gSize.z, cSize.z) < 0.01);
@@ -326,25 +350,14 @@ function testGhostCollisionWithDebug(payload, gameState) {
             }
         } catch (_) {}
         const otherToGhostLocal = _tmpMat4.multiplyMatrices(ghostMatInv, c.matrixWorld);
-        // Prune using transformed candidate AABB vs ghost-local AABB
-        const candidateBoxGhostLocal = _tmpBox3.copy(c.geometry.boundingBox).applyMatrix4(otherToGhostLocal);
+        // Prune using transformed candidate SHRUNK-convex AABB vs ghost-local SHRUNK-convex AABB
+        const candidateSrcBox = c.bboxShrunk || c.geometry.boundingBox;
+        const candidateBoxGhostLocal = _tmpBox3.copy(candidateSrcBox).applyMatrix4(otherToGhostLocal);
         if (!candidateBoxGhostLocal.intersectsBox(ghostLocalAABB)) {
             continue;
         }
         prunedCount++;
-        // If either piece is box-only, treat this as an AABB-only collision
-        if (ghostBoxOnly || c.boxOnly) {
-            tNarrowEnd = process.hrtime.bigint();
-            const tEnd = tNarrowEnd;
-            return { colliding: true, broadCount, prunedCount, timings: {
-                aabbMs: Number(tAabbEnd - t0) / 1e6,
-                broadMs: Number(tBroadEnd - tAabbEnd) / 1e6,
-                buildMs: Number(tBuildEnd - tBroadEnd) / 1e6,
-                narrowMs: Number(tNarrowEnd - tNarrowStart) / 1e6,
-                totalMs: Number(tEnd - t0) / 1e6,
-            } };
-        }
-        const hit = bvh.intersectsGeometry(c.geometry, otherToGhostLocal);
+        const hit = bvh.intersectsGeometry(c.triGeometry || c.geometry, otherToGhostLocal);
         if (hit) {
             tNarrowEnd = process.hrtime.bigint();
             const tEnd = tNarrowEnd;
