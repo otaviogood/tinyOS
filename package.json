@@ -37,8 +37,8 @@
         "openai": "^4.91.1",
         "planck": "^1.0.2",
         "socket.io-client": "^4.8.1",
-        "three": "^0.169.0",
-        "three-mesh-bvh": "^0.7.6",
+        "three": "^0.180.0",
+        "three-mesh-bvh": "^0.9.1",
         "tone": "^14.9.17",
         "youtube-dl-exec": "^3.0.20"
     }
