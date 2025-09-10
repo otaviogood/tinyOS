@@ -94,8 +94,7 @@ export async function loadBrickModel({ gltfLoader, setLoading, setupBrickMateria
 					}
 					if (partMesh && partMesh.geometry) {
 						const geometry = partMesh.geometry.clone();
-						// Keep geometry as-authored; material ignores per-vertex color (we use per-instance colors)
-						// Ensure bounds exist for better culling even though InstancedMesh disables frustum culling
+						// Keep geometry as-authored; baked path uses vertex colors
 						// Quantize normals to Int16 normalized
 						quantizeNormalsToInt16(geometry);
 						geometry.computeBoundingBox();

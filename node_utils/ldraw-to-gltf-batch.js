@@ -141,7 +141,6 @@ class LDrawBatchParser extends LDrawParserAdvanced {
         const accessors = [];
         const bufferViews = [];
         const buffers = [];
-        const materials = [];
         
         let byteOffset = 0;
         let totalBufferData = [];
@@ -153,9 +152,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
         };
         nodes.push(rootNode);
 
-        // Create materials map
-        const materialMap = new Map();
-        let materialIndex = 0;
+        // Materials are not exported; no material map needed
         const exportedPieces = [];
 
         // Process each piece
@@ -197,20 +194,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                 colorMap.forEach((geoms, color) => {
                     const useGeoms = filterFn ? geoms.filter(filterFn) : geoms;
                     if (!useGeoms || useGeoms.length === 0) return;
-                    if (!materialMap.has(color)) {
-                        const r = ((color >> 16) & 0xff) / 255;
-                        const g = ((color >> 8) & 0xff) / 255;
-                        const b = (color & 0xff) / 255;
-                        materials.push({
-                            pbrMetallicRoughness: {
-                                baseColorFactor: [r, g, b, 1.0],
-                                metallicFactor: 0.0,
-                                roughnessFactor: 0.7
-                            },
-                            name: `color_${color.toString(16).padStart(6, '0')}`
-                        });
-                        materialMap.set(color, materialIndex++);
-                    }
+                    // No materials exported
                     const vertices = [];
                     const indices = [];
                     let indexOffset = 0;
@@ -263,8 +247,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                             POSITION: accessors.length - 3,  // Position accessor
                             NORMAL: accessors.length - 2     // Normal accessor
                         },
-                        indices: accessors.length - 1,
-                        material: materialMap.get(color)
+                        indices: accessors.length - 1
                     });
                 });
                 if (primitives.length === 0) return undefined;
@@ -284,20 +267,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                 let maxOvershoot = 0;
                 colorMap.forEach((geoms, color) => {
                     if (!geoms || geoms.length === 0) return;
-                    if (!materialMap.has(color)) {
-                        const r = ((color >> 16) & 0xff) / 255;
-                        const g = ((color >> 8) & 0xff) / 255;
-                        const b = (color & 0xff) / 255;
-                        materials.push({
-                            pbrMetallicRoughness: {
-                                baseColorFactor: [r, g, b, 1.0],
-                                metallicFactor: 0.0,
-                                roughnessFactor: 0.7
-                            },
-                            name: `color_${color.toString(16).padStart(6, '0')}`
-                        });
-                        materialMap.set(color, materialIndex++);
-                    }
+                    // No materials exported
                     const vertices = [];
                     const indices = [];
                     let indexOffset = 0;
@@ -385,8 +355,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                             POSITION: accessors.length - 3,
                             NORMAL: accessors.length - 2
                         },
-                        indices: accessors.length - 1,
-                        material: materialMap.get(color)
+                        indices: accessors.length - 1
                     });
                 });
                 if (primitives.length === 0) return undefined;
@@ -411,16 +380,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                     };
                 }
                 const color = convex.color;
-                if (!materialMap.has(color)) {
-                    const r = ((color >> 16) & 0xff) / 255;
-                    const g = ((color >> 8) & 0xff) / 255;
-                    const b = (color & 0xff) / 255;
-                    materials.push({
-                        pbrMetallicRoughness: { baseColorFactor: [r, g, b, 1.0], metallicFactor: 0.0, roughnessFactor: 0.7 },
-                        name: `color_${color.toString(16).padStart(6, '0')}`
-                    });
-                    materialMap.set(color, materialIndex++);
-                }
+                // No materials exported
                 const vertexBuffer = new Float32Array(convex.vertices);
                 const normalBuffer = new Float32Array(convex.normals);
                 const indexBuffer = new Uint16Array(convex.indices);
@@ -439,7 +399,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                 accessors.push({ bufferView: bufferViews.length - 1, componentType: 5123, count: indexBuffer.length, type: 'SCALAR' });
                 totalBufferData.push(indexBuffer);
                 byteOffset += indexBuffer.byteLength;
-                const primitives = [{ attributes: { POSITION: accessors.length - 3, NORMAL: accessors.length - 2 }, indices: accessors.length - 1, material: materialMap.get(color) }];
+                const primitives = [{ attributes: { POSITION: accessors.length - 3, NORMAL: accessors.length - 2 }, indices: accessors.length - 1 }];
                 const meshIndex = meshes.length;
                 meshes.push({ primitives });
                 const nodeIndex = nodes.length;
@@ -514,7 +474,6 @@ class LDrawBatchParser extends LDrawParserAdvanced {
             }],
             nodes: nodes,
             meshes: meshes,
-            materials: materials,
             accessors: accessors,
             bufferViews: bufferViews,
             buffers: [{
@@ -530,7 +489,6 @@ class LDrawBatchParser extends LDrawParserAdvanced {
         console.log(`GLTF file saved to: ${outputPath}`);
         console.log(`Total pieces: ${this.pieces.length}`);
         console.log(`Total meshes: ${meshes.length}`);
-        console.log(`Total materials: ${materials.length}`);
 
         // Write exported pieces CSV next to the GLTF, preserving GLTF order
         try {
@@ -559,9 +517,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                 const meshes = [];
                 const accessors = [];
                 const bufferViews = [];
-                const materials = [];
-                const materialMap = new Map();
-                let materialIndex = 0;
+                // No materials exported for individual pieces
                 let byteOffset = 0;
                 const totalBufferData = [];
 
@@ -600,20 +556,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                         const useGeoms = filterFn ? geoms.filter(filterFn) : geoms;
                         if (!useGeoms || useGeoms.length === 0) return;
 
-                        if (!materialMap.has(color)) {
-                            const r = ((color >> 16) & 0xff) / 255;
-                            const g = ((color >> 8) & 0xff) / 255;
-                            const b = (color & 0xff) / 255;
-                            materials.push({
-                                pbrMetallicRoughness: {
-                                    baseColorFactor: [r, g, b, 1.0],
-                                    metallicFactor: 0.0,
-                                    roughnessFactor: 0.7
-                                },
-                                name: `color_${color.toString(16).padStart(6, '0')}`
-                            });
-                            materialMap.set(color, materialIndex++);
-                        }
+                        // No materials exported
 
                         const vertices = [];
                         const indices = [];
@@ -662,8 +605,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
 
                         primitives.push({
                             attributes: { POSITION: accessors.length - 3, NORMAL: accessors.length - 2 },
-                            indices: accessors.length - 1,
-                            material: materialMap.get(color)
+                            indices: accessors.length - 1
                         });
                     });
                     if (primitives.length === 0) return undefined;
@@ -683,20 +625,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                     let maxOvershoot = 0;
                     colorMap.forEach((geoms, color) => {
                         if (!geoms || geoms.length === 0) return;
-                        if (!materialMap.has(color)) {
-                            const r = ((color >> 16) & 0xff) / 255;
-                            const g = ((color >> 8) & 0xff) / 255;
-                            const b = (color & 0xff) / 255;
-                            materials.push({
-                                pbrMetallicRoughness: {
-                                    baseColorFactor: [r, g, b, 1.0],
-                                    metallicFactor: 0.0,
-                                    roughnessFactor: 0.7
-                                },
-                                name: `color_${color.toString(16).padStart(6, '0')}`
-                            });
-                            materialMap.set(color, materialIndex++);
-                        }
+                        // No materials exported
                         const vertices = [];
                         const indices = [];
                         let indexOffset = 0;
@@ -784,8 +713,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                                 POSITION: accessors.length - 3,
                                 NORMAL: accessors.length - 2
                             },
-                            indices: accessors.length - 1,
-                            material: materialMap.get(color)
+                            indices: accessors.length - 1
                         });
                     });
                     if (primitives.length === 0) return undefined;
@@ -816,16 +744,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                         };
                     }
                     const color = convex.color;
-                    if (!materialMap.has(color)) {
-                        const r = ((color >> 16) & 0xff) / 255;
-                        const g = ((color >> 8) & 0xff) / 255;
-                        const b = (color & 0xff) / 255;
-                        materials.push({
-                            pbrMetallicRoughness: { baseColorFactor: [r, g, b, 1.0], metallicFactor: 0.0, roughnessFactor: 0.7 },
-                            name: `color_${color.toString(16).padStart(6, '0')}`
-                        });
-                        materialMap.set(color, materialIndex++);
-                    }
+                    // No materials exported
                     const vertexBuffer = new Float32Array(convex.vertices);
                     const normalBuffer = new Float32Array(convex.normals);
                     const indexBuffer = new Uint16Array(convex.indices);
@@ -844,7 +763,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                     accessors.push({ bufferView: bufferViews.length - 1, componentType: 5123, count: indexBuffer.length, type: 'SCALAR' });
                     totalBufferData.push(indexBuffer);
                     byteOffset += indexBuffer.byteLength;
-                    const primitives = [{ attributes: { POSITION: accessors.length - 3, NORMAL: accessors.length - 2 }, indices: accessors.length - 1, material: materialMap.get(color) }];
+                    const primitives = [{ attributes: { POSITION: accessors.length - 3, NORMAL: accessors.length - 2 }, indices: accessors.length - 1 }];
                     const meshIndex = meshes.length;
                     meshes.push({ primitives });
                     const nodeIndex = nodes.length;
@@ -894,7 +813,6 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                     scenes: [{ nodes: [0] }],
                     nodes: nodes,
                     meshes: meshes,
-                    materials: materials,
                     accessors: accessors,
                     bufferViews: bufferViews,
                     buffers: [{ uri: dataUri, byteLength: bufferData.byteLength }]

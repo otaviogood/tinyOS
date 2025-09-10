@@ -67,7 +67,7 @@ const SAVE_FILE = process.env.BRICKQUEST_SAVE || path.join(__dirname, 'world-sta
 const AUTOSAVE_INTERVAL_MS = 10_000; // 10 seconds
 
 // Inactivity/keepalive configuration
-const INACTIVE_PLAYER_TIMEOUT_MS = 2000; // Drop players if no input/keepalive received within this window
+const INACTIVE_PLAYER_TIMEOUT_MS = 8000; // Drop players if no input/keepalive received within this window
 const INACTIVE_SWEEP_INTERVAL_MS = 500; // How often to scan for inactive players
 
 // Game state using delta tracking

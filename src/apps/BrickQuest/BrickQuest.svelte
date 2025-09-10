@@ -653,7 +653,7 @@
                 if (cDiff && cDiff.bricks) {
                     for (const [bid, bDiff] of Object.entries(cDiff.bricks)) {
                         if (bDiff && bDiff._deleted) {
-                            renderer3d.removeBrickMesh(bid);
+                            if (renderer3d && renderer3d.removeBrickInChunk) renderer3d.removeBrickInChunk(ckey, bid);
                         } else if (bDiff && bDiff._new) {
                             const brick = chunk && chunk.bricks ? chunk.bricks[bid] : null;
                             if (brick) renderer3d.createBrickMesh({ id: bid, chunkKey: ckey, ...brick });

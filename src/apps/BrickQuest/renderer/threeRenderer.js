@@ -53,121 +53,17 @@ export function createBrickQuestRenderer(container, options = {}) {
 	const collisionGeometries = new Map(); // pieceId -> BufferGeometry (nostuds)
 	const convexGeometries = new Map(); // pieceId -> BufferGeometry (convex LOD)
 
-	// Instancing resources
-	const instancedChunkData = new Map(); // chunkKey -> { pieceId -> InstancedMeshData }
-	const brickIdToInstanceRef = new Map(); // brickId -> { mesh, index, chunkKey, pieceId }
-	let instancedBrickMaterial = null;
+	// Baked static mesh resources (one Mesh per chunk)
+	const chunkMeshData = new Map(); // chunkKey -> { low: { mesh, geom, map }, high?: { mesh, geom, map } }
 
-	// Bulk reconcile batching flags/collections
+	// Batching flags/collections (kept for bounds recompute scheduling)
 	let bulkReconcileActive = false;
-	const _meshesNeedingUpdate = new Set();
 	const _groupsNeedingBounds = new Set();
+	let bakedBrickMaterial = null;
 
-	/**
-	 * Ensure an InstancedMesh exists for the given chunkKey and pieceId.
-	 * Returns an InstancedMeshData record { mesh, capacity, count, instanceIdToBrickId: [], chunkKey, pieceId }.
-	 */
-	function ensureInstancedMesh(chunkKey, pieceId, parentGroup, initialCapacityHint) {
-		let chunkMap = instancedChunkData.get(chunkKey);
-		if (!chunkMap) { chunkMap = new Map(); instancedChunkData.set(chunkKey, chunkMap); }
-		let data = chunkMap.get(pieceId);
-		if (data && data.mesh) {
-			if (Number.isFinite(initialCapacityHint) && (initialCapacityHint | 0) > (data.capacity | 0)) {
-				// Grow to at least the hinted capacity
-				data = growInstancedMeshToAtLeast(data, parentGroup, initialCapacityHint | 0);
-			}
-			return data;
-		}
-		let geometry = brickGeometries.get(pieceId) || (brickGeometries.size > 0 ? brickGeometries.values().next().value : null);
-		// Choose LOD geometry based on parent group's LOD hint (0=high, 1=low)
-		const useLow = !!(parentGroup && parentGroup.userData && parentGroup.userData.lod === 1);
-		if (useLow) {
-			const lowGeom = convexGeometries.get(pieceId);
-			if (lowGeom) geometry = lowGeom;
-		}
-		if (!geometry) return null;
-		const initialCapacity = Number.isFinite(initialCapacityHint) ? Math.max(4, (initialCapacityHint | 0)) : 64;
-		const mesh = new THREE.InstancedMesh(geometry, instancedBrickMaterial || new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.0, envMapIntensity: 0.8 }), initialCapacity);
-		mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-		// Disable frustum culling because instance transforms extend beyond geometry bounds
-		mesh.frustumCulled = false;
-		// Preallocate per-instance color attribute as Float32Array to match three 0.169 expectations
-		try { mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(initialCapacity * 3), 3); mesh.instanceColor.setUsage(THREE.DynamicDrawUsage); } catch (_) {}
-		mesh.castShadow = true;
-		mesh.receiveShadow = true;
-		applyViewCullingHooks(mesh);
-		mesh.userData = mesh.userData || {};
-		mesh.userData.chunkKey = chunkKey;
-		mesh.userData.pieceId = pieceId;
-		mesh.userData.highGeom = brickGeometries.get(pieceId) || geometry;
-		mesh.userData.lowGeom = convexGeometries.get(pieceId) || null;
-		mesh.userData.instanceIdToBrickId = [];
-		mesh.count = 0;
-		parentGroup.add(mesh);
-		// Add to raycast list once
-		raycastTargets.push(mesh);
-		data = { mesh, capacity: initialCapacity, count: 0, chunkKey, pieceId };
-		chunkMap.set(pieceId, data);
-		return data;
-	}
+	// Instancing path removed
 
-	function growInstancedMeshToAtLeast(data, parentGroup, minCapacity) {
-		let d = data;
-		while (d && (d.capacity | 0) < (minCapacity | 0)) {
-			d = growInstancedMesh(d, parentGroup);
-		}
-		return d;
-	}
-
-	function growInstancedMesh(data, parentGroup) {
-		const oldMesh = data.mesh;
-		const newCapacity = Math.max(4, (data.capacity * 2) | 0);
-		const geometry = oldMesh.geometry;
-		const material = oldMesh.material;
-		const newMesh = new THREE.InstancedMesh(geometry, material, newCapacity);
-		newMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-		newMesh.frustumCulled = false;
-		try { newMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(newCapacity * 3), 3); newMesh.instanceColor.setUsage(THREE.DynamicDrawUsage); } catch (_) {}
-		newMesh.castShadow = true;
-		newMesh.receiveShadow = true;
-		applyViewCullingHooks(newMesh);
-		newMesh.userData = newMesh.userData || {};
-		newMesh.userData.chunkKey = data.chunkKey;
-		newMesh.userData.pieceId = data.pieceId;
-		newMesh.userData.instanceIdToBrickId = [];
-		// Copy existing instances
-		for (let i = 0; i < data.count; i++) {
-			oldMesh.getMatrixAt(i, _tempMatrix4);
-			newMesh.setMatrixAt(i, _tempMatrix4);
-			{
-				const src = oldMesh.instanceColor;
-				const dst = newMesh.instanceColor;
-				if (src && dst) {
-					dst.setXYZ(i, src.getX(i), src.getY(i), src.getZ(i));
-				}
-			}
-			newMesh.userData.instanceIdToBrickId[i] = oldMesh.userData.instanceIdToBrickId[i];
-		}
-		newMesh.count = data.count;
-		if (newMesh.instanceColor) newMesh.instanceColor.needsUpdate = true;
-		// Replace in scene
-		if (oldMesh.parent) oldMesh.parent.add(newMesh);
-		if (oldMesh.parent) oldMesh.parent.remove(oldMesh);
-		// Update raycastTargets array
-		const idx = raycastTargets.indexOf(oldMesh);
-		if (idx !== -1) raycastTargets[idx] = newMesh;
-		// Update instance refs pointing at old mesh
-		for (const [brickId, ref] of brickIdToInstanceRef.entries()) {
-			if (ref.mesh === oldMesh) {
-				ref.mesh = newMesh;
-			}
-		}
-		// Dispose old mesh
-		try { oldMesh.dispose(); } catch (_) {}
-		data.mesh = newMesh;
-		data.capacity = newCapacity;
-		return data;
-	}
+	// Instancing grow helpers removed
 
 	const _tempMatrix4 = new THREE.Matrix4();
 	const _tempQuaternion = new THREE.Quaternion();
@@ -182,26 +78,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 	const _sharedRaycaster = new THREE.Raycaster();
 	const _ndcCenter = new THREE.Vector2(0, 0);
 
-	function applyViewCullingHooks(instancedMesh) {
-		// Per-camera skip draw: for main view, skip when parent chunk is outside view frustum
-		instancedMesh.onBeforeRender = function(_renderer, _scene, _cam) {
-			try {
-				const parent = instancedMesh.parent;
-				if (_cam === camera && parent && parent.userData && parent.userData.inMainFrustum === false) {
-					if (instancedMesh.userData._savedCount == null) instancedMesh.userData._savedCount = instancedMesh.count;
-					instancedMesh.count = 0;
-				}
-			} catch (_) {}
-		};
-		instancedMesh.onAfterRender = function(_renderer, _scene, _cam) {
-			try {
-				if (_cam === camera && instancedMesh.userData && instancedMesh.userData._savedCount != null) {
-					instancedMesh.count = instancedMesh.userData._savedCount;
-					instancedMesh.userData._savedCount = null;
-				}
-			} catch (_) {}
-		};
-	}
+	// No per-mesh culling hooks needed for baked meshes; group visibility is handled in renderTick
 
 	function initGroupBounds(group) {
 		group.userData = group.userData || {};
@@ -214,14 +91,14 @@ export function createBrickQuestRenderer(container, options = {}) {
 		}
 	}
 
-	function expandGroupBoundsForInstance(group, geometry, instanceMatrixLocal, origin) {
+	function expandGroupBoundsForGeometry(group, geometry) {
 		if (!geometry) return;
 		if (!geometry.boundingBox) geometry.computeBoundingBox();
 		if (!geometry.boundingBox) return;
 		initGroupBounds(group);
+		// Geometry is authored in local chunk space; shift by group.origin (its position)
 		_tempBox3.copy(geometry.boundingBox);
-		_tempBox3.applyMatrix4(instanceMatrixLocal);
-		_tempVec3.set(origin.x || 0, origin.y || 0, origin.z || 0);
+		_tempVec3.set(group.position.x || 0, group.position.y || 0, group.position.z || 0);
 		_tempBox3.min.add(_tempVec3);
 		_tempBox3.max.add(_tempVec3);
 		group.userData.chunkBounds.union(_tempBox3);
@@ -232,242 +109,308 @@ export function createBrickQuestRenderer(container, options = {}) {
 		const bounds = group.userData.chunkBounds;
 		bounds.min.set(Infinity, Infinity, Infinity);
 		bounds.max.set(-Infinity, -Infinity, -Infinity);
-		const origin = group.position || new THREE.Vector3();
 		for (const child of group.children) {
-			if (child.isInstancedMesh) {
-				const geom = child.geometry;
+			const geom = child && child.geometry;
 				if (!geom) continue;
 				if (!geom.boundingBox) {
 					try { geom.computeBoundingBox(); } catch (_) {}
 				}
 				if (!geom.boundingBox) continue;
-				for (let i = 0; i < child.count; i++) {
-					child.getMatrixAt(i, _tempMatrix4);
 					_tempBox3.copy(geom.boundingBox);
-					_tempBox3.applyMatrix4(_tempMatrix4);
-					_tempBox3.min.add(origin);
-					_tempBox3.max.add(origin);
+			_tempVec3.set(group.position.x || 0, group.position.y || 0, group.position.z || 0);
+			_tempBox3.min.add(_tempVec3);
+			_tempBox3.max.add(_tempVec3);
 					bounds.union(_tempBox3);
 				}
-			}
-		}
 		group.userData.boundsDirty = false;
 	}
 
+	function ensureBakedMaterial() {
+		if (bakedBrickMaterial) return bakedBrickMaterial;
+		bakedBrickMaterial = new THREE.MeshStandardMaterial({
+			vertexColors: true,
+			color: 0xffffff,
+			roughness: 0.2,
+			metalness: 0.0,
+			envMapIntensity: 0.8
+		});
+		return bakedBrickMaterial;
+	}
+
+	function quantizeColorToUint8(c) {
+		// Input THREE.Color linear [0,1]; output [r,g,b] Uint8
+		const r = Math.max(0, Math.min(255, Math.round(c.r * 255)));
+		const g = Math.max(0, Math.min(255, Math.round(c.g * 255)));
+		const b = Math.max(0, Math.min(255, Math.round(c.b * 255)));
+		return [r, g, b];
+	}
+
+	function buildBakedGeometryForChunk(chunkKey, bricks, { useConvex = false } = {}) {
+		// bricks: array of { id, pieceId, colorIndex, position:{x,y,z}, rotation:{x,y,z} }
+		if (!Array.isArray(bricks) || bricks.length === 0) return null;
+		const origin = getChunkOriginFromKey(chunkKey);
+		// First pass: counts
+		let totalVertices = 0;
+		let totalIndices = 0;
+		const pieceGeoms = [];
+		for (const b of bricks) {
+			const geom = useConvex ? (convexGeometries.get(b.pieceId) || brickGeometries.get(b.pieceId)) : brickGeometries.get(b.pieceId);
+			if (!geom || !geom.attributes || !geom.attributes.position) { pieceGeoms.push(null); continue; }
+			pieceGeoms.push(geom);
+			totalVertices += geom.attributes.position.count | 0;
+			const idAttr = geom.index;
+			totalIndices += idAttr ? (idAttr.count | 0) : ((geom.attributes.position.count / 3) | 0) * 3;
+		}
+		if (totalVertices <= 0 || totalIndices <= 0) return null;
+		const useUint32Index = totalVertices > 65535;
+		const positions = new Float32Array(totalVertices * 3);
+		const normals = new Float32Array(totalVertices * 3);
+		const colors = new Uint8Array(totalVertices * 3);
+		const brickIndexAttr = new Float32Array(totalVertices);
+		const indices = useUint32Index ? new Uint32Array(totalIndices) : new Uint16Array(totalIndices);
+		// Track bounding box as we write transformed vertices (cache-friendly)
+		let minX = Infinity, minY = Infinity, minZ = Infinity;
+		let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+		let vtxBase = 0;
+		let idxBase = 0;
+		const brickIndexToBrickId = [];
+		const normalMatrix = new THREE.Matrix3();
+		const rotMatrix = new THREE.Matrix4();
+		for (let bi = 0; bi < bricks.length; bi++) {
+			const b = bricks[bi];
+			const geom = pieceGeoms[bi];
+			if (!geom) continue;
+			// Compose transform (random micro rotation like before)
+		_tempPosition.set(
+					b.position.x - origin.x,
+					b.position.y - origin.y,
+					b.position.z - origin.z
+			);
+		_tempQuaternion.setFromEuler(new THREE.Euler(
+					(b.rotation && b.rotation.x || 0),
+					(b.rotation && b.rotation.y || 0),
+					(b.rotation && b.rotation.z || 0)
+		));
+		_tempMatrix4.compose(_tempPosition, _tempQuaternion, _tempScale);
+			rotMatrix.makeRotationFromQuaternion(_tempQuaternion);
+			normalMatrix.setFromMatrix4(rotMatrix);
+			// Color
+			const matColor = brickMaterials && brickMaterials[b.colorIndex] ? brickMaterials[b.colorIndex].color : (brickMaterials && brickMaterials[0] ? brickMaterials[0].color : null);
+			const [cr, cg, cb] = quantizeColorToUint8(matColor || new THREE.Color(1,1,1));
+			// Copy/transform vertices (fast path using direct arrays and matrix elements)
+			const posAttr = geom.attributes.position;
+			const norAttr = geom.attributes.normal;
+			const idxAttr = geom.index;
+			const vertCount = posAttr.count | 0;
+			const posArray = posAttr.array;
+			const norArray = norAttr.array;
+			// Set brick index in one go for this brick's vertex range
+			brickIndexAttr.fill(bi, vtxBase, vtxBase + vertCount);
+			const m = _tempMatrix4.elements;
+			const n = normalMatrix.elements;
+			for (let i = 0; i < vertCount; i++) {
+				const pOff = i * 3;
+				const px = posArray[pOff + 0];
+				const py = posArray[pOff + 1];
+				const pz = posArray[pOff + 2];
+				const tx = m[0] * px + m[4] * py + m[8]  * pz + m[12];
+				const ty = m[1] * px + m[5] * py + m[9]  * pz + m[13];
+				const tz = m[2] * px + m[6] * py + m[10] * pz + m[14];
+				const vOut = (vtxBase + i) * 3;
+				positions[vOut + 0] = tx;
+				positions[vOut + 1] = ty;
+				positions[vOut + 2] = tz;
+				if (tx < minX) minX = tx; if (ty < minY) minY = ty; if (tz < minZ) minZ = tz;
+				if (tx > maxX) maxX = tx; if (ty > maxY) maxY = ty; if (tz > maxZ) maxZ = tz;
+				const nx = norArray[pOff + 0];
+				const ny = norArray[pOff + 1];
+				const nz = norArray[pOff + 2];
+				const ntx = n[0] * nx + n[3] * ny + n[6] * nz;
+				const nty = n[1] * nx + n[4] * ny + n[7] * nz;
+				const ntz = n[2] * nx + n[5] * ny + n[8] * nz;
+				normals[vOut + 0] = ntx;
+				normals[vOut + 1] = nty;
+				normals[vOut + 2] = ntz;
+				colors[vOut + 0] = cr;
+				colors[vOut + 1] = cg;
+				colors[vOut + 2] = cb;
+			}
+			if (idxAttr) {
+				const idxArray = idxAttr.array;
+				let outOff = idxBase;
+				const base = vtxBase;
+				for (let i = 0, c = idxAttr.count | 0; i < c; i++) {
+					indices[outOff++] = (base + (idxArray[i] | 0)) | 0;
+				}
+				idxBase += idxAttr.count | 0;
+		} else {
+				// Assume non-indexed triangles
+				for (let i = 0; i < vertCount; i++) {
+					indices[idxBase + i] = (vtxBase + i) | 0;
+				}
+				idxBase += vertCount | 0;
+			}
+			brickIndexToBrickId[bi] = b.id;
+			vtxBase += vertCount | 0;
+		}
+		const geometry = new THREE.BufferGeometry();
+		geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+		geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+		geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3, true));
+		geometry.setAttribute('brickIndex', new THREE.BufferAttribute(brickIndexAttr, 1));
+		geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+		// Assign bounding box directly from tracked min/max
+		geometry.boundingBox = new THREE.Box3(
+			new THREE.Vector3(minX, minY, minZ),
+			new THREE.Vector3(maxX, maxY, maxZ)
+		);
+		// geometry.computeBoundingSphere();
+		try { geometry.computeBoundsTree(); } catch (_) {}
+		return { geometry, brickIndexToBrickId };
+	}
+
+	function replaceChunkMesh(chunkKey, mesh, kind) {
+		const group = chunkGroups.get(chunkKey);
+		if (!group) return;
+		// Remove existing mesh for the specified kind (low/high)
+		const tag = kind === 'high' ? 'isChunkHighMesh' : 'isChunkLowMesh';
+		for (let i = group.children.length - 1; i >= 0; i--) {
+			const child = group.children[i];
+			if (!child || (child.userData && child.userData.isChunkHelper)) continue;
+			if (child.userData && child.userData[tag]) {
+				group.remove(child);
+				const idx = raycastTargets.indexOf(child);
+				if (idx !== -1) raycastTargets.splice(idx, 1);
+				try { disposeObject(child); } catch (_) {}
+			}
+		}
+		if (mesh) {
+			mesh.userData = mesh.userData || {};
+			mesh.userData[tag] = true;
+			group.add(mesh);
+			raycastTargets.push(mesh);
+			group.userData.boundsDirty = true;
+			expandGroupBoundsForGeometry(group, mesh.geometry);
+		}
+	}
+
+	function rebuildChunkMeshForKey(chunkKey) {
+		if (!chunkKey) return;
+		const gameState = getGameStateRef ? getGameStateRef() : null;
+		const chunk = gameState && gameState.chunks ? gameState.chunks[chunkKey] : null;
+		const bricksObj = chunk && chunk.bricks ? chunk.bricks : null;
+		const bricks = [];
+		if (bricksObj) {
+			for (const [bid, b] of Object.entries(bricksObj)) {
+				if (!b || !b.pieceId) continue;
+				bricks.push({ id: bid, pieceId: b.pieceId, colorIndex: b.colorIndex | 0, position: b.position, rotation: b.rotation });
+			}
+		}
+		if (bricks.length === 0) {
+			// Remove both LOD meshes
+			replaceChunkMesh(chunkKey, null, 'low');
+			replaceChunkMesh(chunkKey, null, 'high');
+			chunkMeshData.delete(chunkKey);
+			return;
+		}
+		// Always (re)build low LOD from convex
+		const lowBuilt = buildBakedGeometryForChunk(chunkKey, bricks, { useConvex: true });
+		if (lowBuilt) {
+			const material = ensureBakedMaterial();
+			const lowMesh = new THREE.Mesh(lowBuilt.geometry, material);
+			lowMesh.castShadow = true;
+			lowMesh.receiveShadow = true;
+			lowMesh.userData = lowMesh.userData || {};
+			lowMesh.userData.chunkKey = chunkKey;
+			lowMesh.userData.brickIndexToBrickId = lowBuilt.brickIndexToBrickId;
+			replaceChunkMesh(chunkKey, lowMesh, 'low');
+			const rec = chunkMeshData.get(chunkKey) || {};
+			rec.low = { mesh: lowMesh, geom: lowBuilt.geometry, map: lowBuilt.brickIndexToBrickId };
+			chunkMeshData.set(chunkKey, rec);
+		}
+		// Build/update high detail immediately if this chunk is currently near (lod === 0)
+		const group = chunkGroups.get(chunkKey);
+		const ud = group && group.userData ? group.userData : null;
+		const isNear = !!(ud && ud.lod === 0);
+		const recNow = chunkMeshData.get(chunkKey) || {};
+		if (isNear) {
+			const builtHigh = buildBakedGeometryForChunk(chunkKey, bricks, { useConvex: false });
+			if (builtHigh) {
+				const material = ensureBakedMaterial();
+				const highMesh = new THREE.Mesh(builtHigh.geometry, material);
+				highMesh.castShadow = true;
+				highMesh.receiveShadow = true;
+				highMesh.userData = highMesh.userData || {};
+				highMesh.userData.chunkKey = chunkKey;
+				highMesh.userData.brickIndexToBrickId = builtHigh.brickIndexToBrickId;
+				replaceChunkMesh(chunkKey, highMesh, 'high');
+				recNow.high = { mesh: highMesh, geom: builtHigh.geometry, map: builtHigh.brickIndexToBrickId };
+				chunkMeshData.set(chunkKey, recNow);
+			}
+		}
+		// Ensure visibility matches current LOD immediately
+		const recVis = chunkMeshData.get(chunkKey);
+		if (recVis && group && group.userData) {
+			if (recVis.low && recVis.low.mesh) recVis.low.mesh.visible = !(group.userData.lod === 0);
+			if (recVis.high && recVis.high.mesh) recVis.high.mesh.visible = (group.userData.lod === 0);
+		}
+	}
+
 	function addBrickInstance(brick) {
-		if (!brick.chunkKey || CHUNK_SIZE == null) return;
+		if (!brick || !brick.chunkKey || CHUNK_SIZE == null) return;
 		const parts = String(brick.chunkKey).split(',');
 		const cx = parseInt(parts[0] || '0', 10) | 0;
 		const cy = parseInt(parts[1] || '0', 10) | 0;
 		const cz = parseInt(parts[2] || '0', 10) | 0;
-		const parent = ensureChunkGroup(cx, cy, cz);
-		const origin = getChunkOriginFromKey(brick.chunkKey);
-		const pieceId = brick.pieceId || "3022";
-		let data = ensureInstancedMesh(brick.chunkKey, pieceId, parent);
-		if (!data) return;
-		if (data.count >= data.capacity) data = growInstancedMesh(data, parent);
-		const mesh = data.mesh;
-		const index = data.count;
-		// Compose matrix with slight random rotation
-		_tempPosition.set(
-			brick.position.x - origin.x,
-			brick.position.y - origin.y,
-			brick.position.z - origin.z
-		);
-		const randomRotationRange = (Math.PI / 180) * 0.125;
-		const randomX = (Math.random() - 0.5) * 2 * randomRotationRange;
-		const randomY = (Math.random() - 0.5) * 2 * randomRotationRange;
-		const randomZ = (Math.random() - 0.5) * 2 * randomRotationRange;
-		_tempQuaternion.setFromEuler(new THREE.Euler(
-			(brick.rotation.x || 0) + randomX,
-			(brick.rotation.y || 0) + randomY,
-			(brick.rotation.z || 0) + randomZ
-		));
-		_tempMatrix4.compose(_tempPosition, _tempQuaternion, _tempScale);
-		mesh.setMatrixAt(index, _tempMatrix4);
-		// Expand this chunk group's world-space bounds
-		if (bulkReconcileActive) {
-			if (parent && parent.userData) parent.userData.boundsDirty = true;
-			_groupsNeedingBounds.add(parent);
-		} else {
-			expandGroupBoundsForInstance(parent, (mesh.userData && mesh.userData.highGeom) ? mesh.userData.highGeom : mesh.geometry, _tempMatrix4, origin);
-		}
-		// Per-instance color
-		const matColor = brickMaterials && brickMaterials[brick.colorIndex] ? brickMaterials[brick.colorIndex].color : (brickMaterials && brickMaterials[0] ? brickMaterials[0].color : null);
-		if (matColor) {
-			_tempColor.copy(matColor);
-			if (mesh.instanceColor) {
-				mesh.instanceColor.setXYZ(index,
-					THREE.MathUtils.clamp(_tempColor.r, 0, 1),
-					THREE.MathUtils.clamp(_tempColor.g, 0, 1),
-					THREE.MathUtils.clamp(_tempColor.b, 0, 1)
-				);
-			}
-		}
-		data.count = index + 1;
-		mesh.count = data.count;
-		if (bulkReconcileActive) {
-			_meshesNeedingUpdate.add(mesh);
-		} else {
-			mesh.instanceMatrix.needsUpdate = true;
-			if (mesh.computeBoundingSphere) mesh.computeBoundingSphere();
-			// Also update the geometry's bounding sphere if missing
-			if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) {
-				mesh.geometry.computeBoundingSphere();
-			}
-			if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-		}
-		mesh.userData.instanceIdToBrickId[index] = brick.id;
-		brickIdToInstanceRef.set(brick.id, { mesh, index, chunkKey: brick.chunkKey, pieceId });
+		ensureChunkGroup(cx, cy, cz);
+		rebuildChunkMeshForKey(brick.chunkKey);
 	}
 
 	// Fast path for bulk adds when parent group and origin are already known
-	function addBrickInstanceFast(parent, origin, chunkKey, brick) {
-		if (!parent || !origin || !chunkKey || CHUNK_SIZE == null) return;
-		const pieceId = brick.pieceId || "3022";
-		let data = ensureInstancedMesh(chunkKey, pieceId, parent);
-		if (!data) return;
-		if (data.count >= data.capacity) data = growInstancedMesh(data, parent);
-		const mesh = data.mesh;
-		const index = data.count;
-		_tempPosition.set(
-			brick.position.x - origin.x,
-			brick.position.y - origin.y,
-			brick.position.z - origin.z
-		);
-		const randomRotationRange = (Math.PI / 180) * 0.125;
-		const randomX = (Math.random() - 0.5) * 2 * randomRotationRange;
-		const randomY = (Math.random() - 0.5) * 2 * randomRotationRange;
-		const randomZ = (Math.random() - 0.5) * 2 * randomRotationRange;
-		_tempQuaternion.setFromEuler(new THREE.Euler(
-			(brick.rotation && brick.rotation.x || 0) + randomX,
-			(brick.rotation && brick.rotation.y || 0) + randomY,
-			(brick.rotation && brick.rotation.z || 0) + randomZ
-		));
-		_tempMatrix4.compose(_tempPosition, _tempQuaternion, _tempScale);
-		mesh.setMatrixAt(index, _tempMatrix4);
-		if (bulkReconcileActive) {
-			if (parent && parent.userData) parent.userData.boundsDirty = true;
-			_groupsNeedingBounds.add(parent);
-		} else {
-			expandGroupBoundsForInstance(parent, (mesh.userData && mesh.userData.highGeom) ? mesh.userData.highGeom : mesh.geometry, _tempMatrix4, origin);
-		}
-		const matColor = brickMaterials && brickMaterials[brick.colorIndex] ? brickMaterials[brick.colorIndex].color : (brickMaterials && brickMaterials[0] ? brickMaterials[0].color : null);
-		if (matColor) {
-			_tempColor.copy(matColor);
-			if (mesh.instanceColor) {
-				mesh.instanceColor.setXYZ(index,
-					THREE.MathUtils.clamp(_tempColor.r, 0, 1),
-					THREE.MathUtils.clamp(_tempColor.g, 0, 1),
-					THREE.MathUtils.clamp(_tempColor.b, 0, 1)
-				);
-			}
-		}
-		data.count = index + 1;
-		mesh.count = data.count;
-		if (bulkReconcileActive) {
-			_meshesNeedingUpdate.add(mesh);
-		} else {
-			mesh.instanceMatrix.needsUpdate = true;
-			if (mesh.computeBoundingSphere) mesh.computeBoundingSphere();
-			if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) {
-				mesh.geometry.computeBoundingSphere();
-			}
-			if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-		}
-		mesh.userData.instanceIdToBrickId[index] = brick.id;
-		brickIdToInstanceRef.set(brick.id, { mesh, index, chunkKey, pieceId });
+	function addBrickInstanceFast(_parent, _origin, chunkKey, brick) {
+		if (!chunkKey || !brick || CHUNK_SIZE == null) return;
+		rebuildChunkMeshForKey(chunkKey);
 	}
 
 	function removeBrickInstance(brickId) {
-		const ref = brickIdToInstanceRef.get(brickId);
-		if (!ref) return false;
-		const mesh = ref.mesh;
-		const lastIndex = mesh.count - 1;
-		const removeIndex = ref.index;
-		if (removeIndex < 0 || lastIndex < 0) {
-			brickIdToInstanceRef.delete(brickId);
-			return true;
+		const gameState = getGameStateRef ? getGameStateRef() : null;
+		let targetChunkKey = null;
+		if (gameState && gameState.brickIndex && brickId != null) {
+			targetChunkKey = gameState.brickIndex[brickId] || null;
 		}
-		if (removeIndex !== lastIndex) {
-			// Move last into removed slot
-			mesh.getMatrixAt(lastIndex, _tempMatrix4);
-			mesh.setMatrixAt(removeIndex, _tempMatrix4);
-			if (mesh.instanceColor) {
-				mesh.instanceColor.setXYZ(removeIndex, mesh.instanceColor.getX(lastIndex), mesh.instanceColor.getY(lastIndex), mesh.instanceColor.getZ(lastIndex));
-			}
-			const movedBrickId = mesh.userData.instanceIdToBrickId[lastIndex];
-			mesh.userData.instanceIdToBrickId[removeIndex] = movedBrickId;
-			const movedRef = brickIdToInstanceRef.get(movedBrickId);
-			if (movedRef) movedRef.index = removeIndex;
-		}
-		// Clear last
-		const data = (function(){
-			const chunkKey = mesh && mesh.userData && mesh.userData.chunkKey;
-			const pieceId = mesh && mesh.userData && mesh.userData.pieceId;
-			if (!chunkKey || !pieceId) return null;
-			const chunkMap = instancedChunkData.get(chunkKey);
-			return chunkMap ? chunkMap.get(pieceId) : null;
-		})();
-		if (data) data.count = lastIndex;
-		mesh.count = lastIndex;
-		mesh.instanceMatrix.needsUpdate = true;
-		if (mesh.computeBoundingSphere) mesh.computeBoundingSphere();
-		if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) {
-			mesh.geometry.computeBoundingSphere();
-		}
-		if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-		mesh.userData.instanceIdToBrickId[lastIndex] = undefined;
-		brickIdToInstanceRef.delete(brickId);
-		// Mark parent group bounds as dirty (safe but infrequent path)
-		if (mesh.parent && mesh.parent.userData) {
-			mesh.parent.userData.boundsDirty = true;
-		}
-		// If this InstancedMesh is now empty, remove and prune
-		if (mesh.count <= 0) {
-			const parent = mesh.parent;
-			if (parent) parent.remove(mesh);
-			const idx = raycastTargets.indexOf(mesh);
-			if (idx !== -1) raycastTargets.splice(idx, 1);
-			try { mesh.dispose(); } catch (_) {}
-			// Remove from instancedChunkData map
-			const chunkKey = mesh.userData && mesh.userData.chunkKey;
-			const pieceId = mesh.userData && mesh.userData.pieceId;
-			if (chunkKey && instancedChunkData.has(chunkKey)) {
-				const chunkMap = instancedChunkData.get(chunkKey);
-				if (chunkMap) {
-					chunkMap.delete(pieceId);
-					if (chunkMap.size === 0) instancedChunkData.delete(chunkKey);
-				}
-			}
-			// If parent chunk group is empty, prune it
-			if (parent && parent.userData && parent.userData.chunkKey) {
-				let hasAnyMesh = false;
-				for (const child of parent.children) {
-					if (child.isMesh) { hasAnyMesh = true; break; }
-				}
-				if (!hasAnyMesh) {
-					scene.remove(parent);
-					chunkGroups.delete(parent.userData.chunkKey);
-				}
+		if (!targetChunkKey && gameState && gameState.chunks) {
+			for (const [ckey, c] of Object.entries(gameState.chunks)) {
+				if (c && c.bricks && c.bricks[brickId]) { targetChunkKey = ckey; break; }
 			}
 		}
+		if (targetChunkKey) {
+			rebuildChunkMeshForKey(targetChunkKey);
 		return true;
+		}
+		return false;
+	}
+
+	function removeBrickInChunk(chunkKey, _brickId) {
+		if (!chunkKey) return;
+		rebuildChunkMeshForKey(chunkKey);
 	}
 
 	function disposeAllInstancedMeshes() {
-		for (const [chunkKey, chunkMap] of instancedChunkData.entries()) {
-			for (const [pieceId, data] of chunkMap.entries()) {
-				if (data && data.mesh && data.mesh.parent) {
-					data.mesh.parent.remove(data.mesh);
-				}
-				const idx = raycastTargets.indexOf(data.mesh);
+		for (const [chunkKey, rec] of chunkMeshData.entries()) {
+			const group = chunkGroups.get(chunkKey);
+			if (group) {
+				for (const kind of ['low','high']) {
+					const entry = rec && rec[kind];
+					const mesh = entry && entry.mesh;
+					if (!mesh) continue;
+					group.remove(mesh);
+					const idx = raycastTargets.indexOf(mesh);
 				if (idx !== -1) raycastTargets.splice(idx, 1);
-				try { data.mesh.dispose(); } catch (_) {}
+					try { disposeObject(mesh); } catch (_) {}
 			}
 		}
-		instancedChunkData.clear();
-		brickIdToInstanceRef.clear();
+		}
+		chunkMeshData.clear();
 	}
 
 	// Instance maps
@@ -558,14 +501,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			roughness: 0.2,
 			envMapIntensity: 0.8,
 		}));
-		// Create a single instanced material that supports per-instance colors
-		if (!instancedBrickMaterial) {
-			instancedBrickMaterial = new THREE.MeshStandardMaterial({
-				roughness: 0.2,
-				envMapIntensity: 0.8,
-				color: 0xffffff,
-			});
-		}
+		ensureBakedMaterial();
 	}
 
 	function ensureStudHighlight() {
@@ -941,12 +877,32 @@ export function createBrickQuestRenderer(container, options = {}) {
 		const firstIntersection = (intersects && intersects.length > 0) ? intersects[0] : null;
 		let targetBrickId = null;
 		let targetChunkKey = null;
-		if (firstIntersection && firstIntersection.instanceId != null && firstIntersection.object && firstIntersection.object.userData && Array.isArray(firstIntersection.object.userData.instanceIdToBrickId)) {
-			targetBrickId = firstIntersection.object.userData.instanceIdToBrickId[firstIntersection.instanceId] || null;
-			targetChunkKey = firstIntersection.object.userData.chunkKey || null;
+		if (firstIntersection && firstIntersection.object && firstIntersection.object.geometry) {
+			// Resolve from baked mesh
+			const obj = firstIntersection.object;
+			const geom = obj.geometry;
+			const brickIndexAttr = geom.getAttribute && geom.getAttribute('brickIndex');
+			if (brickIndexAttr) {
+				let vIndex = 0;
+				if (Number.isFinite(firstIntersection.faceIndex)) {
+					const tri = firstIntersection.faceIndex | 0;
+					if (geom.index) {
+						const ia = geom.index;
+						vIndex = ia.getX ? (ia.getX(tri * 3) | 0) : (ia.array[tri * 3] | 0);
+					} else {
+						vIndex = (tri * 3) | 0;
+					}
+				} else if (firstIntersection.face && Number.isFinite(firstIntersection.face.a)) {
+					vIndex = firstIntersection.face.a | 0;
+				}
+				const bi = brickIndexAttr.getX ? (brickIndexAttr.getX(vIndex) | 0) : (brickIndexAttr.array[vIndex] | 0);
+				const map = obj.userData && obj.userData.brickIndexToBrickId;
+				targetBrickId = (map && map[bi] != null) ? map[bi] : null;
+				targetChunkKey = obj.userData && obj.userData.chunkKey || null;
 		} else {
 			targetBrickId = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? firstIntersection.object.userData.brickId : null;
 			targetChunkKey = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? (firstIntersection.object.userData.chunkKey || null) : null;
+			}
 		}
 		if (!targetBrickId) {
 			studHighlightMesh.visible = false;
@@ -1123,12 +1079,31 @@ export function createBrickQuestRenderer(container, options = {}) {
 			const intersection = intersects[0];
 			lastRayHitValid = (typeof intersection.distance === 'number') ? (intersection.distance <= PLACEMENT_MAX_DISTANCE) : true;
 			if (lastRayHitValid) {
-				// Resolve brickId for both regular meshes and instanced meshes
-				if (intersection && intersection.instanceId != null && intersection.object && intersection.object.userData && Array.isArray(intersection.object.userData.instanceIdToBrickId)) {
-					lastHitBrickId = intersection.object.userData.instanceIdToBrickId[intersection.instanceId] || null;
+				// Resolve brickId from baked mesh vertex attribute `brickIndex`
+				(function(){
+					const obj = intersection.object;
+					const geom = obj && obj.geometry;
+					const brickIndexAttr = geom && geom.getAttribute ? geom.getAttribute('brickIndex') : null;
+					if (brickIndexAttr) {
+						let vIndex = 0;
+						if (Number.isFinite(intersection.faceIndex)) {
+							const tri = intersection.faceIndex | 0;
+							if (geom.index) {
+								const ia = geom.index;
+								vIndex = ia.getX ? (ia.getX(tri * 3) | 0) : (ia.array[tri * 3] | 0);
+							} else {
+								vIndex = (tri * 3) | 0;
+							}
+						} else if (intersection.face && Number.isFinite(intersection.face.a)) {
+							vIndex = intersection.face.a | 0;
+						}
+						const bi = brickIndexAttr.getX ? (brickIndexAttr.getX(vIndex) | 0) : (brickIndexAttr.array[vIndex] | 0);
+						const map = obj && obj.userData && obj.userData.brickIndexToBrickId;
+						lastHitBrickId = (map && map[bi] != null) ? map[bi] : null;
 				} else {
 					lastHitBrickId = (intersection && intersection.object && intersection.object.userData) ? (intersection.object.userData.brickId || null) : null;
 				}
+				})();
 				updateClosestStud(raycaster, intersects);
 				result = { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z };
 				lastMouseWorldPos = result;
@@ -1160,14 +1135,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function createBrickMesh(brick) {
 		if (!brickMaterials) return;
-		// Require authoritative chunk assignment; skip otherwise
-		if (!brick.chunkKey || CHUNK_SIZE == null) { return; }
-		// Add to instanced mesh
-		addBrickInstance(brick);
+		if (!brick || !brick.chunkKey || CHUNK_SIZE == null) return;
+		rebuildChunkMeshForKey(brick.chunkKey);
 	}
 
 	function removeBrickMesh(brickId) {
-		// Try remove from instancing
 		removeBrickInstance(brickId);
 	}
 
@@ -1184,87 +1156,26 @@ export function createBrickQuestRenderer(container, options = {}) {
 					ensureChunkGroup(cx, cy, cz);
 				}
 			}
-			const hasFlat = stateBricks && typeof stateBricks === 'object' && Object.keys(stateBricks).length > 0;
-			if (hasFlat) {
-				// Pre-count missing bricks per (chunkKey, pieceId)
-				const neededByMesh = new Map(); // key: `${chunkKey}|${pieceId}` -> count
-				const chunkFastCache = new Map(); // chunkKey -> { parent, origin }
+			// Build/rebuild baked meshes per chunk
+			if (stateBricks && typeof stateBricks === 'object') {
+				// For flat map, collect per chunk
+				const byChunk = new Map();
 				for (const [bid, b] of Object.entries(stateBricks)) {
-					if (!b || !b.chunkKey) continue;
-					if (brickIdToInstanceRef.has(bid)) continue;
-					const pid = b.pieceId || "3022";
-					const mkey = `${b.chunkKey}|${pid}`;
-					neededByMesh.set(mkey, (neededByMesh.get(mkey) || 0) + 1);
+					if (!b || !b.chunkKey || !b.pieceId) continue;
+					let arr = byChunk.get(b.chunkKey);
+					if (!arr) { arr = []; byChunk.set(b.chunkKey, arr); }
+					arr.push({ id: bid, pieceId: b.pieceId, colorIndex: b.colorIndex | 0, position: b.position, rotation: b.rotation });
 				}
-				// Pre-size meshes once
-				for (const [mkey, need] of neededByMesh.entries()) {
-					const sep = mkey.lastIndexOf('|');
-					const chunkKey = mkey.substring(0, sep);
-					const pieceId = mkey.substring(sep + 1);
-					const parts = String(chunkKey).split(',');
-					const cx = parseInt(parts[0] || '0', 10) | 0;
-					const cy = parseInt(parts[1] || '0', 10) | 0;
-					const cz = parseInt(parts[2] || '0', 10) | 0;
-					const parent = ensureChunkGroup(cx, cy, cz);
-					if (!chunkFastCache.has(chunkKey)) {
-						chunkFastCache.set(chunkKey, { parent, origin: getChunkOriginFromKey(chunkKey) });
-					}
-					const existing = (function(){ const cm = instancedChunkData.get(chunkKey); const d = cm ? cm.get(pieceId) : null; return d ? (d.count | 0) : 0; })();
-					ensureInstancedMesh(chunkKey, pieceId, parent, existing + (need | 0));
+				for (const [ckey, arr] of byChunk.entries()) {
+					rebuildChunkMeshForKey(ckey);
 				}
-				// Add all missing bricks
-				for (const [bid, b] of Object.entries(stateBricks)) {
-					if (!b || !b.chunkKey) continue;
-					if (brickIdToInstanceRef.has(bid)) continue;
-					const cache = chunkFastCache.get(b.chunkKey);
-					if (cache) {
-						addBrickInstanceFast(cache.parent, cache.origin, b.chunkKey, { id: bid, ...b });
-					} else {
-						// Fallback if not cached (should be rare)
-						createBrickMesh({ id: bid, ...b });
-					}
+			} else if (stateChunks && typeof stateChunks === 'object') {
+				for (const [ckey, c] of Object.entries(stateChunks)) {
+					void ckey; void c;
+					rebuildChunkMeshForKey(ckey);
 				}
-			} else if (stateBricks == null) {
-				// Nested iteration path over chunks and their bricks (init only)
-				for (const [ckey, c] of Object.entries(stateChunks || {})) {
-					const br = (c && c.bricks) || {};
-					// Count missing per pieceId
-					const pieceCounts = new Map();
-					for (const [bid, b] of Object.entries(br)) {
-						if (brickIdToInstanceRef.has(bid)) continue;
-						const pid = (b && b.pieceId) || "3022";
-						pieceCounts.set(pid, (pieceCounts.get(pid) || 0) + 1);
-					}
-					if (pieceCounts.size > 0) {
-						const parts = String(ckey).split(',');
-						const cx = parseInt(parts[0] || '0', 10) | 0;
-						const cy = parseInt(parts[1] || '0', 10) | 0;
-						const cz = parseInt(parts[2] || '0', 10) | 0;
-						const parent = ensureChunkGroup(cx, cy, cz);
-						for (const [pid, count] of pieceCounts.entries()) {
-							const existing = (function(){ const cm = instancedChunkData.get(ckey); const d = cm ? cm.get(pid) : null; return d ? (d.count | 0) : 0; })();
-							ensureInstancedMesh(ckey, pid, parent, existing + (count | 0));
-						}
-						// Add bricks
-						const origin = getChunkOriginFromKey(ckey);
-						for (const [bid, b] of Object.entries(br)) {
-							if (brickIdToInstanceRef.has(bid)) continue;
-							addBrickInstanceFast(parent, origin, ckey, { id: bid, chunkKey: ckey, ...b });
-						}
-					}
-				}
-			} else {
-				// Explicit empty object passed: ensure groups only (no brick creation)
 			}
 		} finally {
-			// Flush batched GPU updates and bounds recomputation
-			for (const mesh of _meshesNeedingUpdate) {
-				try { mesh.instanceMatrix.needsUpdate = true; } catch (_) {}
-				try { if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; } catch (_) {}
-				try { if (mesh.computeBoundingSphere) mesh.computeBoundingSphere(); } catch (_) {}
-				try { if (mesh.geometry && (!mesh.geometry.boundingSphere || mesh.geometry.boundingSphere.radius === 0)) mesh.geometry.computeBoundingSphere(); } catch (_) {}
-			}
-			_meshesNeedingUpdate.clear();
 			for (const group of _groupsNeedingBounds) {
 				try { if (group) recomputeGroupBounds(group); } catch (_) {}
 			}
@@ -1274,24 +1185,22 @@ export function createBrickQuestRenderer(container, options = {}) {
 	}
 
 	function removeChunkGroupAndInstances(chunkKey) {
-		// Remove all instanced meshes for this chunk
-		const chunkMap = instancedChunkData.get(chunkKey);
-		if (chunkMap) {
-			for (const [pieceId, data] of chunkMap.entries()) {
-				if (data && data.mesh && data.mesh.parent) {
-					data.mesh.parent.remove(data.mesh);
-					const idx = raycastTargets.indexOf(data.mesh);
+		// Remove baked mesh for this chunk
+		const rec = chunkMeshData.get(chunkKey);
+		if (rec) {
+			const group = chunkGroups.get(chunkKey);
+			if (group) {
+				for (const kind of ['low','high']) {
+					const entry = rec[kind];
+					if (entry && entry.mesh) {
+						group.remove(entry.mesh);
+						const idx = raycastTargets.indexOf(entry.mesh);
 					if (idx !== -1) raycastTargets.splice(idx, 1);
-					try { data.mesh.dispose(); } catch (_) {}
+						try { disposeObject(entry.mesh); } catch (_) {}
+					}
 				}
 			}
-			instancedChunkData.delete(chunkKey);
-		}
-		// Remove instance refs pointing to this chunk
-		for (const [brickId, ref] of Array.from(brickIdToInstanceRef.entries())) {
-			if (ref && ref.chunkKey === chunkKey) {
-				brickIdToInstanceRef.delete(brickId);
-			}
+			chunkMeshData.delete(chunkKey);
 		}
 		// Remove the chunk group
 		const group = chunkGroups.get(chunkKey);
@@ -1553,24 +1462,41 @@ export function createBrickQuestRenderer(container, options = {}) {
 				const desiredLod = (dist > LOD_DISTANCE) ? 1 : 0; // 0=high,1=low
 				if (ud.lod !== desiredLod) {
 					ud.lod = desiredLod;
-					// Swap geometries for instanced meshes under this chunk
-					for (const child of group.children) {
-						if (child.isInstancedMesh) {
-							const pieceId = child.userData && child.userData.pieceId;
-							if (!pieceId) continue;
-							let targetGeom = null;
-							if (desiredLod === 1) {
-								targetGeom = (child.userData && child.userData.lowGeom) ? child.userData.lowGeom : (convexGeometries.get(pieceId) || brickGeometries.get(pieceId));
-							} else {
-								targetGeom = (child.userData && child.userData.highGeom) ? child.userData.highGeom : brickGeometries.get(pieceId);
-							}
-							if (targetGeom && child.geometry !== targetGeom) {
-								child.geometry = targetGeom;
-								// Keep bounds up to date for better culling and correctness
-								if (!child.geometry.boundingBox) child.geometry.computeBoundingBox();
-								if (!child.geometry.boundingSphere) child.geometry.computeBoundingSphere();
+					// LOD selection for baked meshes: ensure low exists; build high on demand
+					const rec = chunkMeshData.get(group.userData && group.userData.chunkKey);
+					if (rec) {
+						if (ud.lod === 0) {
+							// Need high detail nearby
+							if (!rec.high || !rec.high.mesh) {
+								// Build high now from full-detail geoms
+								const gameState = getGameStateRef ? getGameStateRef() : null;
+								const chunkKey = group.userData && group.userData.chunkKey;
+								const chunk = gameState && gameState.chunks ? gameState.chunks[chunkKey] : null;
+								const bricksObj = chunk && chunk.bricks ? chunk.bricks : null;
+								const bricks = [];
+								if (bricksObj) {
+									for (const [bid, b] of Object.entries(bricksObj)) {
+										if (!b || !b.pieceId) continue;
+										bricks.push({ id: bid, pieceId: b.pieceId, colorIndex: b.colorIndex | 0, position: b.position, rotation: b.rotation });
+									}
+								}
+								const builtHigh = buildBakedGeometryForChunk(chunkKey, bricks, { useConvex: false });
+								if (builtHigh) {
+									const material = ensureBakedMaterial();
+									const highMesh = new THREE.Mesh(builtHigh.geometry, material);
+									highMesh.castShadow = true;
+									highMesh.receiveShadow = true;
+									highMesh.userData = highMesh.userData || {};
+									highMesh.userData.chunkKey = chunkKey;
+									highMesh.userData.brickIndexToBrickId = builtHigh.brickIndexToBrickId;
+									replaceChunkMesh(chunkKey, highMesh, 'high');
+									rec.high = { mesh: highMesh, geom: builtHigh.geometry, map: builtHigh.brickIndexToBrickId };
+								}
 							}
 						}
+						// Toggle visibility by desired LOD
+						if (rec.low && rec.low.mesh) rec.low.mesh.visible = (ud.lod !== 0);
+						if (rec.high && rec.high.mesh) rec.high.mesh.visible = (ud.lod === 0);
 					}
 				}
 				// Layers are not toggled per-frame; onBeforeRender of meshes handles main-view culling only
@@ -1750,6 +1676,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		// Mesh management
 		createBrickMesh,
 		removeBrickMesh,
+		removeBrickInChunk,
 		createPlayerMesh,
 		updatePlayerMesh,
 		removePlayerMesh,
