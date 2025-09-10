@@ -2,7 +2,7 @@
 import * as THREE from "three";
 
 export function setupPBRLighting(scene) {
-	const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x3e5765, 0.6);
+	const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x3e5765, 2.0);
 	hemiLight.position.set(0, 50, 0);
 	scene.add(hemiLight);
 
@@ -39,6 +39,7 @@ export function setupEquirectangularSkybox(scene, camera, onLoaded, onError) {
 	textureLoader.load(
 		'/apps/sky4.webp',
 		function(texture) {
+			texture.colorSpace = THREE.SRGBColorSpace;
 			const farDistance = (camera && typeof camera.far === 'number') ? camera.far : 5000;
 			const radius = Math.max(10, farDistance * 0.98);
 			const skyboxGeometry = new THREE.SphereGeometry(radius, 64, 32);

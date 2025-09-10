@@ -2,12 +2,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
-import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
-import { GammaCorrectionShader } from "three/examples/jsm/shaders/GammaCorrectionShader.js";
 import { disposeObject } from "./threeUtils.js";
 import { setupPBRLighting, setupEquirectangularSkybox as setupSkyboxExternal } from "./lighting.js";
 import { createTextSprite, createOrUpdateNameSprite as updateNameSpriteExternal } from "./labels.js";
@@ -21,13 +15,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let scene = null;
 	let camera = null;
 	let renderer = null;
-	let composer = null;
 	let gltfLoader = null;
 
-	// Post-processing feature flags
-	let smaaPassRef = null;
-	let gammaPassRef = null;
-	let outputPassRef = null;
 
 	// Lighting references
 	let sunLightRef = null;
@@ -37,9 +26,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let previewCamera = null;
 	let previewRenderer = null;
 	let previewContainer = null;
-	let previewComposer = null;
 
-	// Last render stats (aggregated across composer passes per frame)
+	// Last render stats
 	let lastDrawCalls = 0;
 	let lastTriangles = 0;
 	let lastGpuMs = 0;
@@ -138,10 +126,12 @@ export function createBrickQuestRenderer(container, options = {}) {
 	}
 
 	function quantizeColorToUint8(c) {
-		// Input THREE.Color linear [0,1]; output [r,g,b] Uint8
-		const r = Math.max(0, Math.min(255, Math.round(c.r * 255)));
-		const g = Math.max(0, Math.min(255, Math.round(c.g * 255)));
-		const b = Math.max(0, Math.min(255, Math.round(c.b * 255)));
+		// Input THREE.Color linear [0,1]; convert to sRGB then output [r,g,b] Uint8
+		// Vertex colors stored as Uint8 are assumed to be in sRGB space
+		const srgbColor = c.clone().convertLinearToSRGB();
+		const r = Math.max(0, Math.min(255, Math.round(srgbColor.r * 255)));
+		const g = Math.max(0, Math.min(255, Math.round(srgbColor.g * 255)));
+		const b = Math.max(0, Math.min(255, Math.round(srgbColor.b * 255)));
 		return [r, g, b];
 	}
 
@@ -482,17 +472,6 @@ export function createBrickQuestRenderer(container, options = {}) {
         setupSkyboxExternal(scene, camera, (mesh) => { skyboxMesh = mesh; }, onError);
     }
 
-	function setupPostProcessing() {
-		composer = new EffectComposer(renderer);
-		const renderPass = new RenderPass(scene, camera);
-		composer.addPass(renderPass);
-		smaaPassRef = new SMAAPass(container.clientWidth, container.clientHeight);
-		// composer.addPass(smaaPassRef);
-		gammaPassRef = new ShaderPass(GammaCorrectionShader);
-		composer.addPass(gammaPassRef);
-		outputPassRef = new OutputPass();
-		composer.addPass(outputPassRef);
-	}
 
 	function setupBrickMaterials() {
 		const colors = colorPalette.map((hex) => new THREE.Color(hex).convertSRGBToLinear());
@@ -531,7 +510,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			metalness: 0.0,
 		});
 		ghostMaterial.shadowSide = null;
-		// Secondary very-dim additive pass to show through occluders
+		// Secondary very-dim additive layer to show through occluders
 		if (!ghostMaterialAdditive) {
 			ghostMaterialAdditive = new THREE.MeshStandardMaterial({
 				color: 0x101010,
@@ -572,15 +551,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		
 		previewContainer.appendChild(previewRenderer.domElement);
 		
-		// Setup preview post-processing with gamma correction
-		previewComposer = new EffectComposer(previewRenderer);
-		const previewRenderPass = new RenderPass(previewScene, previewCamera);
-		previewComposer.addPass(previewRenderPass);
-		const previewGammaCorrectionPass = new ShaderPass(GammaCorrectionShader);
-		previewComposer.addPass(previewGammaCorrectionPass);
-		const previewOutputPass = new OutputPass();
-		previewComposer.addPass(previewOutputPass);
-		
+
 		// Add lighting to preview scene
 		const ambientLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
 		previewScene.add(ambientLight);
@@ -644,13 +615,12 @@ export function createBrickQuestRenderer(container, options = {}) {
 	}
 
 	function renderPreview() {
-		if (!previewComposer || !previewMesh) return;
+		if (!previewRenderer || !previewScene || !previewCamera || !previewMesh) return;
 		
 		// Rotate the preview mesh
 		previewMesh.rotation.y += previewRotationSpeed;
 		
-		// Render the preview with gamma correction
-		previewComposer.render();
+		previewRenderer.render(previewScene, previewCamera);
 	}
 
 	function setGhostCollisionVisual(colliding) {
@@ -1291,13 +1261,12 @@ export function createBrickQuestRenderer(container, options = {}) {
 	}
 
 	function onWindowResize() {
-		if (!camera || !renderer || !container || !composer) return;
+		if (!camera || !renderer || !container) return;
 		const width = container.clientWidth;
 		const height = container.clientHeight;
 		camera.aspect = width / height;
 		camera.updateProjectionMatrix();
 		renderer.setSize(width, height);
-		composer.setSize(width, height);
 	}
 
 	function applyAuthoritativeGhostPose(gp) {
@@ -1317,7 +1286,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function renderTick(localPlayer, yaw, pitch, isThirdPerson, isMoving) {
 		isPlayerMoving = !!isMoving;
-		if (!composer || !scene || !camera) return;
+		if (!renderer || !scene || !camera) return;
 		
 		// Update skybox position to follow camera (makes it appear infinitely far away)
 		if (skyboxMesh) {
@@ -1432,7 +1401,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			// Compute per-chunk visibility; main view culling happens via mesh onBeforeRender
 			for (const group of chunkGroups.values()) {
 				if (!group) continue;
-				// Ensure groups remain visible so shadow pass can traverse them
+				// Ensure groups remain visible so shadow rendering can traverse them
 				group.visible = true;
 				const ud = group.userData || {};
 				// Distance-based chunk culling using chunk centroid vs render distance
@@ -1503,18 +1472,13 @@ export function createBrickQuestRenderer(container, options = {}) {
 			}
 		}
 
-		// Capture all composer passes by disabling autoReset and resetting once before render
-		if (renderer && renderer.info) {
-			renderer.info.autoReset = false;
-			if (typeof renderer.info.reset === 'function') renderer.info.reset();
-		}
 		// Begin GPU timer for this frame's submitted work
 		if (gpuTimerExt && glCtx) {
 			const q = glCtx.createQuery();
 			glCtx.beginQuery(gpuTimerExt.TIME_ELAPSED_EXT, q);
 			gpuQueries.push(q);
 		}
-		composer.render();
+		renderer.render(scene, camera);
 		// End GPU timer query
 		if (gpuTimerExt && glCtx) {
 			glCtx.endQuery(gpuTimerExt.TIME_ELAPSED_EXT);
@@ -1561,14 +1525,14 @@ export function createBrickQuestRenderer(container, options = {}) {
 				renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 				renderer.setSize(container.clientWidth, container.clientHeight);
 				renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-				renderer.outputColorSpace = THREE.SRGBColorSpace;
+				// renderer.outputColorSpace = THREE.SRGBColorSpace;
 				renderer.toneMapping = THREE.NoToneMapping;
 				renderer.toneMappingExposure = 1.0;
 				renderer.shadowMap.enabled = true;
 				renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-				// Prevent per-pass auto reset so we can accumulate draw calls across EffectComposer passes
-				if (renderer.info && typeof renderer.info.autoReset === 'boolean') {
-					renderer.info.autoReset = false;
+				// Let renderer auto-reset stats each frame
+				if (renderer.info) {
+					renderer.info.autoReset = true;
 				}
 				container.appendChild(renderer.domElement);
 				// Setup GPU timing (WebGL2 timer queries)
@@ -1583,7 +1547,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 				const lights = setupPBRLighting(scene) || {};
 				sunLightRef = lights.sunLight || scene.getObjectByName('SunLight') || null;
 				setupEquirectangularSkybox();
-				setupPostProcessing();
 				gltfLoader = new GLTFLoader();
 				ensureStudHighlight();
 				console.time('[BrickQuest] loadBrickModelInternal');
@@ -1597,9 +1560,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		},
 		dispose() {
 			if (renderer) renderer.dispose();
-			if (composer) composer.dispose();
 			if (previewRenderer) previewRenderer.dispose();
-			if (previewComposer) previewComposer.dispose();
 			if (ghostMeshAdditive) {
 				scene.remove(ghostMeshAdditive);
 				disposeObject(ghostMeshAdditive);
