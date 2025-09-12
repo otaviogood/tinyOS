@@ -20,16 +20,8 @@
         bigPadY,
         handleResize,
     } from "../../screen";
-    // import WebGL from "./WebGL.svelte";
-    // import Three from "./Three.svelte";
-    import Fast2d from "../../components/Fast2d/Fast2d.svelte";
-    import FastLine from "../../components/Fast2d/FastLine.svelte";
-
-    // let webgl;
 
     let allRoads = [];
-
-    let fast2d;
 
     function resetGame() {
         frameCount = 0;
@@ -208,27 +200,9 @@
             on:pointerup|preventDefault|stopPropagation={() => push($allTowns[$currentTownIndex]?.path)}>START</button
         > -->
     </div>
-    <!-- <WebGL bind:this={webgl}></WebGL> -->
-    <!-- <Three>WTF</Three>ABC -->
     <div class="absolute top-2 right-2 cursor-pointer select-none rounded-full text-gray-300 text-8xl" on:pointerup={pop}>
         <i class="fas fa-times-circle" />
     </div>
-    <!-- {#if glIsSupported} -->
-    <!-- <Fast2d bind:this={fast2d} id="graphRT">
-        {#each Array(2400) as _, i}
-            <FastLine
-                x0={Math.sin(i * 0.1) * (40 + i * 0.1) + 650}
-                y0={Math.cos(i * 0.1) * (40 + i * 0.1) + 450}
-                x1={Math.sin(i * 0.1) * (40 + i * 0.1) + 650}
-                y1={Math.cos(i * 0.1) * (40 + i * 0.1) + 450}
-                diameter={6.0}
-                color={[1, 0.6, 1]}
-            />
-        {/each}
-    </Fast2d> -->
-    <!-- {:else}
-            WebGL not supported.
-            {/if} -->
 </div>
 
 <style>

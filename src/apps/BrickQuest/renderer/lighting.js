@@ -1,12 +1,12 @@
 // @ts-nocheck
-import * as THREE from "three";
+import * as THREE from "three/src/Three.WebGPU.Nodes.js";
 
 export function setupPBRLighting(scene) {
-	const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x3e5765, 2.0);
+	const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x3e5765, 3.0);
 	hemiLight.position.set(0, 50, 0);
 	scene.add(hemiLight);
 
-	const sunLight = new THREE.DirectionalLight(0xffffff, 3.0);
+	const sunLight = new THREE.DirectionalLight(0xffffff, 2.5);
 	sunLight.name = 'SunLight';
 	sunLight.position.set(200, 300, 100);
 	sunLight.castShadow = true;
@@ -21,6 +21,9 @@ export function setupPBRLighting(scene) {
 	sunLight.shadow.bias = -0.0001;
 	scene.add(sunLight);
 	scene.add(sunLight.target);
+
+	// Ensure node-based lighting is registered in the renderer's node system
+	try { NodeLighting; } catch (_) {}
 
 	const fillLight = new THREE.DirectionalLight(0x4a90e2, 0.8);
 	fillLight.position.set(-100, 100, -100);
@@ -43,7 +46,7 @@ export function setupEquirectangularSkybox(scene, camera, onLoaded, onError) {
 			const farDistance = (camera && typeof camera.far === 'number') ? camera.far : 5000;
 			const radius = Math.max(10, farDistance * 0.98);
 			const skyboxGeometry = new THREE.SphereGeometry(radius, 64, 32);
-			const skyboxMaterial = new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide, fog: false });
+			const skyboxMaterial = new THREE.MeshBasicNodeMaterial({ map: texture, side: THREE.BackSide, fog: false });
 			const skyboxMesh = new THREE.Mesh(skyboxGeometry, skyboxMaterial);
 			skyboxMesh.renderOrder = -1;
 			scene.add(skyboxMesh);

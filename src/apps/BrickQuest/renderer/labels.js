@@ -1,11 +1,11 @@
 // @ts-nocheck
-import * as THREE from "three";
+import * as THREE from "three/src/Three.WebGPU.Nodes.js";
 
 export function createTextSprite(text) {
 	const canvas = document.createElement('canvas');
 	canvas.width = 512;
 	canvas.height = 128;
-	const ctx = canvas.getContext('2d');
+	const ctx = canvas.getContext('2d', { alpha: true });
 	if (!ctx) return null;
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 	ctx.font = 'bold 64px Inter, system-ui, Arial, sans-serif';
@@ -19,16 +19,21 @@ export function createTextSprite(text) {
 	ctx.fillStyle = 'white';
 	ctx.fillText(text, x, y);
 	const texture = new THREE.CanvasTexture(canvas);
+	texture.premultiplyAlpha = false;
 	texture.colorSpace = THREE.SRGBColorSpace;
 	texture.needsUpdate = true;
-	const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
-	const sprite = new THREE.Sprite(material);
+	texture.generateMipmaps = true;
+	texture.minFilter = THREE.LinearMipmapLinearFilter;
+	texture.magFilter = THREE.LinearFilter;
+	const material = new THREE.MeshBasicNodeMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, alphaTest: 0.01, side: THREE.DoubleSide });
+	material.toneMapped = false;
 	const worldHeight = 28;
 	const aspect = canvas.width / canvas.height;
-	sprite.scale.set(worldHeight * aspect, worldHeight, 1);
-	sprite.renderOrder = 1000;
-	sprite.userData.labelText = text;
-	return sprite;
+	const geometry = new THREE.PlaneGeometry(worldHeight * aspect, worldHeight);
+	const mesh = new THREE.Mesh(geometry, material);
+	mesh.renderOrder = 1000;
+	mesh.userData.labelText = text;
+	return mesh;
 }
 
 export function createOrUpdateNameSprite(playerData, playerNameSprites, scene) {

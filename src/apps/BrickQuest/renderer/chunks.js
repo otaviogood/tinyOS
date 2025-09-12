@@ -1,5 +1,5 @@
 // @ts-nocheck
-import * as THREE from "three";
+import * as THREE from "three/src/Three.WebGPU.Nodes.js";
 
 export function setChunkConfig(state, cfg) {
 	state.CHUNK_SIZE = (cfg && typeof cfg.size === 'number') ? cfg.size : null;

@@ -93,6 +93,9 @@
 	let preserveYawOnNextPieceChange = false;
 	let pendingSampledYaw = 0;
 
+	// Time To First Playable (TTFP) minimal tracking
+	let ttfpStartTs = 0;
+
     onMount(async () => {
         const onStart = async () => { showStart = false; await nextTick(); await safeStartGame(); };
         document.addEventListener('brickquest-start', onStart);
@@ -117,6 +120,7 @@
         if (!renderer3d) {
             await initThree();
         }
+        if (!ttfpStartTs) { ttfpStartTs = performance.now(); }
         initNetworking();
         setupKeyboardControls();
     }
@@ -252,6 +256,7 @@
                     renderer3d.setAnchorMode(anchorMode);
                 }
                 console.timeEnd('[BrickQuest] init');
+				if (ttfpStartTs) { const ms = performance.now() - ttfpStartTs; try { console.log(`[BrickQuest] Time to first playable: ${Math.round(ms)} ms`); } catch {} ttfpStartTs = 0; }
             }
             // Sync selected color index
             if (localPlayer && localPlayer.selectedColorIndex !== undefined) {
@@ -927,7 +932,7 @@
         <div class="absolute bottom-4 right-4 z-20" style="contain: paint;">
                 <div 
                     bind:this={previewContainer}
-                    class="w-[13rem] h-[13rem] rounded-xl bg-gray-800 bg-opacity-30"
+                    class="w-[13rem] h-[13rem] rounded-xl bg-gray-900 bg-opacity-50"
                     style="contain: layout paint;"
                 />
                 {#if pieceList.length > 0 && pieceList[selectedPieceIndex]}

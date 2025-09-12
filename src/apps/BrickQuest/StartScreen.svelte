@@ -1,16 +1,15 @@
 <script>
 	// @ts-nocheck
     import { onMount, tick } from 'svelte';
-	import * as THREE from 'three';
-	import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+	import * as THREE from 'three/src/Three.WebGPU.Nodes.js';
 	import { Animator } from '../../animator';
 	import ColorPalette from './ColorPalette.svelte';
 	import { brickColorHexes } from './colors.js';
+	import { getLegoPartsLibraryNode } from './renderer/legoPartsCache.js';
 
 	let container;
 	let scene, camera, renderer;
 	let animator;
-	let gltfLoader;
 	let figure;
 	let cachedLegsGeom = null;
 	let cachedTorsoGeom = null;
@@ -99,11 +98,16 @@
 		camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 2000);
 		camera.position.set(0, 70, 160);
 		camera.lookAt(0, 50, 0);
-		renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+		renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: 'high-performance' });
 		renderer.setSize(container.clientWidth, container.clientHeight);
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+		renderer.outputColorSpace = THREE.SRGBColorSpace;
+		renderer.toneMapping = THREE.NoToneMapping;
+		renderer.toneMappingExposure = 1.0;
+		renderer.shadowMap.enabled = true;
+		renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 		container.appendChild(renderer.domElement);
-		gltfLoader = new GLTFLoader();
+		try { await renderer.init(); } catch (_) {}
 		const hemi = new THREE.HemisphereLight(0x87ceeb, 0x3e5765, 0.9);
 		hemi.position.set(0, 50, 0); scene.add(hemi);
 		const dir = new THREE.DirectionalLight(0xffffff, 1.8);
@@ -120,42 +124,40 @@
 
 	async function loadPartsAndBuildFigure() {
 		loadingText = 'Loading LEGO parts...';
-		await new Promise((resolve, reject) => {
-			gltfLoader.load('/apps/bricks/all_pieces.gltf', (gltf) => {
-				const lib = gltf.scene.getObjectByName('LegoPartsLibrary');
-				if (!lib) { reject(new Error('LegoPartsLibrary not found')); return; }
-				function extractGeometry(root, typeName) {
-					let mesh = null;
-					const node = root.getObjectByName(typeName);
-					if (node) { if (node.isMesh || node.isSkinnedMesh) mesh = node; else node.traverse((c)=>{ if (!mesh && (c.isMesh||c.isSkinnedMesh)) mesh = c; }); }
-					else { root.traverse((c)=>{ if (!mesh && (c.isMesh||c.isSkinnedMesh)) mesh = c; }); }
-					if (!mesh || !mesh.geometry) return null;
-					root.updateWorldMatrix(true,false); mesh.updateWorldMatrix(true,false);
-					const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
-					const local = new THREE.Matrix4().multiplyMatrices(inv, mesh.matrixWorld);
-					const g = mesh.geometry.clone(); g.applyMatrix4(local); if (!g.attributes.normal) g.computeVertexNormals(); g.normalizeNormals();
-					return g;
-				}
-				const legsRoot = lib.getObjectByName('73200');
-				const torsoRoot = lib.getObjectByName('76382');
-				const headRoot = lib.getObjectByName('3626');
-				cachedLegsGeom = legsRoot ? extractGeometry(legsRoot, 'part') : null;
-				cachedTorsoGeom = torsoRoot ? extractGeometry(torsoRoot, 'part') : null;
-				cachedHeadGeom = headRoot ? extractGeometry(headRoot, 'part') : null;
-				buildFigure(cachedLegsGeom, cachedTorsoGeom, cachedHeadGeom);
-				loadingText = '';
-				resolve();
-			}, undefined, (e)=>{ reject(e); });
-		});
+		const lib = await getLegoPartsLibraryNode();
+		if (!lib) throw new Error('LegoPartsLibrary not found');
+		function extractGeometry(root, typeName) {
+			let mesh = null;
+			const node = root.getObjectByName(typeName);
+			if (node) { if (node.isMesh || node.isSkinnedMesh) mesh = node; else node.traverse((c)=>{ if (!mesh && (c.isMesh||c.isSkinnedMesh)) mesh = c; }); }
+			else { root.traverse((c)=>{ if (!mesh && (c.isMesh||c.isSkinnedMesh)) mesh = c; }); }
+			if (!mesh || !mesh.geometry) return null;
+			root.updateWorldMatrix(true,false); mesh.updateWorldMatrix(true,false);
+			const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+			const local = new THREE.Matrix4().multiplyMatrices(inv, mesh.matrixWorld);
+			const g = mesh.geometry.clone(); g.applyMatrix4(local); if (!g.attributes.normal) g.computeVertexNormals(); g.normalizeNormals();
+			return g;
+		}
+		const legsRoot = lib.getObjectByName('73200');
+		const torsoRoot = lib.getObjectByName('76382');
+		const headRoot = lib.getObjectByName('3626');
+		cachedLegsGeom = legsRoot ? extractGeometry(legsRoot, 'part') : null;
+		cachedTorsoGeom = torsoRoot ? extractGeometry(torsoRoot, 'part') : null;
+		cachedHeadGeom = headRoot ? extractGeometry(headRoot, 'part') : null;
+		buildFigure(cachedLegsGeom, cachedTorsoGeom, cachedHeadGeom);
+		loadingText = '';
 	}
 
 	function buildFigure(legsGeom, torsoGeom, headGeom) {
 		if (figure) { scene.remove(figure); disposeObject(figure); figure = null; }
 		if (!legsGeom || !torsoGeom || !headGeom) return;
 		const group = new THREE.Group();
-		const legsMat = new THREE.MeshStandardMaterial({ color: brickColorHexes[legsIndex], roughness: 0.35, metalness: 0.0 });
-		const torsoMat = new THREE.MeshStandardMaterial({ color: brickColorHexes[torsoIndex], roughness: 0.35, metalness: 0.0 });
-		const headMat = new THREE.MeshStandardMaterial({ color: 0xffd804, roughness: 0.35, metalness: 0.0 });
+		const legsColor = new THREE.Color(brickColorHexes[legsIndex]);//.convertSRGBToLinear();
+		const torsoColor = new THREE.Color(brickColorHexes[torsoIndex]);//.convertSRGBToLinear();
+		const headColor = new THREE.Color(0xffd804);//.convertSRGBToLinear();
+		const legsMat = new THREE.MeshStandardNodeMaterial({ color: legsColor, roughness: 0.35, metalness: 0.0 });
+		const torsoMat = new THREE.MeshStandardNodeMaterial({ color: torsoColor, roughness: 0.35, metalness: 0.0 });
+		const headMat = new THREE.MeshStandardNodeMaterial({ color: headColor, roughness: 0.35, metalness: 0.0 });
 		const legs = new THREE.Mesh(legsGeom.clone(), legsMat);
 		const torso = new THREE.Mesh(torsoGeom.clone(), torsoMat);
 		const head = new THREE.Mesh(headGeom.clone(), headMat);

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import * as THREE from "three";
+import * as THREE from "three/src/Three.WebGPU.Nodes.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
 import { disposeObject } from "./threeUtils.js";
@@ -27,13 +27,18 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let previewRenderer = null;
 	let previewContainer = null;
 
+	// Helpers
+	function getContainerSize() {
+		const el = container || (typeof document !== 'undefined' ? document.body : null);
+		const width = (el && el.clientWidth) || (typeof window !== 'undefined' ? window.innerWidth : 800);
+		const height = (el && el.clientHeight) || (typeof window !== 'undefined' ? window.innerHeight : 600);
+		return { el, width, height };
+	}
+
 	// Last render stats
 	let lastDrawCalls = 0;
 	let lastTriangles = 0;
 	let lastGpuMs = 0;
-	let glCtx = null;
-	let gpuTimerExt = null;
-	const gpuQueries = [];
 
 	// Resources
 	let brickMaterials = null; // array of MeshStandardMaterial
@@ -115,7 +120,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function ensureBakedMaterial() {
 		if (bakedBrickMaterial) return bakedBrickMaterial;
-		bakedBrickMaterial = new THREE.MeshStandardMaterial({
+		bakedBrickMaterial = new THREE.MeshStandardNodeMaterial({
 			vertexColors: true,
 			color: 0xffffff,
 			roughness: 0.2,
@@ -155,7 +160,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		const useUint32Index = totalVertices > 65535;
 		const positions = new Float32Array(totalVertices * 3);
 		const normals = new Float32Array(totalVertices * 3);
-		const colors = new Uint8Array(totalVertices * 3);
+		const colors = new Uint8Array(totalVertices * 4);
 		const brickIndexAttr = new Float32Array(totalVertices);
 		const indices = useUint32Index ? new Uint32Array(totalIndices) : new Uint16Array(totalIndices);
 		// Track bounding box as we write transformed vertices (cache-friendly)
@@ -221,9 +226,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 				normals[vOut + 0] = ntx;
 				normals[vOut + 1] = nty;
 				normals[vOut + 2] = ntz;
-				colors[vOut + 0] = cr;
-				colors[vOut + 1] = cg;
-				colors[vOut + 2] = cb;
+				const cOut = (vtxBase + i) * 4;
+				colors[cOut + 0] = cr;
+				colors[cOut + 1] = cg;
+				colors[cOut + 2] = cb;
+				colors[cOut + 3] = 255;
 			}
 			if (idxAttr) {
 				const idxArray = idxAttr.array;
@@ -246,7 +253,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		const geometry = new THREE.BufferGeometry();
 		geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 		geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-		geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3, true));
+		geometry.setAttribute('color', new THREE.BufferAttribute(colors, 4, true));
 		geometry.setAttribute('brickIndex', new THREE.BufferAttribute(brickIndexAttr, 1));
 		geometry.setIndex(new THREE.BufferAttribute(indices, 1));
 		// Assign bounding box directly from tracked min/max
@@ -475,7 +482,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function setupBrickMaterials() {
 		const colors = colorPalette.map((hex) => new THREE.Color(hex).convertSRGBToLinear());
-		brickMaterials = colors.map((color) => new THREE.MeshStandardMaterial({
+		brickMaterials = colors.map((color) => new THREE.MeshStandardNodeMaterial({
 			color,
 			roughness: 0.2,
 			envMapIntensity: 0.8,
@@ -486,7 +493,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 	function ensureStudHighlight() {
 		if (studHighlightMesh) return;
 		const geometry = new THREE.CylinderGeometry(6.5, 6.5, 4, 16);
-		const material = new THREE.MeshBasicMaterial({
+		const material = new THREE.MeshBasicNodeMaterial({
 			color: 0xdf8f00,
 			transparent: true,
 			opacity: 0.7,
@@ -500,7 +507,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function setupGhostMaterial() {
 		if (ghostMaterial && ghostMaterialAdditive) return;
-		ghostMaterial = new THREE.MeshStandardMaterial({
+		ghostMaterial = new THREE.MeshStandardNodeMaterial({
 			color: 0x00ffc8,
 			transparent: true,
 			blending: THREE.NormalBlending,
@@ -512,7 +519,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		ghostMaterial.shadowSide = null;
 		// Secondary very-dim additive layer to show through occluders
 		if (!ghostMaterialAdditive) {
-			ghostMaterialAdditive = new THREE.MeshStandardMaterial({
+			ghostMaterialAdditive = new THREE.MeshStandardNodeMaterial({
 				color: 0x101010,
 				transparent: true,
 				blending: THREE.NormalBlending,
@@ -536,38 +543,40 @@ export function createBrickQuestRenderer(container, options = {}) {
 		previewScene.background = null; // Transparent background
 		
 		// Create preview camera
-		previewCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+		const pcw = (previewContainer && previewContainer.clientWidth) || 150;
+		const pch = (previewContainer && previewContainer.clientHeight) || 150;
+		previewCamera = new THREE.PerspectiveCamera(45, Math.max(1e-3, pcw / pch), 0.1, 1000);
 		previewCamera.position.set(100, 80, 100);
 		previewCamera.lookAt(0, 0, 0);
 		
-		// Create preview renderer
-		previewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-		previewRenderer.setSize(150, 150);
+		// Create preview renderer (WebGPU)
+		previewRenderer = new THREE.WebGPURenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+		previewRenderer.setSize(pcw, pch);
 		previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 		previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
+		previewRenderer.toneMapping = THREE.NoToneMapping;
+		previewRenderer.toneMappingExposure = 1.0;
 		previewRenderer.shadowMap.enabled = true;
 		previewRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
-		previewRenderer.setClearColor(0x000000, 0); // Transparent clear color
+		previewRenderer.setClearColor(0x000000, 0);
 		
 		previewContainer.appendChild(previewRenderer.domElement);
+		// WebGPU requires async init; fire-and-forget for preview
+		try { void previewRenderer.init(); } catch (_) {}
 		
 
-		// Add lighting to preview scene
-		const ambientLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+		// Add lighting to preview scene (nodes-enabled lights)
+		const ambientLight = new THREE.HemisphereLight(0xafdfff, 0x444444, 1.0);
 		previewScene.add(ambientLight);
 		
-		const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+		const directionalLight = new THREE.DirectionalLight(0xffffff, 2.2);
 		directionalLight.position.set(50, 100, 50);
-		directionalLight.castShadow = true;
+		directionalLight.castShadow = false;
 		directionalLight.shadow.mapSize.width = 512;
 		directionalLight.shadow.mapSize.height = 512;
 		previewScene.add(directionalLight);
 		
-		// Create preview material
-		previewMaterial = new THREE.MeshStandardMaterial({
-			roughness: 0.2,
-			envMapIntensity: 0.8,
-		});
+		// Preview material uses the same baked material as main bricks via ensureBakedMaterial()
 		
 		// Create initial preview mesh
 		updatePreviewMesh();
@@ -595,19 +604,33 @@ export function createBrickQuestRenderer(container, options = {}) {
 		}
 		if (!geometry) return;
 		
-		// Get material for selected color
-		const material = brickMaterials[selectedColorIndex] || brickMaterials[0];
-		if (!material) return;
+		// Build sRGB vertex colors and use baked material to match main pipeline
+		const bakedMat = ensureBakedMaterial();
+		if (!bakedMat) return;
+		const vtxCount = (geometry.attributes && geometry.attributes.position && geometry.attributes.position.count) || 0;
+		if (vtxCount <= 0) return;
+		const geom = geometry.clone();
+		const matColor = (brickMaterials && brickMaterials[selectedColorIndex] ? brickMaterials[selectedColorIndex].color : (brickMaterials && brickMaterials[0] ? brickMaterials[0].color : new THREE.Color(1,1,1)));
+		const [cr, cg, cb] = quantizeColorToUint8(matColor || new THREE.Color(1,1,1));
+		const colors = new Uint8Array(vtxCount * 4);
+		for (let i = 0; i < vtxCount; i++) {
+			const o = i * 4;
+			colors[o + 0] = cr;
+			colors[o + 1] = cg;
+			colors[o + 2] = cb;
+			colors[o + 3] = 255;
+		}
+		geom.setAttribute('color', new THREE.BufferAttribute(colors, 4, true));
 		
 		// Create new preview mesh
-		previewMesh = new THREE.Mesh(geometry, material);
+		previewMesh = new THREE.Mesh(geom, bakedMat);
 		previewMesh.castShadow = true;
 		previewMesh.receiveShadow = true;
 		
 		// Center the piece (optional - adjust based on piece dimensions)
-		geometry.computeBoundingBox();
-		if (geometry.boundingBox) {
-			const center = geometry.boundingBox.getCenter(new THREE.Vector3());
+		geom.computeBoundingBox();
+		if (geom.boundingBox) {
+			const center = geom.boundingBox.getCenter(new THREE.Vector3());
 			previewMesh.position.set(-center.x, -center.y, -center.z);
 		}
 		
@@ -615,12 +638,17 @@ export function createBrickQuestRenderer(container, options = {}) {
 	}
 
 	function renderPreview() {
-		if (!previewRenderer || !previewScene || !previewCamera || !previewMesh) return;
+		if (!previewRenderer || !previewScene || !previewCamera) return;
 		
-		// Rotate the preview mesh
-		previewMesh.rotation.y += previewRotationSpeed;
+		// Rotate the preview mesh if present
+		if (previewMesh) previewMesh.rotation.y += previewRotationSpeed;
 		
-		previewRenderer.render(previewScene, previewCamera);
+		// Use async path in case backend still initializing
+		if (previewRenderer.backend && previewRenderer.backend.device) {
+			previewRenderer.render(previewScene, previewCamera);
+		} else {
+			void previewRenderer.renderAsync(previewScene, previewCamera);
+		}
 	}
 
 	function setGhostCollisionVisual(colliding) {
@@ -741,7 +769,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			if (!ghostArrow) {
 				// Fixed-size cone (head only): radius=12, height=16
 				const coneGeom = new THREE.ConeGeometry(6, 16, 16);
-				const coneMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+				const coneMat = new THREE.MeshBasicNodeMaterial({ color: 0xffaa00 });
 				ghostArrow = new THREE.Mesh(coneGeom, coneMat);
 				ghostArrow.visible = false;
 				ghostArrow.renderOrder = 999;
@@ -987,9 +1015,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 		const legsLinear = new THREE.Color(legsColor).convertSRGBToLinear();
 		const torsoLinear = new THREE.Color(torsoColor).convertSRGBToLinear();
 		const headLinear = new THREE.Color(0xffd804).convertSRGBToLinear();
-		const legsMaterial = new THREE.MeshStandardMaterial({ color: legsLinear, roughness: 0.35, metalness: 0.0 });
-		const torsoMaterial = new THREE.MeshStandardMaterial({ color: torsoLinear, roughness: 0.35, metalness: 0.0 });
-		const headMaterial = new THREE.MeshStandardMaterial({ color: headLinear, roughness: 0.35, metalness: 0.0 });
+		const legsMaterial = new THREE.MeshStandardNodeMaterial({ color: legsLinear, roughness: 0.35, metalness: 0.0 });
+		const torsoMaterial = new THREE.MeshStandardNodeMaterial({ color: torsoLinear, roughness: 0.35, metalness: 0.0 });
+		const headMaterial = new THREE.MeshStandardNodeMaterial({ color: headLinear, roughness: 0.35, metalness: 0.0 });
 		const group = new THREE.Group();
 
 		// Clone geometries to avoid bounding box mutation side-effects across instances
@@ -1196,7 +1224,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			const radius = 24; // keep in sync with server capsule for collisions
 			const length = 28 * 2;
 			const geometry = new THREE.CapsuleGeometry(radius, length, 6, 12);
-			const material = new THREE.MeshStandardMaterial({ color: playerData.colorLegs || 0x0e78cf, roughness: 0.7, metalness: 0.1 });
+			const material = new THREE.MeshStandardNodeMaterial({ color: playerData.colorLegs || 0x0e78cf, roughness: 0.7, metalness: 0.1 });
 			figure = new THREE.Mesh(geometry, material);
 		}
 		figure.position.set(playerData.position.x, playerData.position.y, playerData.position.z);
@@ -1261,9 +1289,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 	}
 
 	function onWindowResize() {
-		if (!camera || !renderer || !container) return;
-		const width = container.clientWidth;
-		const height = container.clientHeight;
+		if (!camera || !renderer) return;
+		const { width, height } = getContainerSize();
 		camera.aspect = width / height;
 		camera.updateProjectionMatrix();
 		renderer.setSize(width, height);
@@ -1353,12 +1380,13 @@ export function createBrickQuestRenderer(container, options = {}) {
 					mesh.rotation.set(0, yaw, 0);
 				}
 			}
-			// Keep name sprites above the player heads
+			// Keep name sprites above the player heads and facing the camera
 			for (const [pid, sprite] of playerNameSprites) {
 				const playerMesh = playerMeshes.get(pid);
 				if (playerMesh) {
 					const baseY = (playerMesh.position.y || 0);
 					sprite.position.set(playerMesh.position.x, baseY + 65, playerMesh.position.z);
+					if (camera && sprite.quaternion) sprite.quaternion.copy(camera.quaternion);
 					// Hide local player's label in first-person view
 					sprite.visible = !(localPlayer && localPlayer.id === pid && !isThirdPerson);
 				}
@@ -1472,32 +1500,13 @@ export function createBrickQuestRenderer(container, options = {}) {
 			}
 		}
 
-		// Begin GPU timer for this frame's submitted work
-		if (gpuTimerExt && glCtx) {
-			const q = glCtx.createQuery();
-			glCtx.beginQuery(gpuTimerExt.TIME_ELAPSED_EXT, q);
-			gpuQueries.push(q);
+		// Render
+		if (renderer && renderer.backend && renderer.backend.device) {
+			renderer.render(scene, camera);
+		} else if (renderer) {
+			void renderer.renderAsync(scene, camera);
 		}
-		renderer.render(scene, camera);
-		// End GPU timer query
-		if (gpuTimerExt && glCtx) {
-			glCtx.endQuery(gpuTimerExt.TIME_ELAPSED_EXT);
-			// Poll oldest pending query (results are ready 1-3 frames later)
-			if (gpuQueries.length > 0) {
-				const q = gpuQueries[0];
-				const available = glCtx.getQueryParameter(q, glCtx.QUERY_RESULT_AVAILABLE);
-				const disjoint = glCtx.getParameter(gpuTimerExt.GPU_DISJOINT_EXT);
-				if (available) {
-					if (!disjoint) {
-						const ns = glCtx.getQueryParameter(q, glCtx.QUERY_RESULT);
-						lastGpuMs = ns / 1e6;
-					}
-					glCtx.deleteQuery(q);
-					gpuQueries.shift();
-				}
-			}
-		}
-		// Update per-frame stats for HUD
+		// Update stats
 		if (renderer && renderer.info) {
 			lastDrawCalls = renderer.info.render.calls | 0;
 			lastTriangles = renderer.info.render.triangles | 0;
@@ -1519,26 +1528,24 @@ export function createBrickQuestRenderer(container, options = {}) {
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color(0x0cbeff);
                 
-				camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.5, RENDER_DISTANCE);
+				const { el, width, height } = getContainerSize();
+				camera = new THREE.PerspectiveCamera(75, width / height, 0.5, RENDER_DISTANCE);
 				camera.position.set(0, 50, 0);
 				camera.lookAt(0, 50, -1);
-				renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-				renderer.setSize(container.clientWidth, container.clientHeight);
+				renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: "high-performance" });
+				renderer.setSize(width, height);
 				renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-				// renderer.outputColorSpace = THREE.SRGBColorSpace;
+				renderer.outputColorSpace = THREE.SRGBColorSpace;
 				renderer.toneMapping = THREE.NoToneMapping;
 				renderer.toneMappingExposure = 1.0;
 				renderer.shadowMap.enabled = true;
 				renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-				// Let renderer auto-reset stats each frame
 				if (renderer.info) {
 					renderer.info.autoReset = true;
 				}
-				container.appendChild(renderer.domElement);
-				// Setup GPU timing (WebGL2 timer queries)
-				glCtx = renderer.getContext();
-				gpuTimerExt = glCtx.getExtension('EXT_disjoint_timer_query_webgl2');
-				// Hint to the browser compositor for stable fps
+				(el || document.body).appendChild(renderer.domElement);
+				// WebGPU requires async init
+				await renderer.init();
 				if (renderer.domElement && renderer.domElement.style) {
 					renderer.domElement.style.contain = 'layout paint';
 					renderer.domElement.style.touchAction = 'none';

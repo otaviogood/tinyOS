@@ -19,7 +19,7 @@
     //     enableIndexedDbPersistence,
     // } from "firebase/firestore";
     import { uid, username, userData, phoneScreen, headerHeight, firebaseApp } from "./stores";
-    import GlobalRenderContext from "./components/Fast2d/GlobalRenderContext.svelte";
+    // import GlobalRenderContext from "./components/Fast2d/GlobalRenderContext.svelte";
 
     // const app = initializeApp(firebaseConfig);
     // $firebaseApp = app;
@@ -71,9 +71,9 @@
 </script>
 
 <div class="fit-full-space overflow-hidden" on:contextmenu|preventDefault|stopPropagation={() => void(0)} >
-    <GlobalRenderContext fps={60} disable>
+    <!-- <GlobalRenderContext fps={60} disable> -->
         <svelte:component this={$Router.component} />
-    </GlobalRenderContext>
+    <!-- </GlobalRenderContext> -->
 </div>
 
 <!-- <FirebaseApp config={firebaseConfig}> -->
