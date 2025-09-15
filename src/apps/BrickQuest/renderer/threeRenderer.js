@@ -1012,9 +1012,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 		const legsColor = (colors && typeof colors.legs === 'number') ? colors.legs : 0x0e78cf;
 		const torsoColor = (colors && typeof colors.torso === 'number') ? colors.torso : 0x0e78cf;
 
-		const legsLinear = new THREE.Color(legsColor).convertSRGBToLinear();
-		const torsoLinear = new THREE.Color(torsoColor).convertSRGBToLinear();
-		const headLinear = new THREE.Color(0xffd804).convertSRGBToLinear();
+		const legsLinear = new THREE.Color(legsColor);//.convertSRGBToLinear();
+		const torsoLinear = new THREE.Color(torsoColor);//.convertSRGBToLinear();
+		const headLinear = new THREE.Color(0xffd804);//.convertSRGBToLinear();
 		const legsMaterial = new THREE.MeshStandardNodeMaterial({ color: legsLinear, roughness: 0.35, metalness: 0.0 });
 		const torsoMaterial = new THREE.MeshStandardNodeMaterial({ color: torsoLinear, roughness: 0.35, metalness: 0.0 });
 		const headMaterial = new THREE.MeshStandardNodeMaterial({ color: headLinear, roughness: 0.35, metalness: 0.0 });
@@ -1532,7 +1532,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 				camera = new THREE.PerspectiveCamera(75, width / height, 0.5, RENDER_DISTANCE);
 				camera.position.set(0, 50, 0);
 				camera.lookAt(0, 50, -1);
-				renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: "high-performance" });
+				renderer = new THREE.WebGPURenderer({ antialias: false, powerPreference: "high-performance" });
 				renderer.setSize(width, height);
 				renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 				renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1585,11 +1585,18 @@ export function createBrickQuestRenderer(container, options = {}) {
 				if (mesh.geometry && mesh.geometry.dispose) mesh.geometry.dispose();
 				if (mesh.material && mesh.material.dispose) mesh.material.dispose();
 			});
-			playerNameSprites.forEach((sprite) => {
-				scene.remove(sprite);
-				if (sprite.material && sprite.material.map && sprite.material.map.dispose) try { sprite.material.map.dispose(); } catch (_) {}
-				if (sprite.material && sprite.material.dispose) try { sprite.material.dispose(); } catch (_) {}
-			});
+			// Dispose skybox
+			if (skyboxMesh) {
+				scene.remove(skyboxMesh);
+				try {
+					if (skyboxMesh.material) {
+						if (skyboxMesh.material.map && skyboxMesh.material.map.dispose) skyboxMesh.material.map.dispose();
+						skyboxMesh.material.dispose && skyboxMesh.material.dispose();
+					}
+					if (skyboxMesh.geometry && skyboxMesh.geometry.dispose) skyboxMesh.geometry.dispose();
+				} catch (_) {}
+				skyboxMesh = null;
+			}
 		},
 		onResize: onWindowResize,
 		// Data/config

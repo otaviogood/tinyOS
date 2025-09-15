@@ -89,7 +89,22 @@
         await initThree();
 		await loadPartsAndBuildFigure();
 		startAnimation();
-		return () => { stopAnimation(); if (renderer) renderer.dispose(); };
+		return () => {
+			stopAnimation();
+			try { window.removeEventListener('resize', onResize); } catch(_) {}
+			try {
+				if (figure) {
+					scene && scene.remove && scene.remove(figure);
+					disposeObject(figure);
+					figure = null;
+				}
+			} catch(_) {}
+			try { if (cachedLegsGeom && cachedLegsGeom.dispose) cachedLegsGeom.dispose(); } catch(_) {}
+			try { if (cachedTorsoGeom && cachedTorsoGeom.dispose) cachedTorsoGeom.dispose(); } catch(_) {}
+			try { if (cachedHeadGeom && cachedHeadGeom.dispose) cachedHeadGeom.dispose(); } catch(_) {}
+			cachedLegsGeom = cachedTorsoGeom = cachedHeadGeom = null;
+			if (renderer) renderer.dispose();
+		};
 	});
 
 	async function initThree() {

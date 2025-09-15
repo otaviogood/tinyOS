@@ -24,15 +24,18 @@ export function ensureChunkGroup(state, scene, cx, cy, cz) {
 	group.position.set(origin.x, origin.y, origin.z);
 	group.userData.chunkKey = key;
 	if (state.chunkDebugVisible) {
-		const min = new THREE.Vector3(0, 0, 0);
-		const max = new THREE.Vector3(state.CHUNK_SIZE || 1, state.CHUNK_HEIGHT || 1, state.CHUNK_SIZE || 1);
-		const box = new THREE.Box3(min, max);
-		const helper = new THREE.Box3Helper(box, 0x4b00f6);
-		helper.userData = helper.userData || {};
-		helper.userData.isChunkHelper = true;
-		helper.material.depthTest = false;
-		helper.renderOrder = 1;
-		group.add(helper);
+		const sx = state.CHUNK_SIZE || 1;
+		const sy = state.CHUNK_HEIGHT || 1;
+		const sz = state.CHUNK_SIZE || 1;
+		const geom = new THREE.BoxGeometry(sx, sy, sz);
+		const mat = new THREE.MeshBasicNodeMaterial({ color: 0x4b00f6, wireframe: true });
+		const mesh = new THREE.Mesh(geom, mat);
+		mesh.userData = mesh.userData || {};
+		mesh.userData.isChunkHelper = true;
+		mesh.material.depthTest = false;
+		mesh.renderOrder = 1;
+		mesh.position.set(sx * 0.5, sy * 0.5, sz * 0.5);
+		group.add(mesh);
 	}
 	scene.add(group);
 	state.chunkGroups.set(key, group);
@@ -55,15 +58,18 @@ export function setChunkDebugVisible(state, scene, visible) {
 			}
 		}
 		if (state.chunkDebugVisible && !foundAny && state.CHUNK_SIZE != null && state.CHUNK_HEIGHT != null) {
-			const min = new THREE.Vector3(0, 0, 0);
-			const max = new THREE.Vector3(state.CHUNK_SIZE, state.CHUNK_HEIGHT, state.CHUNK_SIZE);
-			const box = new THREE.Box3(min, max);
-			const helper = new THREE.Box3Helper(box, 0x4b00f6);
-			helper.userData = helper.userData || {};
-			helper.userData.isChunkHelper = true;
-			helper.material.depthTest = false;
-			helper.renderOrder = 1;
-			group.add(helper);
+			const sx = state.CHUNK_SIZE;
+			const sy = state.CHUNK_HEIGHT;
+			const sz = state.CHUNK_SIZE;
+			const geom = new THREE.BoxGeometry(sx, sy, sz);
+			const mat = new THREE.MeshBasicNodeMaterial({ color: 0x4b00f6, wireframe: true });
+			const mesh = new THREE.Mesh(geom, mat);
+			mesh.userData = mesh.userData || {};
+			mesh.userData.isChunkHelper = true;
+			mesh.material.depthTest = false;
+			mesh.renderOrder = 1;
+			mesh.position.set(sx * 0.5, sy * 0.5, sz * 0.5);
+			group.add(mesh);
 		}
 	}
 }

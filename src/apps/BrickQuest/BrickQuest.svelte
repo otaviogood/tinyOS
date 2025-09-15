@@ -913,8 +913,9 @@
 				<div>- / = : Switch Piece</div>
 				<div>Z / X : Rotate Piece</div>
 				<div>, / . : Switch Color</div>
-				<div>R : Pick Hovered Piece + Color + Rotation</div>
-				<div>' : Cycle anti-stud</div>
+				<div>R : Pick Hovered Piece</div>
+				<div>; / ' : Choose connector</div>
+                <div>P : Piece menu</div>
 			</div>
 		</div>
 
