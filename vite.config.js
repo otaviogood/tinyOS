@@ -1,10 +1,22 @@
 import { defineConfig } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { VitePWA } from 'vite-plugin-pwa'
+import mkcert from 'vite-plugin-mkcert'
 
 // https://vitejs.dev/config/
 export default defineConfig({
     plugins: [
+        mkcert({
+            hosts: [
+                'localhost',
+                '127.0.0.1',
+                '::1',
+                '192.168.1.75',
+                'MacBookPro.attlocal.net',
+                'OTAVIOs-MacBook-Pro.local',
+                'game.local'
+            ]
+        }),
         svelte(),
         VitePWA({
             registerType: 'autoUpdate',
@@ -37,14 +49,25 @@ export default defineConfig({
     ],
     server: {
         port: 8011,
-        host: true, // expose on LAN
-        proxy: {
-            // Proxy Socket.IO (websocket + polling) to the game server on 3001
-            '/socket.io': {
-                target: 'http://localhost:3001',
-                ws: true,
-                changeOrigin: true,
-            },
+        host: true,
+        https: true,
+        hmr: {
+          protocol: 'wss',
+          host: '192.168.1.75', // or your short name
+          clientPort: 8011
         },
-    },
+        proxy: {
+          '/socket.io': {
+            target: 'http://localhost:3001',
+            ws: true,
+            changeOrigin: true,
+            secure: false
+          },
+          '/health': {
+            target: 'http://localhost:3001',
+            changeOrigin: true,
+            secure: false
+          }
+        }
+    }
 });

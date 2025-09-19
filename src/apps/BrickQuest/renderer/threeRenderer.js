@@ -4,7 +4,6 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
 import { disposeObject } from "./threeUtils.js";
 import { setupPBRLighting, setupEquirectangularSkybox as setupSkyboxExternal } from "./lighting.js";
-import { createTextSprite, createOrUpdateNameSprite as updateNameSpriteExternal } from "./labels.js";
 import { loadBrickModel } from "./piecesLoader.js";
 import { setChunkConfig as setChunkConfigExternal, getChunkOriginFromKey as getChunkOriginFromKeyExternal, ensureChunkGroup as ensureChunkGroupExternal, setChunkDebugVisible as setChunkDebugVisibleExternal } from "./chunks.js";
 
@@ -39,6 +38,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 	let lastDrawCalls = 0;
 	let lastTriangles = 0;
 	let lastGpuMs = 0;
+	let lastGpuMsRaw = 0;
+	let pendingGpuFence = false;
+	const GPU_SMOOTH = 0.02; // lerp factor for running average
 
 	// Resources
 	let brickMaterials = null; // array of MeshStandardMaterial
@@ -47,7 +49,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 	const convexGeometries = new Map(); // pieceId -> BufferGeometry (convex LOD)
 
 	// Baked static mesh resources (one Mesh per chunk)
-	const chunkMeshData = new Map(); // chunkKey -> { low: { mesh, geom, map }, high?: { mesh, geom, map } }
+    const chunkMeshData = new Map(); // chunkKey -> { low: { mesh, geom, map }, high?: { mesh, geom, map }, pick?: { mesh } }
 
 	// Batching flags/collections (kept for bounds recompute scheduling)
 	let bulkReconcileActive = false;
@@ -70,6 +72,26 @@ export function createBrickQuestRenderer(container, options = {}) {
 	const _mainFrustum = new THREE.Frustum();
 	const _sharedRaycaster = new THREE.Raycaster();
 	const _ndcCenter = new THREE.Vector2(0, 0);
+
+	function getTriangleCountForGeometry(geometry) {
+		try {
+			if (!geometry) return 0;
+			const idx = geometry.index;
+			if (idx && Number.isFinite(idx.count)) return (idx.count | 0) / 3 | 0;
+			const pos = geometry.attributes && geometry.attributes.position;
+			if (pos && Number.isFinite(pos.count)) return (pos.count | 0) / 3 | 0;
+			return 0;
+		} catch (_) { return 0; }
+	}
+
+	function getMeshTriangleCount(mesh) {
+		try {
+			if (!mesh) return 0;
+			const ud = mesh.userData;
+			if (ud && Number.isFinite(ud.triangleCount)) return (ud.triangleCount | 0);
+			return getTriangleCountForGeometry(mesh.geometry) | 0;
+		} catch (_) { return 0; }
+	}
 
 	// No per-mesh culling hooks needed for baked meshes; group visibility is handled in renderTick
 
@@ -203,15 +225,21 @@ export function createBrickQuestRenderer(container, options = {}) {
 			brickIndexAttr.fill(bi, vtxBase, vtxBase + vertCount);
 			const m = _tempMatrix4.elements;
 			const n = normalMatrix.elements;
-			for (let i = 0; i < vertCount; i++) {
-				const pOff = i * 3;
+			// Precompute bases and use running offsets to avoid per-iteration multiplies
+			const base3 = vtxBase * 3;
+			// Fast color path: pack RGBA into 32-bit and write once per vertex
+			const colors32 = new Uint32Array(colors.buffer, colors.byteOffset, colors.length >>> 2);
+			const packedRGBA = (255 << 24) | (cb << 16) | (cg << 8) | cr;
+			let pOff = 0;
+			let vOut = base3;
+			let c32Out = vtxBase;
+			for (let i = 0; i < vertCount; i++, pOff += 3, vOut += 3) {
 				const px = posArray[pOff + 0];
 				const py = posArray[pOff + 1];
 				const pz = posArray[pOff + 2];
 				const tx = m[0] * px + m[4] * py + m[8]  * pz + m[12];
 				const ty = m[1] * px + m[5] * py + m[9]  * pz + m[13];
 				const tz = m[2] * px + m[6] * py + m[10] * pz + m[14];
-				const vOut = (vtxBase + i) * 3;
 				positions[vOut + 0] = tx;
 				positions[vOut + 1] = ty;
 				positions[vOut + 2] = tz;
@@ -226,11 +254,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 				normals[vOut + 0] = ntx;
 				normals[vOut + 1] = nty;
 				normals[vOut + 2] = ntz;
-				const cOut = (vtxBase + i) * 4;
-				colors[cOut + 0] = cr;
-				colors[cOut + 1] = cg;
-				colors[cOut + 2] = cb;
-				colors[cOut + 3] = 255;
+				colors32[c32Out++] = packedRGBA;
 			}
 			if (idxAttr) {
 				const idxArray = idxAttr.array;
@@ -240,7 +264,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 					indices[outOff++] = (base + (idxArray[i] | 0)) | 0;
 				}
 				idxBase += idxAttr.count | 0;
-		} else {
+			} else {
 				// Assume non-indexed triangles
 				for (let i = 0; i < vertCount; i++) {
 					indices[idxBase + i] = (vtxBase + i) | 0;
@@ -261,9 +285,73 @@ export function createBrickQuestRenderer(container, options = {}) {
 			new THREE.Vector3(minX, minY, minZ),
 			new THREE.Vector3(maxX, maxY, maxZ)
 		);
-		// geometry.computeBoundingSphere();
-		try { geometry.computeBoundsTree(); } catch (_) {}
-		return { geometry, brickIndexToBrickId };
+        geometry.computeBoundingSphere();
+        // Do NOT build triangle BVH on the render geometry; use a separate AABB picking mesh
+        return { geometry, brickIndexToBrickId };
+	}
+
+	// Build a lightweight picking dataset: one AABB per brick (no render buffers)
+    function buildAabbPickDataForChunk(chunkKey, bricks) {
+		if (!Array.isArray(bricks) || bricks.length === 0) return null;
+        const origin = getChunkOriginFromKey(chunkKey);
+		const boxes = [];
+		let minX = Infinity, minY = Infinity, minZ = Infinity;
+		let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+		const tempPos = new THREE.Vector3();
+		const tempQuat = new THREE.Quaternion();
+		const tempMatrix = new THREE.Matrix4();
+		const tempScale = new THREE.Vector3(1,1,1);
+		const bbMin = new THREE.Vector3();
+		const bbMax = new THREE.Vector3();
+
+		function transformPieceAabbToWorld(pieceGeom, matrix, outMin, outMax) {
+			if (!pieceGeom.boundingBox) {
+				try { pieceGeom.computeBoundingBox(); } catch (_) {}
+			}
+			const bb = pieceGeom.boundingBox;
+			if (!bb) { outMin.set(0,0,0); outMax.set(0,0,0); return; }
+			const min = bb.min, max = bb.max;
+			const corners = [
+				new THREE.Vector3(min.x, min.y, min.z), new THREE.Vector3(max.x, min.y, min.z),
+				new THREE.Vector3(min.x, max.y, min.z), new THREE.Vector3(max.x, max.y, min.z),
+				new THREE.Vector3(min.x, min.y, max.z), new THREE.Vector3(max.x, min.y, max.z),
+				new THREE.Vector3(min.x, max.y, max.z), new THREE.Vector3(max.x, max.y, max.z),
+			];
+			outMin.set(Infinity, Infinity, Infinity);
+			outMax.set(-Infinity, -Infinity, -Infinity);
+			for (let i = 0; i < 8; i++) {
+				const c = corners[i].applyMatrix4(matrix);
+				if (c.x < outMin.x) outMin.x = c.x; if (c.y < outMin.y) outMin.y = c.y; if (c.z < outMin.z) outMin.z = c.z;
+				if (c.x > outMax.x) outMax.x = c.x; if (c.y > outMax.y) outMax.y = c.y; if (c.z > outMax.z) outMax.z = c.z;
+			}
+		}
+
+        for (let bi = 0; bi < bricks.length; bi++) {
+			const b = bricks[bi];
+			const pieceGeom = brickGeometries.get(b.pieceId);
+			if (!pieceGeom) { continue; }
+            // Use world-space positions for pick AABBs so we can raycast directly
+            tempPos.set(b.position.x, b.position.y, b.position.z);
+			tempQuat.setFromEuler(new THREE.Euler(
+				(b.rotation && b.rotation.x || 0),
+				(b.rotation && b.rotation.y || 0),
+				(b.rotation && b.rotation.z || 0)
+			));
+			tempMatrix.compose(tempPos, tempQuat, tempScale);
+            transformPieceAabbToWorld(pieceGeom, tempMatrix, bbMin, bbMax);
+            boxes.push({
+                min: { x: bbMin.x, y: bbMin.y, z: bbMin.z },
+                max: { x: bbMax.x, y: bbMax.y, z: bbMax.z },
+                brickId: b.id,
+                pieceId: b.pieceId,
+                pos: { x: b.position.x, y: b.position.y, z: b.position.z },
+                rot: { x: (b.rotation && b.rotation.x) || 0, y: (b.rotation && b.rotation.y) || 0, z: (b.rotation && b.rotation.z) || 0 }
+            });
+			if (bbMin.x < minX) minX = bbMin.x; if (bbMin.y < minY) minY = bbMin.y; if (bbMin.z < minZ) minZ = bbMin.z;
+			if (bbMax.x > maxX) maxX = bbMax.x; if (bbMax.y > maxY) maxY = bbMax.y; if (bbMax.z > maxZ) maxZ = bbMax.z;
+		}
+		const chunkBounds = new THREE.Box3(new THREE.Vector3(minX, minY, minZ), new THREE.Vector3(maxX, maxY, maxZ));
+		return { boxes, chunkBounds };
 	}
 
 	function replaceChunkMesh(chunkKey, mesh, kind) {
@@ -281,11 +369,11 @@ export function createBrickQuestRenderer(container, options = {}) {
 				try { disposeObject(child); } catch (_) {}
 			}
 		}
-		if (mesh) {
-			mesh.userData = mesh.userData || {};
-			mesh.userData[tag] = true;
-			group.add(mesh);
-			raycastTargets.push(mesh);
+        if (mesh) {
+            mesh.userData = mesh.userData || {};
+            mesh.userData[tag] = true;
+            group.add(mesh);
+            // Do not add render meshes to raycast targets; picking uses dedicated pick mesh
 			group.userData.boundsDirty = true;
 			expandGroupBoundsForGeometry(group, mesh.geometry);
 		}
@@ -310,7 +398,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 			chunkMeshData.delete(chunkKey);
 			return;
 		}
-		// Always (re)build low LOD from convex
+        // Always (re)build low LOD from convex (render mesh)
 		const lowBuilt = buildBakedGeometryForChunk(chunkKey, bricks, { useConvex: true });
 		if (lowBuilt) {
 			const material = ensureBakedMaterial();
@@ -320,12 +408,14 @@ export function createBrickQuestRenderer(container, options = {}) {
 			lowMesh.userData = lowMesh.userData || {};
 			lowMesh.userData.chunkKey = chunkKey;
 			lowMesh.userData.brickIndexToBrickId = lowBuilt.brickIndexToBrickId;
+			// Cache triangle count for HUD stats
+			lowMesh.userData.triangleCount = getTriangleCountForGeometry(lowBuilt.geometry) | 0;
 			replaceChunkMesh(chunkKey, lowMesh, 'low');
 			const rec = chunkMeshData.get(chunkKey) || {};
 			rec.low = { mesh: lowMesh, geom: lowBuilt.geometry, map: lowBuilt.brickIndexToBrickId };
 			chunkMeshData.set(chunkKey, rec);
 		}
-		// Build/update high detail immediately if this chunk is currently near (lod === 0)
+        // Build/update high detail immediately if this chunk is currently near (lod === 0) (render mesh)
 		const group = chunkGroups.get(chunkKey);
 		const ud = group && group.userData ? group.userData : null;
 		const isNear = !!(ud && ud.lod === 0);
@@ -340,11 +430,22 @@ export function createBrickQuestRenderer(container, options = {}) {
 				highMesh.userData = highMesh.userData || {};
 				highMesh.userData.chunkKey = chunkKey;
 				highMesh.userData.brickIndexToBrickId = builtHigh.brickIndexToBrickId;
+				// Cache triangle count for HUD stats
+				highMesh.userData.triangleCount = getTriangleCountForGeometry(builtHigh.geometry) | 0;
 				replaceChunkMesh(chunkKey, highMesh, 'high');
 				recNow.high = { mesh: highMesh, geom: builtHigh.geometry, map: builtHigh.brickIndexToBrickId };
 				chunkMeshData.set(chunkKey, recNow);
 			}
 		}
+        // Build or update the picking data (AABB list) for this chunk
+        {
+            const pickBuilt = buildAabbPickDataForChunk(chunkKey, bricks);
+            if (pickBuilt) {
+                const recPick = chunkMeshData.get(chunkKey) || {};
+                recPick.pick = { boxes: pickBuilt.boxes, bounds: pickBuilt.chunkBounds };
+                chunkMeshData.set(chunkKey, recPick);
+            }
+        }
 		// Ensure visibility matches current LOD immediately
 		const recVis = chunkMeshData.get(chunkKey);
 		if (recVis && group && group.userData) {
@@ -414,8 +515,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 	const playerMeshes = new Map(); // playerId -> Mesh
 	const chunkGroups = new Map(); // chunkKey -> Group
 	const playerNameSprites = new Map(); // playerId -> Sprite
-	// Cached raycast targets to avoid per-frame allocations
-	const raycastTargets = [];
+    // Deprecated: raycastTargets no longer used (custom AABB raycast)
+    const raycastTargets = [];
 
 	// UI helpers
 	let studHighlightMesh = null;
@@ -875,7 +976,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		const firstIntersection = (intersects && intersects.length > 0) ? intersects[0] : null;
 		let targetBrickId = null;
 		let targetChunkKey = null;
-		if (firstIntersection && firstIntersection.object && firstIntersection.object.geometry) {
+        if (firstIntersection && firstIntersection.object && firstIntersection.object.geometry) {
 			// Resolve from baked mesh
 			const obj = firstIntersection.object;
 			const geom = obj.geometry;
@@ -897,11 +998,19 @@ export function createBrickQuestRenderer(container, options = {}) {
 				const map = obj.userData && obj.userData.brickIndexToBrickId;
 				targetBrickId = (map && map[bi] != null) ? map[bi] : null;
 				targetChunkKey = obj.userData && obj.userData.chunkKey || null;
-		} else {
-			targetBrickId = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? firstIntersection.object.userData.brickId : null;
-			targetChunkKey = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? (firstIntersection.object.userData.chunkKey || null) : null;
+			} else {
+				targetBrickId = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? firstIntersection.object.userData.brickId : null;
+				targetChunkKey = (firstIntersection && firstIntersection.object && firstIntersection.object.userData) ? (firstIntersection.object.userData.chunkKey || null) : null;
 			}
 		}
+		// Fallback for custom AABB picking: use lastHitBrickId and chunkKey from synthetic intersection
+		if (!targetBrickId && lastHitBrickId) {
+			targetBrickId = lastHitBrickId;
+			if (!targetChunkKey && firstIntersection && firstIntersection.object && firstIntersection.object.userData) {
+				targetChunkKey = firstIntersection.object.userData.chunkKey || null;
+			}
+		}
+
 		if (!targetBrickId) {
 			studHighlightMesh.visible = false;
 			closestStudInfo = null;
@@ -1063,73 +1172,108 @@ export function createBrickQuestRenderer(container, options = {}) {
 
 	function setChunkDebugVisible(visible) { chunkDebugVisible = !!visible; setChunkDebugVisibleExternal({ CHUNK_SIZE, CHUNK_HEIGHT, chunkGroups, chunkDebugVisible }, scene, chunkDebugVisible); }
 
-	function getMouseWorldPosition() {
-		const raycaster = _sharedRaycaster;
-		raycaster.setFromCamera(_ndcCenter, camera);
-		// Only raycast against bricks (exclude players) using cached list
-		// Limit effective ray length for picking to reduce broad-phase work
-		raycaster.far = PLACEMENT_MAX_DISTANCE;
-		// With BVH, return only the closest hit for speed
-		raycaster.firstHitOnly = true;
-		const intersects = raycaster.intersectObjects(raycastTargets, true);
-		let result;
-		if (intersects.length > 0) {
-			const intersection = intersects[0];
-			lastRayHitValid = (typeof intersection.distance === 'number') ? (intersection.distance <= PLACEMENT_MAX_DISTANCE) : true;
-			if (lastRayHitValid) {
-				// Resolve brickId from baked mesh vertex attribute `brickIndex`
-				(function(){
-					const obj = intersection.object;
-					const geom = obj && obj.geometry;
-					const brickIndexAttr = geom && geom.getAttribute ? geom.getAttribute('brickIndex') : null;
-					if (brickIndexAttr) {
-						let vIndex = 0;
-						if (Number.isFinite(intersection.faceIndex)) {
-							const tri = intersection.faceIndex | 0;
-							if (geom.index) {
-								const ia = geom.index;
-								vIndex = ia.getX ? (ia.getX(tri * 3) | 0) : (ia.array[tri * 3] | 0);
-							} else {
-								vIndex = (tri * 3) | 0;
-							}
-						} else if (intersection.face && Number.isFinite(intersection.face.a)) {
-							vIndex = intersection.face.a | 0;
-						}
-						const bi = brickIndexAttr.getX ? (brickIndexAttr.getX(vIndex) | 0) : (brickIndexAttr.array[vIndex] | 0);
-						const map = obj && obj.userData && obj.userData.brickIndexToBrickId;
-						lastHitBrickId = (map && map[bi] != null) ? map[bi] : null;
-				} else {
-					lastHitBrickId = (intersection && intersection.object && intersection.object.userData) ? (intersection.object.userData.brickId || null) : null;
-				}
-				})();
-				updateClosestStud(raycaster, intersects);
-				result = { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z };
-				lastMouseWorldPos = result;
-			} else {
-				// Out of range - clear stud highlight and invalidate placement
-				if (studHighlightMesh) studHighlightMesh.visible = false;
-				closestStudInfo = null;
-				lastMouseWorldPos = null;
-				lastHitBrickId = null;
-				result = { x: intersection.point.x, y: intersection.point.y, z: intersection.point.z };
-			}
-		} else {
-			lastRayHitValid = false;
-			// No hit - clear stud highlight and keep a ground-plane projection for cursor, but disable placement
-			if (studHighlightMesh) studHighlightMesh.visible = false;
-			closestStudInfo = null;
-			lastHitBrickId = null;
-			const vector = _tempVec3b.set(0, 0, 0.5);
-			vector.unproject(camera);
-			const dir = vector.sub(camera.position).normalize();
-			const distance = -camera.position.y / dir.y;
-			const pos = _tempVec3.copy(camera.position).add(dir.multiplyScalar(distance));
-			result = { x: pos.x, y: pos.y, z: pos.z };
-			lastMouseWorldPos = null;
-		}
-		ensureGhostMesh(false);
-		return result;
-	}
+    function getMouseWorldPosition() {
+        const raycaster = _sharedRaycaster;
+        raycaster.setFromCamera(_ndcCenter, camera);
+        raycaster.far = PLACEMENT_MAX_DISTANCE;
+        // Custom AABB raycast against per-chunk pick data
+        let best = null; // { distance, point: Vector3, brickId, chunkKey }
+        const candidates = []; // collect multiple AABB hits for refinement
+        const ray = raycaster.ray;
+        for (const [chunkKey, rec] of chunkMeshData.entries()) {
+            const pick = rec && rec.pick;
+            if (!pick || !pick.boxes || pick.boxes.length === 0) continue;
+            // Quick reject by chunk bounds
+            if (pick.bounds && !ray.intersectsBox(pick.bounds)) continue;
+            for (let i = 0; i < pick.boxes.length; i++) {
+                const b = pick.boxes[i];
+                _tempBox3.min.set(b.min.x, b.min.y, b.min.z);
+                _tempBox3.max.set(b.max.x, b.max.y, b.max.z);
+                const hitPoint = new THREE.Vector3();
+                const didHit = ray.intersectBox(_tempBox3, hitPoint);
+                if (!didHit) continue;
+                const dist = hitPoint.distanceTo(ray.origin);
+                if (dist > PLACEMENT_MAX_DISTANCE) continue;
+                const cand = { distance: dist, point: hitPoint.clone(), brickId: b.brickId, chunkKey, pieceId: b.pieceId, pos: b.pos, rot: b.rot };
+                candidates.push(cand);
+            }
+        }
+
+        // Optional refinement: triangle raycast against candidate bricks
+        // Transform the ray into each brick's local space and intersect against its geometry triangles
+        function refineWithTriangleRaycast(cands) {
+            const refined = [];
+            const geomRaycaster = new THREE.Raycaster();
+            geomRaycaster.far = PLACEMENT_MAX_DISTANCE;
+            geomRaycaster.firstHitOnly = true;
+            // Use the world ray directly; supply matrixWorld on temp meshes
+            geomRaycaster.ray.copy(ray);
+            for (const c of cands) {
+                const geom = brickGeometries.get(c.pieceId);
+                if (!geom || !geom.attributes || !geom.attributes.position) continue;
+                const m = new THREE.Matrix4();
+                const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(c.rot.x, c.rot.y, c.rot.z));
+                m.compose(new THREE.Vector3(c.pos.x, c.pos.y, c.pos.z), q, new THREE.Vector3(1,1,1));
+                const tmpMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+                const tmpMesh = new THREE.Mesh(geom, tmpMat);
+                tmpMesh.matrixWorld.copy(m);
+                tmpMesh.matrixAutoUpdate = false;
+                tmpMesh.frustumCulled = false;
+                const its = geomRaycaster.intersectObject(tmpMesh, false);
+                if (its && its.length > 0) {
+                    const it = its[0];
+                    const ptWorld = it.point.clone(); // already in world space
+                    const dist = it.distance != null ? it.distance : ptWorld.distanceTo(ray.origin);
+                    refined.push({ distance: dist, point: ptWorld, brickId: c.brickId, chunkKey: c.chunkKey });
+                }
+                if (tmpMesh.material && tmpMesh.material.dispose) tmpMesh.material.dispose();
+            }
+            if (refined.length > 0) {
+                refined.sort((a,b)=>a.distance-b.distance);
+                return refined[0];
+            }
+            return null;
+        }
+
+        // Limit the number of candidates to refine for perf
+        const maxRefine = 3;
+        candidates.sort((a,b)=>a.distance-b.distance);
+        // Debug: log refinement stats once per click-ish cadence by sampling occasionally
+        const refinedBest = candidates.length ? refineWithTriangleRaycast(candidates.slice(0, maxRefine)) : null;
+        // if (candidates.length) console.log('[BrickQuest] refine: candidates=', candidates.length, 'hit=', !!refinedBest);
+        if (refinedBest) {
+            best = refinedBest;
+        } else if (candidates.length > 0) {
+            // As requested: only use an AABB position if all triangle refinements miss,
+            // then take the last (farthest) AABB hit in the sorted list.
+            best = candidates[candidates.length - 1];
+        }
+
+        let result;
+        if (best) {
+            lastRayHitValid = true;
+            lastHitBrickId = best.brickId || null;
+            // Synthesize minimal intersection array for updateClosestStud
+            const intersects = [{ point: best.point, object: { userData: { chunkKey: best.chunkKey } } }];
+            updateClosestStud(raycaster, intersects);
+            result = { x: best.point.x, y: best.point.y, z: best.point.z };
+            lastMouseWorldPos = result;
+        } else {
+            lastRayHitValid = false;
+            if (studHighlightMesh) studHighlightMesh.visible = false;
+            closestStudInfo = null;
+            lastHitBrickId = null;
+            const vector = _tempVec3b.set(0, 0, 0.5);
+            vector.unproject(camera);
+            const dir = vector.sub(camera.position).normalize();
+            const distance = -camera.position.y / dir.y;
+            const pos = _tempVec3.copy(camera.position).add(dir.multiplyScalar(distance));
+            result = { x: pos.x, y: pos.y, z: pos.z };
+            lastMouseWorldPos = null;
+        }
+        ensureGhostMesh(false);
+        return result;
+    }
 
 	function createBrickMesh(brick) {
 		if (!brickMaterials) return;
@@ -1236,9 +1380,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 		figure.receiveShadow = true;
 		scene.add(figure);
 		playerMeshes.set(playerData.id, figure);
-
-		// Create or update name sprite
-		createOrUpdateNameSprite(playerData);
 	}
 
 	function updatePlayerMesh(playerData) {
@@ -1252,8 +1393,6 @@ export function createBrickQuestRenderer(container, options = {}) {
 				mesh.rotation.y = playerData.rotation.y;
 			}
 		}
-		// Update name sprite position and text if changed
-		createOrUpdateNameSprite(playerData);
 	}
 
 	function removePlayerMesh(playerId) {
@@ -1314,6 +1453,8 @@ export function createBrickQuestRenderer(container, options = {}) {
 	function renderTick(localPlayer, yaw, pitch, isThirdPerson, isMoving) {
 		isPlayerMoving = !!isMoving;
 		if (!renderer || !scene || !camera) return;
+		// Per-frame visible triangle sum for HUD (set during culling below)
+		let visibleTriangleSumComputed = null;
 		
 		// Update skybox position to follow camera (makes it appear infinitely far away)
 		if (skyboxMesh) {
@@ -1426,6 +1567,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		if (camera && chunkGroups && chunkGroups.size > 0) {
 			_projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 			_mainFrustum.setFromProjectionMatrix(_projScreenMatrix);
+			visibleTriangleSumComputed = 0;
 			// Compute per-chunk visibility; main view culling happens via mesh onBeforeRender
 			for (const group of chunkGroups.values()) {
 				if (!group) continue;
@@ -1477,7 +1619,9 @@ export function createBrickQuestRenderer(container, options = {}) {
 										bricks.push({ id: bid, pieceId: b.pieceId, colorIndex: b.colorIndex | 0, position: b.position, rotation: b.rotation });
 									}
 								}
+								// console.time('[BrickQuest] first-frame high LOD build');
 								const builtHigh = buildBakedGeometryForChunk(chunkKey, bricks, { useConvex: false });
+								// console.timeEnd('[BrickQuest] first-frame high LOD build');
 								if (builtHigh) {
 									const material = ensureBakedMaterial();
 									const highMesh = new THREE.Mesh(builtHigh.geometry, material);
@@ -1496,27 +1640,49 @@ export function createBrickQuestRenderer(container, options = {}) {
 						if (rec.high && rec.high.mesh) rec.high.mesh.visible = (ud.lod === 0);
 					}
 				}
+				// Approximate triangle count: choose triangles based on selected LOD; fallback if target not available
+				if (ud.inMainFrustum) {
+					const rec = chunkMeshData.get(group.userData && group.userData.chunkKey);
+					if (rec) {
+						const target = (ud.lod === 0) ? (rec.high && rec.high.mesh) : (rec.low && rec.low.mesh);
+						const fallback = (ud.lod === 0) ? (rec.low && rec.low.mesh) : (rec.high && rec.high.mesh);
+						const chosen = target || fallback || null;
+						visibleTriangleSumComputed += getMeshTriangleCount(chosen);
+					}
+				}
 				// Layers are not toggled per-frame; onBeforeRender of meshes handles main-view culling only
 			}
 		}
 
 		// Render
+		// Ensure per-frame stats by resetting counters before rendering
+		if (renderer && renderer.info && typeof renderer.info.reset === 'function') renderer.info.reset();
 		if (renderer && renderer.backend && renderer.backend.device) {
 			renderer.render(scene, camera);
 		} else if (renderer) {
 			void renderer.renderAsync(scene, camera);
 		}
-		// Update stats
-		if (renderer && renderer.info) {
-			lastDrawCalls = renderer.info.render.calls | 0;
-			lastTriangles = renderer.info.render.triangles | 0;
+		// Approximate GPU frame time using WebGPU queue completion
+		{
+			const backend = renderer && renderer.backend;
+			const dev = backend && backend.device;
+			if (dev && dev.queue && !pendingGpuFence) {
+				pendingGpuFence = true;
+				const t0 = performance.now();
+				dev.queue.onSubmittedWorkDone().then(() => {
+					const measured = Math.max(0, performance.now() - t0);
+					lastGpuMsRaw = measured;
+					lastGpuMs = lastGpuMs > 0 ? (lastGpuMs + (measured - lastGpuMs) * GPU_SMOOTH) : measured;
+					pendingGpuFence = false;
+				}).catch(() => { pendingGpuFence = false; });
+			}
 		}
+		// Update stats: triangles from computed visible sum; draw calls from renderer.info after reset
+		if (renderer && renderer.info && renderer.info.render) {
+			lastDrawCalls = renderer.info.render.calls | 0;
+		}
+		lastTriangles = (typeof visibleTriangleSumComputed === 'number' && Number.isFinite(visibleTriangleSumComputed)) ? (visibleTriangleSumComputed | 0) : 0;
 	}
-
-    // moved to labels.js
-    function createOrUpdateNameSprite(playerData) {
-        updateNameSpriteExternal(playerData, playerNameSprites, scene);
-    }
 
 	return {
 		async init() {
@@ -1618,7 +1784,7 @@ export function createBrickQuestRenderer(container, options = {}) {
 		setSelectedStudIndex(i) { selectedStudIndex = Math.max(0, i | 0); ensureGhostMesh(false); },
 		setAnchorMode(m) { selectedAnchorMode = (m === 'stud') ? 'stud' : 'anti'; ensureGhostMesh(false); },
 		// Simple render stats for HUD
-		getRenderStats() { return { drawCalls: lastDrawCalls | 0, triangles: lastTriangles | 0, gpuMs: lastGpuMs || 0 }; },
+		getRenderStats() { return { drawCalls: lastDrawCalls | 0, triangles: lastTriangles | 0, gpuMs: lastGpuMs || 0, gpuMsRaw: lastGpuMsRaw || 0 }; },
 		// Picking
 		getMouseWorldPosition,
 		getPickedBrickId() { return (lastRayHitValid && lastHitBrickId) ? lastHitBrickId : null; },

@@ -85,6 +85,10 @@ function parseSnapCyl(line) {
     let totalLength = 0;
     let maxRadius = null;
     let hasAxleSection = false;
+    // Track whether we have a substantial stud-radius round section (R ~6 with length)
+    const STUD_RADIUS = 6;
+    const R_TOL = 0.6;
+    let studRadiusLen = 0;
     if (params.length) {
         const lenVal = parseFloat(params.length);
         if (Number.isFinite(lenVal)) totalLength = Math.abs(lenVal);
@@ -100,6 +104,9 @@ function parseSnapCyl(line) {
                 if (Number.isFinite(r)) {
                     const ar = Math.abs(r);
                     maxRadius = (maxRadius == null) ? ar : Math.max(maxRadius, ar);
+                    if (code.toUpperCase() === 'R' && Math.abs(ar - STUD_RADIUS) <= R_TOL && Number.isFinite(len) && Math.abs(len) >= 3) {
+                        studRadiusLen += Math.abs(len);
+                    }
                 }
                 if (code.toUpperCase() === 'A') { hasAxleSection = true; }
             } else {
@@ -114,7 +121,8 @@ function parseSnapCyl(line) {
         }
     }
     const center = String(params.center).toLowerCase() === 'true';
-    return { gender: params.gender || 'M', positions, ori: oriMatrix, center, length: totalLength, maxRadius, group: params.group || null, id: (params.ID || params.id || null), hasAxleSection };
+    const hasStudRadiusSection = studRadiusLen >= 3;
+    return { gender: params.gender || 'M', positions, ori: oriMatrix, center, length: totalLength, maxRadius, group: params.group || null, id: (params.ID || params.id || null), hasAxleSection, hasStudRadiusSection };
 }
 
 function correctAntiStudAgainstStuds(worldPos) {
@@ -153,7 +161,15 @@ function handleLDCadMetaLine(line, transformMatrix) {
                     const STUD_RADIUS = 6;
                     const R_TOL = 0.6;
                     const isTopStudCavity = (snapInfo.id && String(snapInfo.id).toLowerCase() === 'astud') || /stud4od\.dat$/i.test(this.currentShadowRef || '');
-                    const radiusOk = !isTopStudCavity && !snapInfo.hasAxleSection && ((snapInfo.maxRadius == null) || (Math.abs(snapInfo.maxRadius - STUD_RADIUS) <= R_TOL));
+                    let radiusOk = !isTopStudCavity && !snapInfo.hasAxleSection && ((snapInfo.maxRadius == null) || (Math.abs(snapInfo.maxRadius - STUD_RADIUS) <= R_TOL));
+                    // Whitelist: relax axle exclusion for specific top-level parts (e.g., 59900),
+                    // but only if a substantial stud-radius section exists to avoid axle-only holes
+                    if (!radiusOk && !isTopStudCavity && ((snapInfo.maxRadius == null) || (Math.abs(snapInfo.maxRadius - STUD_RADIUS) <= R_TOL)) && snapInfo.hasStudRadiusSection === true) {
+                        const topId = this.currentTopPartId;
+                        if (topId && this.relaxFemaleAxleAntistudForParts && this.relaxFemaleAxleAntistudForParts.has(topId)) {
+                            radiusOk = true;
+                        }
+                    }
                     if (transformMatrix) {
                         let worldPos = this.transformPosition(posAdj, transformMatrix);
                         if (snapInfo.center && Number.isFinite(snapInfo.length) && snapInfo.length > 0) {

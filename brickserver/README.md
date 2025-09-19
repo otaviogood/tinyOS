@@ -20,6 +20,18 @@ npm run dev
 
 The server will run on port 3001 by default.
 
+## secure https certs
+For webGPU to run, it needs to be on https. This is how to make https work on the LAN:
+```
+brew install mkcert
+mkcert -install
+mkcert game.local 192.168.1.75 localhost 127.0.0.1 ::1
+
+mkdir -p certs
+mv game.local+4.pem certs/dev-cert.pem 
+mv game.local+4-key.pem certs/dev-key.pem
+```
+
 ## Architecture
 
 This is a thin-client architecture where:

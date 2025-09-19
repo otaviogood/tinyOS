@@ -7,6 +7,9 @@
     import CloseButton from "../../components/CloseButton.svelte";
     import { Animator, frameCount, animateCount } from "../../animator";
     import { createBrickQuestRenderer } from "./renderer/threeRenderer.js";
+    import Fast2dBQ from "./overlay/Fast2dBQ.svelte";
+    import GraphRTBQ from "./overlay/GraphRTBQ.svelte";
+    import FastLineBQ from "./overlay/FastLineBQ.svelte";
     import StartScreen from "./StartScreen.svelte";
     import ColorPalette from "./ColorPalette.svelte";
     import { brickColorHexes } from "./colors.js";
@@ -95,6 +98,11 @@
 
 	// Time To First Playable (TTFP) minimal tracking
 	let ttfpStartTs = 0;
+	let ttfpLogged = false;
+
+	// Realtime graph series for CPU ms
+	const cpuSeries = { key: 'cpu', color: [0.2, 0.8, 1.0], values: [] };
+	const gpuSeries = { key: 'gpu', color: [1.0, 0.3, 0.3], values: [] };
 
     onMount(async () => {
         const onStart = async () => { showStart = false; await nextTick(); await safeStartGame(); };
@@ -117,10 +125,11 @@
     });
 
     async function safeStartGame() {
+        if (!ttfpStartTs) { ttfpStartTs = performance.now(); }
+        ttfpLogged = false;
         if (!renderer3d) {
             await initThree();
         }
-        if (!ttfpStartTs) { ttfpStartTs = performance.now(); }
         initNetworking();
         setupKeyboardControls();
     }
@@ -154,8 +163,16 @@
     }
 
     function initNetworking() {
-        // Resolve server URL from StartScreen or fallback
-        const savedUrl = (typeof localStorage !== 'undefined' && localStorage.getItem('brickquest_server_url')) || 'http://localhost:3001';
+        // Resolve server URL from StartScreen; if blank/missing, use same-origin via Vite proxy
+        const savedUrlRaw = (typeof localStorage !== 'undefined' && localStorage.getItem('brickquest_server_url')) || '';
+        let serverUrl = (typeof savedUrlRaw === 'string' ? savedUrlRaw.trim() : '');
+        // Prevent mixed content: if page is https and stored URL is http, fall back to same-origin proxy
+        try {
+            if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && /^http:\/\//i.test(serverUrl)) {
+                console.warn('[BrickQuest] Insecure server URL on HTTPS page; using same-origin proxy instead');
+                serverUrl = '';
+            }
+        } catch (_) {}
         const name = (typeof localStorage !== 'undefined' && localStorage.getItem('brickquest_player_name')) || `builder${Math.floor(100 + Math.random()*900)}`;
 
         // Desired local player colors from StartScreen (indices into brickColorHexes)
@@ -167,11 +184,14 @@
         // Connect to the server and send preferred colors up-front in auth payload
         console.time('[BrickQuest] socket to init');
         console.time('[BrickQuest] socket connect');
-        socket = io(savedUrl, {
+        const sockOpts = {
+            path: '/socket.io',
             transports: ['websocket'],
             upgrade: false,
             auth: { colorLegs: desiredLegsColor, colorTorso: desiredTorsoColor, name }
-        });
+        };
+        // If a server URL is provided, connect directly; otherwise use same-origin (Vite proxy)
+        socket = serverUrl ? io(serverUrl, sockOpts) : io(sockOpts);
 
         // Connection state handlers (after socket is created)
         socket.on('connect', () => { isConnected = true; console.timeEnd('[BrickQuest] socket connect'); });
@@ -256,7 +276,6 @@
                     renderer3d.setAnchorMode(anchorMode);
                 }
                 console.timeEnd('[BrickQuest] init');
-				if (ttfpStartTs) { const ms = performance.now() - ttfpStartTs; try { console.log(`[BrickQuest] Time to first playable: ${Math.round(ms)} ms`); } catch {} ttfpStartTs = 0; }
             }
             // Sync selected color index
             if (localPlayer && localPlayer.selectedColorIndex !== undefined) {
@@ -754,7 +773,24 @@
 		const rs = renderer3d.getRenderStats && renderer3d.getRenderStats();
 		if (rs) {
 			drawCalls = rs.drawCalls | 0; triangles = rs.triangles | 0;
-			if (Number.isFinite(rs.gpuMs)) gpuMs = rs.gpuMs;
+			if (Number.isFinite(rs.gpuMsRaw)) gpuMs = rs.gpuMsRaw;
+		}
+		// Update realtime CPU/GPU graph series (cap length)
+		if (Number.isFinite(cpuMs)) {
+			cpuSeries.values.push(cpuMs);
+			if (cpuSeries.values.length > 250) cpuSeries.values.shift();
+		}
+		if (Number.isFinite(gpuMs)) {
+			gpuSeries.values.push(gpuMs);
+			if (gpuSeries.values.length > 250) gpuSeries.values.shift();
+		}
+
+		// One-time TTFP log: first frame when game is actually ready to play
+		if (!ttfpLogged && ttfpStartTs && !loadingText && isConnected && playerId && gameState && gameState.players && gameState.players[playerId]) {
+			const ms = performance.now() - ttfpStartTs;
+			try { console.log(`[BrickQuest] Time to first playable: ${Math.round(ms)} ms`); } catch {}
+			ttfpLogged = true;
+			ttfpStartTs = 0;
 		}
 	}
 
@@ -917,6 +953,9 @@
 				<div>; / ' : Choose connector</div>
                 <div>P : Piece menu</div>
 			</div>
+            <div class="mt-2 h-32">
+                <GraphRTBQ series={[cpuSeries, gpuSeries]} xScale={1} yRange={[0, 16]} bgColor={0x001018} />
+        	</div>
 		</div>
 
         <!-- Color palette (bottom-left) -->

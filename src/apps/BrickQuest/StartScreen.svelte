@@ -16,8 +16,27 @@
 	let cachedHeadGeom = null;
 	let loadingText = 'Loading parts...';
 
+	let showServerSettings = false; // collapsed by default
+	$: serverStatusStyle = (serverValid && serverReachable === true)
+		? 'outline: 3px solid #22c55e; outline-offset: 2px;'
+		: (serverValid && serverReachable === false)
+			? 'outline: 3px solid #ef4444; outline-offset: 2px;'
+			: (!serverValid)
+				? 'outline: 3px solid #ef4444; outline-offset: 2px;'
+				: '';
 
-	let serverUrl = localStorage.getItem('brickquest_server_url') || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3001');
+
+	function computeDefaultServerUrl() {
+		if (typeof window === 'undefined') return 'http://localhost:3001';
+		const host = window.location && window.location.hostname ? window.location.hostname : 'localhost';
+		// Bracket IPv6 literals for URL compatibility
+		const bracketedHost = host.includes(':') && !(host.startsWith('[') && host.endsWith(']')) ? `[${host}]` : host;
+		return `http://${bracketedHost}:3001`;
+	}
+
+	let defaultServerUrl = computeDefaultServerUrl();
+	// Default to blank to use same-origin proxy; user can override with explicit URL
+	let serverUrl = (localStorage.getItem('brickquest_server_url') || '').trim();
     let playerName = (localStorage.getItem('brickquest_player_name')) || genDefaultName();
 	let legsIndex = clampIndex(parseInt(localStorage.getItem('brickquest_color_legs_idx') || '1', 10));
 	let torsoIndex = clampIndex(parseInt(localStorage.getItem('brickquest_color_torso_idx') || '1', 10));
@@ -39,7 +58,7 @@
 
 	function simpleValidateUrl(input) {
 		const s = (input || '').trim();
-		if (!s) return false;
+		if (!s) return true; // blank means use same-origin via proxy
 		// Must be host[:port] with optional protocol; very lenient
 		try { new URL(s); return true; } catch {}
 		try { new URL('http://' + s); return true; } catch {}
@@ -50,7 +69,20 @@
 		const token = ++lastHealthCheckToken;
 		serverReachable = null;
 		const url = normalizeUrl(input);
-		if (!url) { serverReachable = false; return; }
+		if (!url) {
+			// When blank, check same-origin via dev proxy
+			try {
+				const res = await fetch('/health', { method: 'GET', mode: 'cors' });
+				if (token !== lastHealthCheckToken) return; // stale
+				if (!res.ok) { serverReachable = false; return; }
+				const data = await res.json().catch(()=>({}));
+				serverReachable = data && data.ok === true;
+			} catch (_) {
+				if (token !== lastHealthCheckToken) return;
+				serverReachable = false;
+			}
+			return;
+		}
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), 1500);
 		try {
@@ -74,7 +106,10 @@
 	}
 
 	// Run initial validation on mount
-	onMount(() => { serverValid = simpleValidateUrl(serverUrl); checkServerHealth(serverUrl); });
+	onMount(() => {
+		serverValid = simpleValidateUrl(serverUrl);
+		checkServerHealth(serverUrl);
+	});
 
     function clampIndex(i) { return Number.isFinite(i) ? Math.max(0, Math.min(brickColorHexes.length - 1, i | 0)) : 0; }
     function genDefaultName() {
@@ -258,17 +293,24 @@
             <button type="submit" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 active:scale-95 rounded text-white font-bold">Start</button>
         </form>
     </div>
-    <div class="absolute top-6 right-6 bg-black bg-opacity-60 p-3 rounded-xl z-20" style="contain: paint;">
-        <div class="text-sm opacity-80 mb-1">Server address</div>
-		<input
-			class="w-80 px-3 py-2 rounded bg-white text-black outline-none"
-			bind:value={serverUrl}
-			placeholder="http://localhost:3001"
-			autocomplete="off"
-			on:input={onServerUrlInput}
-			style="{serverValid && serverReachable === true ? 'outline: 3px solid #22c55e; outline-offset: 2px;' : serverValid && serverReachable === false ? 'outline: 3px solid #ef4444; outline-offset: 2px;' : !serverValid ? 'outline: 3px solid #ef4444; outline-offset: 2px;' : ''}"
-		/>
-    </div>
+    <div class="absolute top-6 right-6 bg-black bg-opacity-60 p-3 rounded-xl z-20" style="contain: paint; {serverStatusStyle}">
+		<button class="flex items-center gap-2 text-sm opacity-90 hover:opacity-100 select-none" on:click|preventDefault={() => showServerSettings = !showServerSettings}>
+			<span class="font-semibold">Server</span>
+		</button>
+		{#if showServerSettings}
+			<div class="mt-2">
+				<div class="text-sm opacity-80 mb-1">Server address</div>
+				<input
+					class="w-80 px-3 py-2 rounded bg-white text-black outline-none"
+					bind:value={serverUrl}
+					placeholder={defaultServerUrl}
+					autocomplete="off"
+					on:input={onServerUrlInput}
+				/>
+				<div class="text-xs mt-1 opacity-75">Leave blank to use same-origin proxy</div>
+			</div>
+		{/if}
+	</div>
 	{#if loadingText}
 		<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
 			<div class="text-white text-xl bg-black bg-opacity-50 px-4 py-2 rounded">{loadingText}</div>

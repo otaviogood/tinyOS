@@ -147,6 +147,12 @@ async function handleSubfile(cmd, parentTransform, depth, accumCull, accumInvert
 async function processFile(filePath, transformMatrix = null, depth = 0, accumCull = true, accumInvert = false, withinStudContext = false) {
     if (depth > 10) { console.warn('Maximum recursion depth reached'); return; }
     let content = fs.readFileSync(filePath, 'utf8');
+    // Track top-level part ID for whitelist checks (set per top-level call)
+    if (depth === 0) {
+        const base = path.basename(filePath).toLowerCase();
+        const m = base.match(/^(\d+)/);
+        if (m) this.currentTopPartId = m[1];
+    }
     content = this.appendShadowLibraryContent(filePath, content);
     const lines = content.split(/\r?\n/);
     const savedBfcState = { ...this.bfcState };

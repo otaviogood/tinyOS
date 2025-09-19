@@ -78,7 +78,11 @@ class LDrawParserAdvanced {
 
         // Parts to skip entirely during export (by numeric part ID prefix)
         // Example: '92438' will skip files like '92438.dat' or '92438p01.dat'
-        this.skipPartIds = new Set(['92438']);
+        this.skipPartIds = new Set(['3937','79846','5904', '6134', '60623']);
+
+        // Whitelist: relax female-with-axle antistud exclusion for these top-level part IDs
+        // This is a conservative override to fix specific parts without impacting others
+        this.relaxFemaleAxleAntistudForParts = new Set(['59900', '32828', '60623']);
     }
 
     // Find a part file in the library (delegated)
