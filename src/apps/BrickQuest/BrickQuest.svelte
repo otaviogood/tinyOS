@@ -6,7 +6,7 @@
     import FourByThreeScreen from "../../components/FourByThreeScreen.svelte";
     import CloseButton from "../../components/CloseButton.svelte";
     import { Animator, frameCount, animateCount } from "../../animator";
-    import { createBrickQuestRenderer } from "./renderer/threeRenderer.js";
+    import { createBrickQuestFragglRenderer } from "./renderer/fragglRenderer.js";
     import Fast2dBQ from "./overlay/Fast2dBQ.svelte";
     import GraphRTBQ from "./overlay/GraphRTBQ.svelte";
     import FastLineBQ from "./overlay/FastLineBQ.svelte";
@@ -39,7 +39,6 @@
     inputState.events = [];
     inputState.frame = 0;
     
-    // Three.js internals moved to renderer3d
     let pieceList = []; // List of available pieces from server
     let piecesData = {}; // pieceId -> { studs: [], antiStuds: [] }
     let selectedPieceIndex = 0; // Currently selected piece for placement
@@ -63,23 +62,16 @@
     let currentRTT = 0; // Current round-trip time in milliseconds
     let smoothedRTT = 0; // Exponentially smoothed RTT
 
-    // Network diff backlog (fast-forward queue)
-    let pendingStateDiffs = [];
     // Simple client-side delay buffer (arrival-time based)
     const MIN_DELAY_MS = 17; // ~1 frame at 60 fps
     let renderDelayMs = MIN_DELAY_MS; // initial delay; tune between 100-150ms
     const MAX_DELAY_MS = 400;
     const MAX_BUFFER_MS = 300; // if buffered span exceeds this, catch up
-    const UNDERFLOW_BUMP_MS = 10; // add when starving
-    const OVERFLOW_TRIM_MS = 20; // remove when too full
+    const MAX_BUFFER_SIZE = 120; // max number of diffs to buffer (2 seconds at 60Hz)
     let pendingByArrival = []; // [{ t: performance.now(), diff }]
     let lastAppliedArrivalTs = 0;
     let bufferEmptySinceTs = 0; // track continuous empty-buffer duration
-    // Ensure we render at least periodically even under backlog
-    let framesSinceLastFullLoop = 0;
-    // Backlog handling constants
-    const BACKLOG_SKIP_THRESHOLD = 1; // queued > this means we're behind
-    const BACKLOG_LIMIT = 15; // max diffs per skip-frame AND max consecutive skip frames
+    let bufferOverflowCount = 0; // count consecutive overflows for catastrophic lag detection
 
     let showStart = true; // DEBUG: Skip start screen
     let showPicker = false;
@@ -117,10 +109,42 @@
         }
         return () => {
             document.removeEventListener('brickquest-start', onStart);
+            
+            // Clean up event listeners
+            window.removeEventListener("resize", onWindowResize);
+            
+            // Clean up animator
             animator.stop();
-            if (socket) socket.disconnect();
-            if (heartbeatIntervalId) { clearInterval(heartbeatIntervalId); heartbeatIntervalId = null; }
-            if (renderer3d) renderer3d.dispose();
+            
+            // Clean up socket and its event handlers
+            if (socket) {
+                socket.off('connect');
+                socket.off('disconnect');
+                socket.off('connect_error');
+                socket.off('reconnect');
+                socket.off('init');
+                socket.off('stateDiff');
+                socket.disconnect();
+                socket = null;
+            }
+            
+            // Clean up intervals
+            if (heartbeatIntervalId) { 
+                clearInterval(heartbeatIntervalId); 
+                heartbeatIntervalId = null; 
+            }
+            
+            // Clean up renderer
+            if (renderer3d) {
+                renderer3d.dispose();
+                renderer3d = null;
+            }
+            
+            // Clean up data structures
+            sentFrames.clear();
+            pendingByArrival.length = 0;
+            cpuSeries.values.length = 0;
+            gpuSeries.values.length = 0;
         };
     });
 
@@ -131,11 +155,10 @@
             await initThree();
         }
         initNetworking();
-        setupKeyboardControls();
     }
 
     async function initThree() {
-        renderer3d = createBrickQuestRenderer(container, {
+        renderer3d = createBrickQuestFragglRenderer(container, {
             colorPalette: brickColorHexes,
             onLoadingTextChange: (t) => (loadingText = t),
             onError: (e) => {
@@ -144,15 +167,17 @@
             },
         });
         renderer3d.setGameStateProvider(() => gameState);
+        renderer3d.setData({ pieceList, piecesData });
+        renderer3d.setChunkConfig(null);
+        renderer3d.setChunkDebugVisible(chunkDebugVisible);
         await renderer3d.init();
         window.addEventListener("resize", onWindowResize);
-        
-        // Setup preview after a small delay to ensure DOM is ready
         await nextTick();
-        if (previewContainer) {
+        if (previewContainer && renderer3d.setupPreview) {
             renderer3d.setupPreview(previewContainer);
-            // Sync the initial color selection
-            renderer3d.setSelectedColorIndex(selectedColorIndex);
+            if (renderer3d.setSelectedColorIndex) {
+                renderer3d.setSelectedColorIndex(selectedColorIndex);
+            }
         }
     }
 
@@ -269,10 +294,10 @@
                     anchorMode = 'anti';
                 }
                 // Apply renderer sync for stud index and anchor mode
-                if (renderer3d && renderer3d.setSelectedStudIndex) {
+                if (renderer3d.setSelectedStudIndex) {
                     renderer3d.setSelectedStudIndex(selectedStudIndex);
                 }
-                if (renderer3d && renderer3d.setAnchorMode) {
+                if (renderer3d.setAnchorMode) {
                     renderer3d.setAnchorMode(anchorMode);
                 }
                 console.timeEnd('[BrickQuest] init');
@@ -280,7 +305,7 @@
             // Sync selected color index
             if (localPlayer && localPlayer.selectedColorIndex !== undefined) {
                 selectedColorIndex = Math.max(0, Math.min(brickColorHexes.length - 1, localPlayer.selectedColorIndex));
-                renderer3d && renderer3d.setSelectedColorIndex(selectedColorIndex);
+                renderer3d.setSelectedColorIndex(selectedColorIndex);
             }
             // Ensure ghost is created/updated after we know piece list and geometries
             renderer3d.setSelectedPieceIndex(selectedPieceIndex);
@@ -311,173 +336,171 @@
         }, 500);
     }
 
-    function setupKeyboardControls() {
-        window.addEventListener('keydown', (e) => {
-            let key = e.key.toLowerCase();
-            // Normalize spacebar across browsers (e.key can be ' ', 'Spacebar'; e.code is 'Space')
-            if (e.code === 'Space' || key === ' ' || key === 'spacebar') {
-                key = 'space';
-                // Prevent page scroll on space
-                e.preventDefault();
+    function handleKeyDown(e) {
+        let key = e.key.toLowerCase();
+        // Normalize spacebar across browsers (e.key can be ' ', 'Spacebar'; e.code is 'Space')
+        if (e.code === 'Space' || key === ' ' || key === 'spacebar') {
+            key = 'space';
+            // Prevent page scroll on space
+            e.preventDefault();
+        }
+        // Map arrow keys to WASD for left-handed players
+        if (key === 'arrowup') key = 'w';
+        else if (key === 'arrowdown') key = 's';
+        else if (key === 'arrowleft') key = 'a';
+        else if (key === 'arrowright') key = 'd';
+        if (inputState.keys.hasOwnProperty(key)) {
+            inputState.keys[key] = true;
+        }
+        
+        // ESC key exits pointer lock (unless picker is open)
+        if (e.key === 'Escape') {
+            if (showPicker) {
+                // handled by picker
+            } else {
+                document.exitPointerLock();
             }
-            // Map arrow keys to WASD for left-handed players
-            if (key === 'arrowup') key = 'w';
-            else if (key === 'arrowdown') key = 's';
-            else if (key === 'arrowleft') key = 'a';
-            else if (key === 'arrowright') key = 'd';
-            if (inputState.keys.hasOwnProperty(key)) {
-                inputState.keys[key] = true;
+        }
+        
+        // Piece selection with - and = keys
+        if (e.key === '-' || e.key === '_') {
+            changePiece(-1);
+        } else if (e.key === '=' || e.key === '+') {
+            changePiece(1);
+        } else if (e.key === ',') {
+            changeColor(-1);
+        } else if (e.key === '.') {
+            changeColor(1);
+        } else if (key === 'z') {
+            // Rotate counter-clockwise by 90 degrees
+            ghostYaw -= Math.PI / 2;
+            // Normalize to [-PI, PI] range to keep numbers small
+            if (ghostYaw <= -Math.PI) ghostYaw += Math.PI * 2;
+            renderer3d.setGhostYaw(ghostYaw);
+        } else if (key === 'x') {
+            // Rotate clockwise by 90 degrees
+            ghostYaw += Math.PI / 2;
+            if (ghostYaw > Math.PI) ghostYaw -= Math.PI * 2;
+            renderer3d.setGhostYaw(ghostYaw);
+        } else if (e.key === "'" || e.code === 'Quote') {
+            // Delegate cycling to server; keep client thin
+            inputState.events.push({ type: 'cycleAnchor', delta: 1 });
+        } else if (e.key === ';' || e.code === 'Semicolon') {
+            // Delegate reverse cycling to server; keep client thin
+            inputState.events.push({ type: 'cycleAnchor', delta: -1 });
+        } else if (e.key === '`' || e.code === 'Backquote') {
+            // Toggle chunk debug helpers
+            if (renderer3d && renderer3d.setChunkDebugVisible) {
+                // Flip the renderer-side state by reading from a local flag we keep in sync
+                chunkDebugVisible = !chunkDebugVisible;
+                renderer3d.setChunkDebugVisible(chunkDebugVisible);
             }
-            
-            // ESC key exits pointer lock (unless picker is open)
-            if (e.key === 'Escape') {
-                if (showPicker) {
-                    // handled by picker
-                } else {
+        } else if (key === 'c') {
+            // Toggle simple third-person follow camera (debug)
+            isThirdPerson = !isThirdPerson;
+        } else if (key === 'p') {
+            if (!showPicker) {
+                // Open picker overlay
+                showPicker = true;
+                recaptureOnNextEscUp = false;
+                // Disable preview rotation render while picker open
+                if (renderer3d && renderer3d.setPreviewEnabled) renderer3d.setPreviewEnabled(false);
+                // Release pointer lock so mouse can be used
+                if (document.pointerLockElement === container) {
                     document.exitPointerLock();
                 }
-            }
-            
-            // Piece selection with - and = keys
-            if (e.key === '-' || e.key === '_') {
-                changePiece(-1);
-            } else if (e.key === '=' || e.key === '+') {
-                changePiece(1);
-            } else if (e.key === ',') {
-                changeColor(-1);
-            } else if (e.key === '.') {
-                changeColor(1);
-            } else if (key === 'z') {
-                // Rotate counter-clockwise by 90 degrees
-                ghostYaw -= Math.PI / 2;
-                // Normalize to [-PI, PI] range to keep numbers small
-                if (ghostYaw <= -Math.PI) ghostYaw += Math.PI * 2;
-                renderer3d.setGhostYaw(ghostYaw);
-            } else if (key === 'x') {
-                // Rotate clockwise by 90 degrees
-                ghostYaw += Math.PI / 2;
-                if (ghostYaw > Math.PI) ghostYaw -= Math.PI * 2;
-                renderer3d.setGhostYaw(ghostYaw);
-            } else if (e.key === "'" || e.code === 'Quote') {
-                // Delegate cycling to server; keep client thin
-                inputState.events.push({ type: 'cycleAnchor', delta: 1 });
-            } else if (e.key === ';' || e.code === 'Semicolon') {
-                // Delegate reverse cycling to server; keep client thin
-                inputState.events.push({ type: 'cycleAnchor', delta: -1 });
-            } else if (e.key === '`' || e.code === 'Backquote') {
-                // Toggle chunk debug helpers
-                if (renderer3d && renderer3d.setChunkDebugVisible) {
-                    // Flip the renderer-side state by reading from a local flag we keep in sync
-                    chunkDebugVisible = !chunkDebugVisible;
-                    renderer3d.setChunkDebugVisible(chunkDebugVisible);
-                }
-            } else if (key === 'c') {
-                // Toggle simple third-person follow camera (debug)
-                isThirdPerson = !isThirdPerson;
-            } else if (key === 'p') {
-                if (!showPicker) {
-                    // Open picker overlay
-                    showPicker = true;
-                    recaptureOnNextEscUp = false;
-                    // Disable preview rotation render while picker open
-                    if (renderer3d && renderer3d.setPreviewEnabled) renderer3d.setPreviewEnabled(false);
-                    // Release pointer lock so mouse can be used
-                    if (document.pointerLockElement === container) {
-                        document.exitPointerLock();
-                    }
-                } else {
-                    // Close picker and resume gameplay
-                    showPicker = false;
-                    recaptureOnNextEscUp = false;
-                    if (renderer3d && renderer3d.setPreviewEnabled) renderer3d.setPreviewEnabled(true);
-                    if (container && container.requestPointerLock) {
-                        try { container.requestPointerLock(); } catch(_) {}
-                    }
-                }
-            } else if (key === 'r') {
-                // Eyedropper: pick hovered piece, color, and rotation (yaw)
-                if (showPicker) return; // ignore while picker open
-                const hoveredBrickId = renderer3d && renderer3d.getPickedBrickId && renderer3d.getPickedBrickId();
-                if (!hoveredBrickId) return;
-                // Resolve pieceId and colorIndex from game state (prefer brickIndex if present)
-                let pieceId = null;
-                let brickColorIndex = null;
-                let sampledBrick = null;
-                if (gameState && gameState.brickIndex && gameState.brickIndex[hoveredBrickId]) {
-                    const ck = gameState.brickIndex[hoveredBrickId];
-                    const chunk = gameState.chunks && gameState.chunks[ck];
-                    const b = chunk && chunk.bricks && chunk.bricks[hoveredBrickId];
-                    sampledBrick = b || null;
-                    pieceId = b && b.pieceId;
-                    if (b && b.colorIndex != null) brickColorIndex = b.colorIndex | 0;
-                } else if (gameState && gameState.chunks) {
-                    for (const [ck, chunk] of Object.entries(gameState.chunks)) {
-                        const b = chunk && chunk.bricks && chunk.bricks[hoveredBrickId];
-                        if (b && b.pieceId) { sampledBrick = b; pieceId = b.pieceId; if (b.colorIndex != null) brickColorIndex = b.colorIndex | 0; break; }
-                    }
-                }
-                if (!pieceId || !Array.isArray(pieceList) || pieceList.length === 0) return;
-                // Sample yaw rotation from the brick if available
-                let sampledYaw = 0;
-                if (sampledBrick && sampledBrick.rotation && typeof sampledBrick.rotation.y === 'number') {
-                    sampledYaw = sampledBrick.rotation.y;
-                }
-                const targetIndex = pieceList.findIndex((p) => p && String(p.id) === String(pieceId));
-                if (targetIndex < 0) return;
-                // Compute shortest wrap delta and request change via server
-                const n = pieceList.length | 0;
-                const cur = selectedPieceIndex | 0;
-                let d = ((targetIndex - cur) % n + n) % n;
-                let dBack = d - n;
-                const delta = (Math.abs(dBack) < d) ? dBack : d;
-                // If the piece is already selected, avoid sending a pieceChange event
-                if (delta !== 0) {
-                    // Mark that we want to preserve sampled yaw when the server echoes the piece change
-                    preserveYawOnNextPieceChange = true;
-                    pendingSampledYaw = 0; // will set below if available
-                    changePiece(delta);
-                }
-                // Also pick the color if available
-                if (Number.isFinite(brickColorIndex)) {
-                    const clamped = Math.max(0, Math.min(brickColorHexes.length - 1, brickColorIndex | 0));
-                    setColor(clamped);
-                }
-                // Apply sampled yaw after piece change (since changePiece resets yaw)
-                if (typeof sampledYaw === 'number') {
-                    if (delta === 0) {
-                        // No piece change; apply immediately
-                        ghostYaw = sampledYaw;
-                        renderer3d.setGhostYaw(ghostYaw);
-                    } else {
-                        // Defer until server echo of selectedPieceIndex so our local reset doesn't override
-                        pendingSampledYaw = sampledYaw;
-                    }
-                }
-            }
-        });
-
-        window.addEventListener('keyup', (e) => {
-            let key = e.key.toLowerCase();
-            if (e.code === 'Space' || key === ' ' || key === 'spacebar') {
-                key = 'space';
-                e.preventDefault();
-            }
-            // Map arrow keys to WASD for left-handed players
-            if (key === 'arrowup') key = 'w';
-            else if (key === 'arrowdown') key = 's';
-            else if (key === 'arrowleft') key = 'a';
-            else if (key === 'arrowright') key = 'd';
-            if (inputState.keys.hasOwnProperty(key)) {
-                inputState.keys[key] = false;
-            }
-            // If we just closed picker due to ESC, recapture on ESC keyup
-            if ((e.key === 'Escape' || key === 'escape') && recaptureOnNextEscUp) {
+            } else {
+                // Close picker and resume gameplay
+                showPicker = false;
                 recaptureOnNextEscUp = false;
+                if (renderer3d && renderer3d.setPreviewEnabled) renderer3d.setPreviewEnabled(true);
                 if (container && container.requestPointerLock) {
                     try { container.requestPointerLock(); } catch(_) {}
                 }
             }
-        });
+        } else if (key === 'r') {
+            // Eyedropper: pick hovered piece, color, and rotation (yaw)
+            if (showPicker) return; // ignore while picker open
+            const hoveredBrickId = renderer3d && renderer3d.getPickedBrickId && renderer3d.getPickedBrickId();
+            if (!hoveredBrickId) return;
+            // Resolve pieceId and colorIndex from game state (prefer brickIndex if present)
+            let pieceId = null;
+            let brickColorIndex = null;
+            let sampledBrick = null;
+            if (gameState && gameState.brickIndex && gameState.brickIndex[hoveredBrickId]) {
+                const ck = gameState.brickIndex[hoveredBrickId];
+                const chunk = gameState.chunks && gameState.chunks[ck];
+                const b = chunk && chunk.bricks && chunk.bricks[hoveredBrickId];
+                sampledBrick = b || null;
+                pieceId = b && b.pieceId;
+                if (b && b.colorIndex != null) brickColorIndex = b.colorIndex | 0;
+            } else if (gameState && gameState.chunks) {
+                for (const [ck, chunk] of Object.entries(gameState.chunks)) {
+                    const b = chunk && chunk.bricks && chunk.bricks[hoveredBrickId];
+                    if (b && b.pieceId) { sampledBrick = b; pieceId = b.pieceId; if (b.colorIndex != null) brickColorIndex = b.colorIndex | 0; break; }
+                }
+            }
+            if (!pieceId || !Array.isArray(pieceList) || pieceList.length === 0) return;
+            // Sample yaw rotation from the brick if available
+            let sampledYaw = 0;
+            if (sampledBrick && sampledBrick.rotation && typeof sampledBrick.rotation.y === 'number') {
+                sampledYaw = sampledBrick.rotation.y;
+            }
+            const targetIndex = pieceList.findIndex((p) => p && String(p.id) === String(pieceId));
+            if (targetIndex < 0) return;
+            // Compute shortest wrap delta and request change via server
+            const n = pieceList.length | 0;
+            const cur = selectedPieceIndex | 0;
+            let d = ((targetIndex - cur) % n + n) % n;
+            let dBack = d - n;
+            const delta = (Math.abs(dBack) < d) ? dBack : d;
+            // If the piece is already selected, avoid sending a pieceChange event
+            if (delta !== 0) {
+                // Mark that we want to preserve sampled yaw when the server echoes the piece change
+                preserveYawOnNextPieceChange = true;
+                pendingSampledYaw = 0; // will set below if available
+                changePiece(delta);
+            }
+            // Also pick the color if available
+            if (Number.isFinite(brickColorIndex)) {
+                const clamped = Math.max(0, Math.min(brickColorHexes.length - 1, brickColorIndex | 0));
+                setColor(clamped);
+            }
+            // Apply sampled yaw after piece change (since changePiece resets yaw)
+            if (typeof sampledYaw === 'number') {
+                if (delta === 0) {
+                    // No piece change; apply immediately
+                    ghostYaw = sampledYaw;
+                    renderer3d.setGhostYaw(ghostYaw);
+                } else {
+                    // Defer until server echo of selectedPieceIndex so our local reset doesn't override
+                    pendingSampledYaw = sampledYaw;
+                }
+            }
+        }
+    }
+
+    function handleKeyUp(e) {
+        let key = e.key.toLowerCase();
+        if (e.code === 'Space' || key === ' ' || key === 'spacebar') {
+            key = 'space';
+            e.preventDefault();
+        }
+        // Map arrow keys to WASD for left-handed players
+        if (key === 'arrowup') key = 'w';
+        else if (key === 'arrowdown') key = 's';
+        else if (key === 'arrowleft') key = 'a';
+        else if (key === 'arrowright') key = 'd';
+        if (inputState.keys.hasOwnProperty(key)) {
+            inputState.keys[key] = false;
+        }
+        // If we just closed picker due to ESC, recapture on ESC keyup
+        if ((e.key === 'Escape' || key === 'escape') && recaptureOnNextEscUp) {
+            recaptureOnNextEscUp = false;
+            if (container && container.requestPointerLock) {
+                try { container.requestPointerLock(); } catch(_) {}
+            }
+        }
     }
     
     function changePiece(direction) {
@@ -491,7 +514,7 @@
     function changeColor(direction) {
         const n = brickColorHexes.length;
         selectedColorIndex = n > 0 ? (((selectedColorIndex + direction) % n + n) % n) : 0;
-        renderer3d && renderer3d.setSelectedColorIndex(selectedColorIndex);
+        renderer3d.setSelectedColorIndex(selectedColorIndex);
         inputState.events.push({ type: 'colorChange', delta: direction });
     }
 
@@ -499,7 +522,7 @@
         const clamped = Math.max(0, Math.min(brickColorHexes.length - 1, index));
         if (clamped === selectedColorIndex) return;
         selectedColorIndex = clamped;
-        renderer3d && renderer3d.setSelectedColorIndex(selectedColorIndex);
+        renderer3d.setSelectedColorIndex(selectedColorIndex);
         inputState.events.push({ type: 'setColor', index: clamped });
     }
 
@@ -508,10 +531,10 @@
 
         // Update mouse ray and currently picked brick id (if any)
         const mouseRay = renderer3d.getMouseWorldPosition();
-        inputState.mouse.x = mouseRay.x;
-        inputState.mouse.y = mouseRay.y;
-        inputState.mouse.z = mouseRay.z;
-        const pickedBrickId = renderer3d.getPickedBrickId && renderer3d.getPickedBrickId();
+        inputState.mouse.x = mouseRay?.x ?? 0;
+        inputState.mouse.y = mouseRay?.y ?? 0;
+        inputState.mouse.z = mouseRay?.z ?? 0;
+        const pickedBrickId = renderer3d.getPickedBrickId();
         inputState.mouse.brickId = pickedBrickId || null;
 
         // Update camera rotation
@@ -527,10 +550,10 @@
                 const ghost = {
                     // Do not send pieceId/anchor selection; server uses authoritative player state
                     yaw: ghostYaw,
-                    closestStud: (renderer3d.getClosestStudInfo && renderer3d.getClosestStudInfo()) || null,
-                    closestAntiStud: (renderer3d.getClosestAntiStudInfo && renderer3d.getClosestAntiStudInfo()) || null,
+                    closestStud: renderer3d.getClosestStudInfo() || null,
+                    closestAntiStud: renderer3d.getClosestAntiStudInfo() || null,
                 };
-                const gr = renderer3d.getGhostRotationEuler && renderer3d.getGhostRotationEuler();
+                const gr = renderer3d.getGhostRotationEuler();
                 if (gr && typeof gr.x === 'number') {
                     ghost.rotation = { x: gr.x, y: gr.y, z: gr.z };
                 }
@@ -612,24 +635,12 @@
                             }
                             renderer3d.setSelectedPieceIndex(selectedPieceIndex);
                             renderer3d.setGhostYaw(ghostYaw);
-                        }
-                        if (player.selectedColorIndex !== undefined && player.selectedColorIndex !== selectedColorIndex) {
-                            selectedColorIndex = Math.max(0, Math.min(brickColorHexes.length - 1, player.selectedColorIndex));
-                            renderer3d && renderer3d.setSelectedColorIndex(selectedColorIndex);
-                        }
-                        if (Number.isFinite(player.selectedAntiStudIndex) && player.selectedAntiStudIndex !== selectedAntiStudIndex) {
-                            selectedAntiStudIndex = Math.max(0, player.selectedAntiStudIndex | 0);
+                            renderer3d.setSelectedColorIndex(selectedColorIndex);
                             renderer3d.setSelectedAntiStudIndex(selectedAntiStudIndex);
-                        }
-                        if (Number.isFinite(player.selectedStudIndex) && player.selectedStudIndex !== selectedStudIndex) {
-                            selectedStudIndex = Math.max(0, player.selectedStudIndex | 0);
-                            if (renderer3d && renderer3d.setSelectedStudIndex) {
+                            if (renderer3d.setSelectedStudIndex) {
                                 renderer3d.setSelectedStudIndex(selectedStudIndex);
                             }
-                        }
-                        if (typeof player.anchorMode === 'string' && player.anchorMode !== anchorMode) {
-                            anchorMode = player.anchorMode;
-                            if (renderer3d && renderer3d.setAnchorMode) {
+                            if (renderer3d.setAnchorMode) {
                                 renderer3d.setAnchorMode(anchorMode);
                             }
                         }
@@ -688,78 +699,88 @@
         }
     }
 
-    function drainPendingDiffs(maxToProcess = Infinity) {
-        if (!pendingStateDiffs.length) return 0;
-        let processed = 0;
-        while (pendingStateDiffs.length && processed < maxToProcess) {
-            const evt = pendingStateDiffs.shift();
-            if (evt && evt.diff) {
-                applySingleStateDiff(evt.diff);
-            }
-            processed++;
-        }
-        return processed;
+
+
+
+    function onWindowResize() {
+        renderer3d && renderer3d.onResize && renderer3d.onResize();
     }
-
-    function processBacklogAndMaybeSkip() {
-        if (pendingStateDiffs.length <= 0) return false;
-        const maxToProcess = (pendingStateDiffs.length > BACKLOG_SKIP_THRESHOLD && framesSinceLastFullLoop < BACKLOG_LIMIT)
-            ? BACKLOG_LIMIT
-            : Infinity;
-        drainPendingDiffs(maxToProcess);
-        if (pendingStateDiffs.length > 0 && framesSinceLastFullLoop < BACKLOG_LIMIT) {
-            framesSinceLastFullLoop++;
-            return true;
-        }
-        return false;
-    }
-
-
-
-    function onWindowResize() { renderer3d && renderer3d.onResize(); }
 
 	function tick() {
-		// Apply diffs using simple delay buffer based on arrival time
+		if (!renderer3d || !renderer3d.renderTick) return;
+		
 		const now = performance.now();
+		
+		// Detect catastrophic lag: buffer maxed out AND old diffs accumulating
+		if (pendingByArrival.length >= MAX_BUFFER_SIZE) {
+			const oldestDiffAge = now - pendingByArrival[0].t;
+			if (oldestDiffAge > 2000) {
+				// Client has been severely lagging for 2+ seconds; hard reset buffer
+				console.warn(`[BrickQuest] Catastrophic lag detected (${pendingByArrival.length} buffered, oldest ${Math.round(oldestDiffAge)}ms old). Resetting buffer.`);
+				// Keep only the most recent 10 diffs to catch up quickly
+				pendingByArrival = pendingByArrival.slice(-10);
+				renderDelayMs = MIN_DELAY_MS;
+				bufferOverflowCount = 0;
+			}
+		}
+		
+		// Limit buffer size to prevent unbounded growth during sustained client slowdown
+		if (pendingByArrival.length > MAX_BUFFER_SIZE) {
+			// Drop oldest diffs to maintain buffer size limit
+			const toDrop = pendingByArrival.length - MAX_BUFFER_SIZE;
+			pendingByArrival = pendingByArrival.slice(toDrop);
+			bufferOverflowCount++;
+			if (bufferOverflowCount % 60 === 0) {
+				console.warn(`[BrickQuest] Buffer overflow (dropping ${toDrop} diffs). Client may be too slow.`);
+			}
+		} else {
+			bufferOverflowCount = 0;
+		}
+		
+		// Apply diffs using delay buffer based on arrival time
 		const cutoff = now - renderDelayMs;
-		while (pendingByArrival.length && pendingByArrival[0].t <= cutoff) {
+		let diffsApplied = 0;
+		const MAX_DIFFS_PER_FRAME = 10; // Prevent applying too many diffs in one frame
+		while (pendingByArrival.length && pendingByArrival[0].t <= cutoff && diffsApplied < MAX_DIFFS_PER_FRAME) {
 			const evt = pendingByArrival.shift();
 			lastAppliedArrivalTs = evt.t;
 			if (evt && evt.diff) {
 				applySingleStateDiff(evt.diff);
+				diffsApplied++;
 			}
 		}
+		
 		// Adjust delay to avoid underflow/overflow
 		if (pendingByArrival.length === 0) {
-			// Buffer empty: reduce delay slowly to lower latency after sustained emptiness
-			if (!bufferEmptySinceTs) bufferEmptySinceTs = now;
-			else if (now - bufferEmptySinceTs >= 1000) {
-				renderDelayMs = Math.max(MIN_DELAY_MS, renderDelayMs - 5);
+			// Buffer empty: reduce delay to lower latency
+			if (!bufferEmptySinceTs) {
+				bufferEmptySinceTs = now;
+			} else if (now - bufferEmptySinceTs >= 500) {
+				// After 500ms of sustained emptiness, reduce delay more aggressively
+				const reduction = (now - bufferEmptySinceTs >= 2000) ? 10 : 5;
+				renderDelayMs = Math.max(MIN_DELAY_MS, renderDelayMs - reduction);
 				bufferEmptySinceTs = now;
 			}
 		} else {
 			bufferEmptySinceTs = 0;
 			const spanMs = pendingByArrival[pendingByArrival.length - 1].t - pendingByArrival[0].t;
 			const margin = 8; // hysteresis to avoid twitchy adjustments
+			
 			if (spanMs > renderDelayMs + margin) {
-				// Buffer is larger than current delay can cover: bump delay upward proportionally
+				// Buffer is growing: increase delay proportionally but smoothly
 				const err = spanMs - renderDelayMs;
-				const step = Math.min(OVERFLOW_TRIM_MS, Math.max(5, Math.round(err * 0.5)));
+				const step = Math.min(20, Math.max(5, Math.round(err * 0.3)));
 				renderDelayMs = Math.min(MAX_DELAY_MS, renderDelayMs + step);
 			} else if (spanMs < renderDelayMs - 2 * margin) {
-				// We are delaying more than needed: slowly bring delay down
-				renderDelayMs = Math.max(MIN_DELAY_MS, renderDelayMs - 1);
+				// We are delaying more than needed: bring delay down
+				renderDelayMs = Math.max(MIN_DELAY_MS, renderDelayMs - 2);
 			}
-			// Safety: if span explodes far beyond cap, nudge more aggressively
+			
+			// Safety: if span explodes beyond max, jump delay up more aggressively
 			if (spanMs > MAX_BUFFER_MS) {
 				renderDelayMs = Math.min(MAX_DELAY_MS, Math.max(renderDelayMs, spanMs - margin));
 			}
 		}
-
-		// Apply any queued diffs first. Only skip the frame if there is a real backlog,
-		// but force a full loop at least every 10 frames to keep visuals responsive.
-		if (processBacklogAndMaybeSkip()) return;
-		if (!renderer3d || !renderer3d.renderTick) return;
 		// Measure CPU time for this frame's update + render
 		const t0 = performance.now();
 		// Send input to server
@@ -769,19 +790,20 @@
 		const isMoving = !!(inputState.keys.w || inputState.keys.a || inputState.keys.s || inputState.keys.d);
 		renderer3d.renderTick(localWithId, yaw, pitch, isThirdPerson, isMoving);
 		cpuMs = performance.now() - t0;
-		framesSinceLastFullLoop = 0; // reset after a full loop
-		const rs = renderer3d.getRenderStats && renderer3d.getRenderStats();
+		const rs = renderer3d.getRenderStats();
 		if (rs) {
 			drawCalls = rs.drawCalls | 0; triangles = rs.triangles | 0;
-			if (Number.isFinite(rs.gpuMsRaw)) gpuMs = rs.gpuMsRaw;
+			// Use smoothed value for text display
+			if (Number.isFinite(rs.gpuMs)) gpuMs = rs.gpuMs;
 		}
 		// Update realtime CPU/GPU graph series (cap length)
 		if (Number.isFinite(cpuMs)) {
 			cpuSeries.values.push(cpuMs);
 			if (cpuSeries.values.length > 250) cpuSeries.values.shift();
 		}
-		if (Number.isFinite(gpuMs)) {
-			gpuSeries.values.push(gpuMs);
+		// Graph uses raw unsmoothed values for more responsiveness
+		if (rs && Number.isFinite(rs.gpuMsRaw)) {
+			gpuSeries.values.push(rs.gpuMsRaw);
 			if (gpuSeries.values.length > 250) gpuSeries.values.shift();
 		}
 
@@ -828,7 +850,7 @@
                 return; // Not placeable at this moment
             }
         } else if (event.button === 2) {
-            const picked = renderer3d.getPickedBrickId && renderer3d.getPickedBrickId();
+            const picked = renderer3d.getPickedBrickId();
             if (!picked) {
                 return; // No hovered brick to delete
             }
@@ -838,11 +860,11 @@
         inputState.events.push({
             type: 'click',
             button: event.button, // 0 = left, 2 = right
-            closestStud: (renderer3d.getClosestStudInfo && renderer3d.getClosestStudInfo()) || null,
-            closestAntiStud: (renderer3d.getClosestAntiStudInfo && renderer3d.getClosestAntiStudInfo()) || null,
-            rotation: (() => { const r = renderer3d.getGhostRotationEuler && renderer3d.getGhostRotationEuler(); return r ? { x: r.x, y: r.y, z: r.z } : { x: 0, y: 0, z: 0 }; })(),
+            closestStud: renderer3d.getClosestStudInfo() || null,
+            closestAntiStud: renderer3d.getClosestAntiStudInfo() || null,
+            rotation: (() => { const r = renderer3d.getGhostRotationEuler(); return r ? { x: r.x, y: r.y, z: r.z } : { x: 0, y: 0, z: 0 }; })(),
             rotationY: ghostYaw,
-            brickId: (renderer3d.getPickedBrickId && renderer3d.getPickedBrickId()) || null,
+            brickId: renderer3d.getPickedBrickId() || null,
         });
     }
 
@@ -857,12 +879,15 @@
     animator.start();
 </script>
 
+<!-- Svelte-style window event handlers -->
+<svelte:window on:keydown={handleKeyDown} on:keyup={handleKeyUp} />
+
     <FourByThreeScreen bg="black">
         <div class="flex-center-all h-full w-full relative">
             {#if showStart}
                 <StartScreen />
             {:else}
-        <!-- Three.js container -->
+        <!-- Fraggl renderer container -->
             <div
             bind:this={container}
             class="w-full h-full cursor-crosshair"
