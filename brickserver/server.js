@@ -726,7 +726,7 @@ setInterval(() => {
         lastFrameLogTs = ts;
         const barsCount = Math.max(0, Math.round(worst1sMs));
         const bars = '_'.repeat(barsCount);
-        console.log(`[frame] ${frameMs.toFixed(3)} ms (worst 1s ${worst1sMs.toFixed(3)} ms) ${bars}`);
+        // console.log(`[frame] ${frameMs.toFixed(3)} ms (worst 1s ${worst1sMs.toFixed(3)} ms) ${bars}`);
     }
 }, 1000 / TICK_RATE);
 

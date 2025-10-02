@@ -1,7 +1,7 @@
 <script>
     // @ts-nocheck
     import { onMount, onDestroy, createEventDispatcher } from "svelte";
-    import * as THREE from "three/src/Three.WebGPU.Nodes.js";
+    import { Scene, PerspectiveCamera, WebGPURenderer, Mesh, StandardMaterial, DirectionalLight, Vector3 } from "./renderer/fraggl/index.js";
 
     export let pieceList = [];
     export let renderer3d = null; // pass createBrickQuestRenderer instance
@@ -94,61 +94,62 @@
         await ensureSharedResources();
         const shared = renderer3d.__pickerShared;
         const renderer = shared.thumbRenderer;
+        const scene = shared.thumbScene;
+        const camera = shared.thumbCamera;
+        const mesh = shared.thumbMesh;
+        const atlasCtx = shared.atlasCtx;
+        const atlasCanvas = shared.atlasCanvas;
         const viewW = THUMB_SIZE;
         const viewH = THUMB_SIZE;
         const cols = BATCH_COLS;
-        renderer.setScissorTest(true);
+        const rows = Math.ceil(items.length / cols);
+        const atlasW = cols * viewW;
+        const atlasH = rows * viewH;
+        if (atlasCanvas.width !== atlasW || atlasCanvas.height !== atlasH) {
+            atlasCanvas.width = atlasW;
+            atlasCanvas.height = atlasH;
+        }
+        atlasCtx.clearRect(0, 0, atlasW, atlasH);
+
+        renderer.setSize(viewW, viewH, false);
         for (let i = 0; i < items.length; i++) {
             const { pieceId } = items[i];
             const geometry = renderer3d.getGeometryForPieceId && renderer3d.getGeometryForPieceId(pieceId);
             if (!geometry) continue;
-            // Build a fresh scene per tile
-            const scene = new THREE.Scene();
-            scene.background = null;
-            const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
-            const mesh = new THREE.Mesh(geometry, shared.material);
-            scene.add(mesh);
-            const hemi = new THREE.HemisphereLight(0xffffff, 0x4444a4, 0.9);
-            scene.add(hemi);
-            const dir = new THREE.DirectionalLight(0xffffff, 2.5);
-            dir.position.set(80, 120, 60);
-            scene.add(dir);
+            mesh.geometry = geometry;
             try {
-                geometry.computeBoundingBox();
-                const center = geometry.boundingBox.getCenter(new THREE.Vector3());
+                if (!geometry.boundingBox) geometry.computeBoundingBox();
+                const center = geometry.boundingBox.getCenter(new Vector3());
                 mesh.position.set(-center.x, -center.y, -center.z);
-                const size = geometry.boundingBox.getSize(new THREE.Vector3());
+                const size = geometry.boundingBox.getSize(new Vector3());
                 const maxDim = Math.max(size.x, size.y, size.z) || 1;
                 camera.position.set(maxDim * 1.6, maxDim * 1.2, maxDim * 1.6);
                 camera.lookAt(0, 0, 0);
             } catch(_) {}
-            const col = i % cols;
-            const row = Math.floor(i / cols);
-            const vx = col * viewW;
-            const vy = row * viewH;
-            renderer.setViewport(vx, vy, viewW, viewH);
-            renderer.setScissor(vx, vy, viewW, viewH);
-            if (renderer.backend && renderer.backend.device) renderer.render(scene, camera);
-            else await renderer.renderAsync(scene, camera);
+            try {
+                await renderer.render(scene, camera);
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                const dx = col * viewW;
+                const dy = row * viewH;
+                atlasCtx.drawImage(renderer.canvas, 0, 0, viewW, viewH, dx, dy, viewW, viewH);
+            } catch(_) {}
         }
-        // Present once for the entire batch, then copy tiles
-        await new Promise((r) => requestAnimationFrame(() => r()));
         for (let i = 0; i < items.length; i++) {
             const { pieceId } = items[i];
             if (!pieceId) continue;
-            const col = i % BATCH_COLS;
-            const row = Math.floor(i / BATCH_COLS);
+            const col = i % cols;
+            const row = Math.floor(i / cols);
             const sx = col * viewW;
             const sy = row * viewH;
             try {
                 thumbCtx.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE);
-                thumbCtx.drawImage(renderer.domElement, sx, sy, viewW, viewH, 0, 0, THUMB_SIZE, THUMB_SIZE);
+                thumbCtx.drawImage(atlasCanvas, sx, sy, viewW, viewH, 0, 0, THUMB_SIZE, THUMB_SIZE);
                 const dataURL = thumbCanvas.toDataURL('image/png');
                 thumbnails.set(pieceId, dataURL);
                 thumbnails = thumbnails;
             } catch(_) {}
         }
-        renderer.setScissorTest(false);
     }
 
     // Reusable canvas for encoding thumbnails
@@ -157,13 +158,34 @@
 
     async function ensureSharedResources() {
         if (!renderer3d.__pickerShared) {
-            // Reusable white material for thumbnails
-            const material = new THREE.MeshStandardNodeMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.0, envMapIntensity: 0.8 });
-            // Dedicated offscreen WebGPU renderer for thumbnails
-            const thumbRenderer = new THREE.WebGPURenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-            thumbRenderer.setSize(THUMB_SIZE * BATCH_COLS, THUMB_SIZE * BATCH_ROWS);
-            try { await thumbRenderer.init(); } catch(_) {}
-            // Encode canvas
+            const material = new StandardMaterial({ baseColor: [1,1,1,1], roughness: 0.3, metallic: 0.0 });
+            // Dedicated offscreen Fraggl WebGPU renderer for thumbnails
+            let canvas = null;
+            if (typeof document !== 'undefined') {
+                canvas = document.createElement('canvas');
+                canvas.style.display = 'none';
+            }
+            const thumbRenderer = new WebGPURenderer({ canvas, clearColor: { r: 0, g: 0, b: 0, a: 0 }, exposure: 1.0 });
+            try { await thumbRenderer.init(canvas); } catch(_) {}
+            thumbRenderer.disableShadows = true;
+            thumbRenderer.setClearAlpha(0.0);
+            thumbRenderer.setSize(THUMB_SIZE, THUMB_SIZE, false);
+
+            // Persistent scene/camera/mesh and lights for fast per-item updates
+            const thumbScene = new Scene();
+            const thumbCamera = new PerspectiveCamera(35, 1, 0.1, 2000);
+            const thumbMesh = new Mesh(null, material);
+            thumbScene.add(thumbMesh);
+            const d1 = new DirectionalLight(0xffffff, 1.0); d1.direction.set(-0.6, -1.0, -0.4).normalize(); thumbScene.add(d1);
+            // const d2 = new DirectionalLight(0x8fbfff, 0.6); d2.direction.set(0.6, -0.3, 0.6).normalize(); thumbScene.add(d2);
+
+            // Atlas canvas to assemble batches in a single frame
+            const atlasCanvas = document.createElement('canvas');
+            atlasCanvas.width = THUMB_SIZE * BATCH_COLS;
+            atlasCanvas.height = THUMB_SIZE * BATCH_ROWS;
+            const atlasCtx = atlasCanvas.getContext('2d');
+
+            // Encode canvas for individual data URLs
             if (!thumbCanvas) {
                 thumbCanvas = document.createElement('canvas');
                 thumbCtx = thumbCanvas.getContext('2d');
@@ -172,10 +194,8 @@
                 thumbCanvas.width = THUMB_SIZE;
                 thumbCanvas.height = THUMB_SIZE;
             }
-            renderer3d.__pickerShared = { material, thumbRenderer };
+            renderer3d.__pickerShared = { material, thumbRenderer, thumbScene, thumbCamera, thumbMesh, atlasCanvas, atlasCtx };
         } else {
-            // Ensure canvas is sized
-            const shared = renderer3d.__pickerShared;
             if (!thumbCanvas) {
                 thumbCanvas = document.createElement('canvas');
                 thumbCtx = thumbCanvas.getContext('2d');
@@ -183,6 +203,18 @@
             if (thumbCanvas.width !== THUMB_SIZE || thumbCanvas.height !== THUMB_SIZE) {
                 thumbCanvas.width = THUMB_SIZE;
                 thumbCanvas.height = THUMB_SIZE;
+            }
+            // Ensure atlas exists and sized
+            const shared = renderer3d.__pickerShared;
+            if (!shared.atlasCanvas) {
+                shared.atlasCanvas = document.createElement('canvas');
+                shared.atlasCtx = shared.atlasCanvas.getContext('2d');
+            }
+            const atlasW = THUMB_SIZE * BATCH_COLS;
+            const atlasH = THUMB_SIZE * BATCH_ROWS;
+            if (shared.atlasCanvas.width !== atlasW || shared.atlasCanvas.height !== atlasH) {
+                shared.atlasCanvas.width = atlasW;
+                shared.atlasCanvas.height = atlasH;
             }
         }
     }
@@ -193,46 +225,38 @@
         const geometry = renderer3d.getGeometryForPieceId && renderer3d.getGeometryForPieceId(pieceId);
         if (!geometry) return;
 
-        // Use a dedicated thumbnail WebGPU renderer (separate from preview)
         await ensureSharedResources();
         const shared = renderer3d.__pickerShared;
         const renderer = shared.thumbRenderer;
-        // Build a fresh scene per thumbnail to avoid races between jobs
-        const scene = new THREE.Scene();
-        scene.background = null;
-        const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 2000);
-        // Mesh
-        const mesh = new THREE.Mesh(geometry, shared.material);
+        const scene = new Scene();
+        const camera = new PerspectiveCamera(35, 1, 0.1, 2000);
+        const mesh = new Mesh(geometry, shared.material);
         scene.add(mesh);
-        // Lights
-        const hemi = new THREE.HemisphereLight(0xffffff, 0x4444a4, 0.9);
-        scene.add(hemi);
-        const dir = new THREE.DirectionalLight(0xffffff, 2.5);
-        dir.position.set(80, 120, 60);
-        scene.add(dir);
-        // Frame the object
+        const dir1 = new DirectionalLight(0xffffff, 2.0);
+        dir1.direction.set(-0.6, -1.0, -0.4).normalize();
+        scene.add(dir1);
+        const dir2 = new DirectionalLight(0x8fbfff, 0.6);
+        dir2.direction.set(0.6, -0.3, 0.6).normalize();
+        scene.add(dir2);
         try {
-            geometry.computeBoundingBox();
-            const center = geometry.boundingBox.getCenter(new THREE.Vector3());
+            if (!geometry.boundingBox) geometry.computeBoundingBox();
+            const center = geometry.boundingBox.getCenter(new Vector3());
             mesh.position.set(-center.x, -center.y, -center.z);
-            const size = geometry.boundingBox.getSize(new THREE.Vector3());
+            const size = geometry.boundingBox.getSize(new Vector3());
             const maxDim = Math.max(size.x, size.y, size.z) || 1;
             camera.position.set(maxDim * 1.6, maxDim * 1.2, maxDim * 1.6);
             camera.lookAt(0, 0, 0);
         } catch(_) {}
 
         try {
-            // Render to the offscreen WebGPU canvas and copy to 2D canvas
-            await renderer.renderAsync(scene, camera);
+            await renderer.render(scene, camera);
+            await new Promise((r)=>requestAnimationFrame(r));
             thumbCtx.clearRect(0, 0, THUMB_SIZE, THUMB_SIZE);
-            thumbCtx.drawImage(renderer.domElement, 0, 0, THUMB_SIZE, THUMB_SIZE);
+            thumbCtx.drawImage(renderer.canvas, 0, 0, THUMB_SIZE, THUMB_SIZE);
             const dataURL = thumbCanvas.toDataURL('image/png');
             thumbnails.set(pieceId, dataURL);
-            // Trigger Svelte reactivity for Map mutation so the <img> replaces the placeholder
             thumbnails = thumbnails;
-        } catch(_) {
-            // ignore rendering errors per-item
-        }
+        } catch(_) {}
     }
 
     onMount(() => {
@@ -242,7 +266,7 @@
         if (observer) { observer.disconnect(); observer = null; }
         // Reset shared thumb renderer so we don't carry stale frames across openings
         if (renderer3d && renderer3d.__pickerShared) {
-            try { renderer3d.__pickerShared.thumbRenderer.dispose(); } catch(_) {}
+            // Fraggl renderer has no dispose API; drop the reference to allow GC
             renderer3d.__pickerShared = null;
         }
         thumbnails = new Map();
