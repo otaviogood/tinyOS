@@ -86,8 +86,9 @@ export class WebGPURenderer {
         this._configureContext();
         this.setSize(this.canvas.clientWidth || this.canvas.width, this.canvas.clientHeight || this.canvas.height);
 
-        // Create a frame uniform buffer (viewProj, cameraPos, exposure, lightViewProj)
-        this.frameUniformBuffer = this.device.createBuffer({ size: 144, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        // Create a frame uniform buffer (viewProj, cameraPos, exposure, lightViewProj, lightDirWS)
+        // Layout (floats): 16 viewProj + 4(camPos, exposure) + 16 lightViewProj + 4(lightDirWS,pad) = 40 floats = 160 bytes
+        this.frameUniformBuffer = this.device.createBuffer({ size: 160, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         this.frameBindGroupLayout = this.device.createBindGroupLayout({
             entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }]
         });
@@ -339,8 +340,8 @@ export class WebGPURenderer {
         camera.updateMatrices();
         // Ensure scene graph world matrices are current
         scene.updateMatrixWorld(true);
-        // Update frame uniforms (viewProj, cameraPos, exposure, lightViewProj)
-        const viewProj = new Float32Array(36); // 16 viewProj + 4(camPos, exposure) + 16 lightViewProj
+        // Update frame uniforms (viewProj, cameraPos, exposure, lightViewProj, lightDirWS)
+        const viewProj = new Float32Array(40); // 16 viewProj + 4(camPos, exposure) + 16 lightViewProj + 4(lightDirWS,pad)
         // Compute viewProj = projection * view via Matrix4 helper
         if (!this._tmpViewProj) this._tmpViewProj = new Matrix4();
         this._tmpViewProj.multiply(camera.projectionMatrix, camera.viewMatrix);
@@ -477,6 +478,8 @@ export class WebGPURenderer {
             if (!this._tmpLightVP) this._tmpLightVP = new Matrix4();
             this._tmpLightVP.multiply(this._tmpLightProj, this._tmpLightView);
             viewProj.set(this._tmpLightVP.elements, 20);
+            // Store world-space light direction (from light → scene)
+            viewProj[36] = ndx; viewProj[37] = ndy; viewProj[38] = ndz; viewProj[39] = 0.0;
         } catch (_) {
             // identity lightViewProj
             viewProj[20]=1; viewProj[24]=0; viewProj[28]=0; viewProj[32]=0;
@@ -484,6 +487,8 @@ export class WebGPURenderer {
             viewProj[22]=0; viewProj[26]=0; viewProj[30]=1; viewProj[34]=0;
             viewProj[23]=0; viewProj[27]=0; viewProj[31]=0; viewProj[35]=1;
             this._frameShadowsEnabled = 0;
+            // Fallback light dir = downward
+            viewProj[36] = 0.0; viewProj[37] = -1.0; viewProj[38] = 0.0; viewProj[39] = 0.0;
         }
 
         // Upload frame uniforms now that lightViewProj is computed

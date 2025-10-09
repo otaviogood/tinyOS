@@ -106,6 +106,35 @@ function main() {
 		return 3; // everything else
 	}
 
+	// Pack standard piece info into a 16-bit integer:
+	// bits 0-5: first axis (N)
+	// bits 6-11: second axis (M)
+	// bits 12-13: height (1 for plate/flat tile, 3 for brick)
+	// bit 14: flatness (1 for flat tile, else 0)
+	// bit 15: reserved 0
+	function computePackedCode(name) {
+		const nameUpper = String(name || '').toUpperCase().trim();
+		let kind = null;
+		if (/^BRICK \d+X\d+$/.test(nameUpper)) kind = 'BRICK';
+		else if (/^PLATE \d+X\d+$/.test(nameUpper)) kind = 'PLATE';
+		else if (/^FLAT TILE \d+X\d+$/.test(nameUpper)) kind = 'FLAT TILE';
+		else return 0;
+
+		const m = /^(?:BRICK|PLATE|FLAT TILE) (\d+)X(\d+)$/.exec(nameUpper);
+		if (!m) return 0;
+		let a = parseInt(m[1], 10);
+		let b = parseInt(m[2], 10);
+		if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+		if (a < 0) a = 0; if (b < 0) b = 0;
+		if (a > 63) a = 63; if (b > 63) b = 63;
+
+		const height = (kind === 'BRICK') ? 3 : 1;
+		const flat = (kind === 'FLAT TILE') ? 1 : 0;
+
+		const code = (a & 0x3F) | ((b & 0x3F) << 6) | ((height & 0x03) << 12) | ((flat & 0x01) << 14);
+		return code & 0xFFFF;
+	}
+
 	// Group by partNumber + sanitized name, count, track bestseller and category
 	const groupMap = new Map();
 	for (const row of filtered) {
@@ -179,7 +208,10 @@ function main() {
 		finalList = finalList.concat(mustHave);
 	}
 
-	const lines = finalList.map(g => `${g.partNumber}, white, ${g.name}`);
+	const lines = finalList.map(g => {
+		const packed = computePackedCode(g.name);
+		return `${g.partNumber}, white, ${g.name}, ${packed}`;
+	});
 	fs.writeFileSync(outputCsvPath, lines.join('\n'));
 	console.log(`Wrote ${lines.length} unique rows (from ${filtered.length} filtered items) to ${outputCsvPath}`);
 }

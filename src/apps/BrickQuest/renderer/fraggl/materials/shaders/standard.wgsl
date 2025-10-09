@@ -84,6 +84,51 @@ fn disneyDiffuse(baseColor: vec3f, n: vec3f, v: vec3f, l: vec3f, roughness: f32)
     return baseColor * (nl + skyColor + groundColor);
 }
 
+// Fresnel-Schlick approximation for specular reflectance
+fn fresnelSchlick(cosTheta: f32, F0: vec3f) -> vec3f {
+    return F0 + (vec3f(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
+}
+
+// Blinn-Phong style specular term controlled by roughness
+fn specularBRDF(n: vec3f, v: vec3f, l: vec3f, roughness: f32, F0: vec3f) -> vec3f {
+    let h = normalize(v + l);
+    let nh = max(dot(n, h), 0.0);
+    let vh = max(dot(v, h), 0.0);
+    let gloss = clamp(1.0 - roughness, 0.0, 1.0);
+    let shininess = mix(8.0, 256.0, gloss * gloss);
+    let specPow = pow(nh, shininess);
+    let F = fresnelSchlick(vh, F0);
+    return F * specPow;
+}
+
+// Shared multi-directional lighting accumulator (no shadows inside)
+// - Consumes lights from u_lights
+// - Applies a small ambient term and hemisphere lighting via disneyDiffuse
+// - Applies specular using a simple BRDF and mixes metallic with baseColor
+// - shadow0 is applied only to the first light (idx 0) outside of this function
+fn computeStandardLighting(n: vec3f, v: vec3f, baseColor: vec3f, metallic: f32, roughness: f32, shadow0: f32) -> vec3f {
+    let ambient = 0.001 * baseColor;
+    var color = ambient;
+
+    // Accumulate up to 3 directional lights; shadow factor provided for the first
+    for (var idx: u32 = 0u; idx < 3u; idx = idx + 1u) {
+        if (idx >= u_lights.count) { break; }
+        let L = u_lights.lights[idx];
+        let l = normalize(-L.direction);
+        let base = disneyDiffuse(baseColor, n, v, l, roughness);
+        var sh = 1.0;
+        if (idx == 0u) { sh = shadow0; }
+        let s = sh * 0.95 + 0.05;
+        let nl = max(dot(n, l), 0.0);
+        let dielectricF0 = vec3f(0.04, 0.04, 0.04);
+        let F0 = mix(dielectricF0, baseColor, metallic);
+        let spec = specularBRDF(n, v, l, roughness, F0) * nl;
+        color = color + (base + spec * 10.0) * (L.intensity * L.color) * s;
+    }
+
+    return color;
+}
+
 // PCF shadow sampling with configurable kernel size
 fn pcfShadow(shadowCoord: vec4f) -> f32 {
     // Transform to texture space
@@ -122,29 +167,13 @@ fn pcfShadow(shadowCoord: vec4f) -> f32 {
         baseColor = baseColor * sampled.rgb;
         alpha = alpha * sampled.a;
     }
-    
-    // Simple ambient to avoid fully black surfaces
-    let ambient = 0.001 * baseColor;
-    var color = ambient;
-    
-    // Compute shadow factor once for light index 0 only
+    // Compute shadow factor once for light index 0 only (handled outside lighting fn)
     var shadow0 = 1.0;
     if ((u_lights.flags & 1u) == 1u) {
         shadow0 = pcfShadow(i.vShadowCoord);
     }
-    
-    // Accumulate up to 3 directional lights; apply shadow only for the first
-    for (var idx: u32 = 0u; idx < 3u; idx = idx + 1u) {
-        if (idx >= u_lights.count) { break; }
-        let L = u_lights.lights[idx];
-        let l = normalize(-L.direction);
-        let base = disneyDiffuse(baseColor, n, v, l, u_mat.roughness);
-        var sh = 1.0;
-        if (idx == 0u) { sh = shadow0; }
-        let s = sh * 0.95 + 0.05;
-        color = color + base * (L.intensity * L.color) * s;
-    }
-    
+
+    var color = computeStandardLighting(n, v, baseColor, u_mat.metallic, u_mat.roughness, shadow0);
     color = color * u_frame.exposure;
     
     // Gamma encode to sRGB

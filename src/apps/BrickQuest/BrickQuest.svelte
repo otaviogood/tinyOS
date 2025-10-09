@@ -57,21 +57,28 @@
     let mouseSensitivity = 0.002; // Mouse sensitivity multiplier
     let loadingText = "Loading brick model...";
     
-    // RTT tracking
-    let sentFrames = new Map(); // frame -> timestamp
-    let currentRTT = 0; // Current round-trip time in milliseconds
-    let smoothedRTT = 0; // Exponentially smoothed RTT
-
-    // Simple client-side delay buffer (arrival-time based)
-    const MIN_DELAY_MS = 17; // ~1 frame at 60 fps
-    let renderDelayMs = MIN_DELAY_MS; // initial delay; tune between 100-150ms
-    const MAX_DELAY_MS = 400;
-    const MAX_BUFFER_MS = 300; // if buffered span exceeds this, catch up
-    const MAX_BUFFER_SIZE = 120; // max number of diffs to buffer (2 seconds at 60Hz)
-    let pendingByArrival = []; // [{ t: performance.now(), diff }]
-    let lastAppliedArrivalTs = 0;
-    let bufferEmptySinceTs = 0; // track continuous empty-buffer duration
-    let bufferOverflowCount = 0; // count consecutive overflows for catastrophic lag detection
+    // RTT + server time sync
+    let sentFrames = new Map(); // frame -> client send timestamp
+    let currentRTT = 0;
+    let smoothedRTT = 0;
+    let serverTimeOffsetMs = 0; // clientNow - serverNow ≈ oneWay + offset; we use EMA
+    const PLAYOUT_DELAY_MS = 17; // target ~1 frame on LAN/metro
+    // Server-time-ordered buffer
+    const MAX_BUFFER_SIZE = 120;
+    let pendingByServerTime = []; // [{ tServer: number, diff }], sorted by tServer ascending
+    // Track frame time for pacing
+    const SERVER_RATE_HZ = 60;
+    let lastFrameNow = 0;
+    let consumeAcc = 0; // expected diffs to consume based on server rate
+    // Adaptive playout + backlog catch-up controls (conservative)
+    const BASE_DELAY_MS = PLAYOUT_DELAY_MS; // baseline target delay
+    const MAX_DELAY_MS = 100; // upper bound to avoid noticeable lag
+    const TARGET_BACKLOG_MS = 34; // aim for ~2 frames of buffered diffs
+    const MAX_EXTRA_PER_FRAME = 3; // conservative catch-up cap
+    const MS_PER_TICK = 1000 / SERVER_RATE_HZ;
+    let dynamicDelayMs = BASE_DELAY_MS; // slowly adjusted delay
+    let backlogMsSmoothed = 0; // EMA of backlog to tail
+    let underrunEMA = 0; // EMA of underruns (eligible==0)
 
     let showStart = true; // DEBUG: Skip start screen
     let showPicker = false;
@@ -82,6 +89,7 @@
 	let gpuMs = 0;
 	let drawCalls = 0;
 	let triangles = 0;
+	let diffsPerFrame = 0;
 	let showStats = false; // HUD stats collapsed by default
 	let chunkDebugVisible = false; // toggled with backtick
 	// Preserve yaw across server-selected piece echo after eyedrop
@@ -95,6 +103,7 @@
 	// Realtime graph series for CPU ms
 	const cpuSeries = { key: 'cpu', color: [0.2, 0.8, 1.0], values: [] };
 	const gpuSeries = { key: 'gpu', color: [1.0, 0.3, 0.3], values: [] };
+	const diffsSeries = { key: 'diffs', color: [0.7, 1.0, 0.3], values: [] };
 
     onMount(async () => {
         const onStart = async () => { showStart = false; await nextTick(); await safeStartGame(); };
@@ -140,11 +149,12 @@
                 renderer3d = null;
             }
             
-            // Clean up data structures
+			// Clean up data structures
             sentFrames.clear();
             pendingByArrival.length = 0;
             cpuSeries.values.length = 0;
             gpuSeries.values.length = 0;
+			diffsSeries.values.length = 0;
         };
     });
 
@@ -310,19 +320,55 @@
             // Ensure ghost is created/updated after we know piece list and geometries
             renderer3d.setSelectedPieceIndex(selectedPieceIndex);
 
-            // Reset delay buffer on fresh init
-            try {
-                pendingByArrival = [];
-                lastAppliedArrivalTs = performance.now();
-                renderDelayMs = MIN_DELAY_MS;
-            } catch(_) {}
+            // Initialize server time sync
+            if (typeof data.serverNowMs === 'number') {
+                const receiveNow = performance.now();
+                // Assume symmetric latency: estimate server offset using RTT if available later; seed with raw
+                serverTimeOffsetMs = receiveNow - data.serverNowMs - (smoothedRTT > 0 ? smoothedRTT * 0.5 : 0);
+            }
+            pendingByServerTime = [];
         });
 
 
-        // Handle state diff updates: enqueue with arrival timestamp for delay buffer playback
+        // Handle state diff updates: enqueue by server time for server-time playback
         socket.on('stateDiff', (data) => {
-            const t = performance.now();
-            pendingByArrival.push({ t, diff: data && data.diff });
+            const sNow = (data && typeof data.serverNowMs === 'number') ? data.serverNowMs : null;
+            const diffPayload = data && data.diff;
+            if (sNow == null || !diffPayload) return;
+            // Compute RTT immediately on receipt (not delayed by playback)
+            try {
+                if (diffPayload.players && playerId && diffPayload.players[playerId]) {
+                    const pDiff = diffPayload.players[playerId];
+                    if (pDiff && typeof pDiff.lastFrameCounter === 'number') {
+                        const sentTime = sentFrames.get(pDiff.lastFrameCounter);
+                        if (sentTime) {
+                            const nowD = Date.now();
+                            currentRTT = nowD - sentTime;
+                            smoothedRTT = smoothedRTT === 0 ? currentRTT : (smoothedRTT * 0.9 + currentRTT * 0.1);
+                            sentFrames.delete(pDiff.lastFrameCounter);
+                        }
+                    }
+                }
+            } catch (_) {}
+            // Update time sync offset using EMA with RTT/2 when available
+            const receiveNow = performance.now();
+            const estimatedOneWay = smoothedRTT > 0 ? smoothedRTT * 0.5 : 0;
+            const estimateOffset = receiveNow - sNow - estimatedOneWay;
+            serverTimeOffsetMs = (serverTimeOffsetMs === 0) ? estimateOffset : (serverTimeOffsetMs * 0.5 + estimateOffset * 0.5);
+            // Insert while keeping array ordered by server time
+            const item = { tServer: sNow, diff: diffPayload };
+            let i = pendingByServerTime.length;
+            if (i === 0 || pendingByServerTime[i - 1].tServer <= sNow) {
+                pendingByServerTime.push(item);
+            } else {
+                // binary insert (simple linear due to small list)
+                for (let k = 0; k < pendingByServerTime.length; k++) {
+                    if (sNow < pendingByServerTime[k].tServer) { pendingByServerTime.splice(k, 0, item); break; }
+                }
+            }
+            if (pendingByServerTime.length > MAX_BUFFER_SIZE) {
+                pendingByServerTime = pendingByServerTime.slice(-MAX_BUFFER_SIZE);
+            }
         });
 
         // Start lightweight keepalive to ensure server hears from us even when idle
@@ -330,10 +376,12 @@
             clearInterval(heartbeatIntervalId);
         }
         heartbeatIntervalId = setInterval(() => {
-			if (socket && socket.connected) {
+            if (socket && socket.connected) {
+                // Record RTT sample for keepalive frames too
+                sentFrames.set(inputState.frame, Date.now());
                 socket.emit('inputDiff', { frame: inputState.frame, keepalive: true });
             }
-        }, 500);
+        }, 100);
     }
 
     function handleKeyDown(e) {
@@ -644,8 +692,8 @@
                                 renderer3d.setAnchorMode(anchorMode);
                             }
                         }
-                        // RTT calculation (latest encountered wins)
-                        if (player.lastFrameCounter !== undefined) {
+                    // RTT calculation (latest encountered wins)
+                    if (player.lastFrameCounter !== undefined) {
                             const sentTime = sentFrames.get(player.lastFrameCounter);
                             if (sentTime) {
                                 currentRTT = Date.now() - sentTime;
@@ -710,77 +758,64 @@
 		if (!renderer3d || !renderer3d.renderTick) return;
 		
 		const now = performance.now();
+		const dt = lastFrameNow ? (now - lastFrameNow) / 1000 : (1 / SERVER_RATE_HZ);
+		lastFrameNow = now;
+		consumeAcc += SERVER_RATE_HZ * dt;
 		
-		// Detect catastrophic lag: buffer maxed out AND old diffs accumulating
-		if (pendingByArrival.length >= MAX_BUFFER_SIZE) {
-			const oldestDiffAge = now - pendingByArrival[0].t;
-			if (oldestDiffAge > 2000) {
-				// Client has been severely lagging for 2+ seconds; hard reset buffer
-				console.warn(`[BrickQuest] Catastrophic lag detected (${pendingByArrival.length} buffered, oldest ${Math.round(oldestDiffAge)}ms old). Resetting buffer.`);
-				// Keep only the most recent 10 diffs to catch up quickly
-				pendingByArrival = pendingByArrival.slice(-10);
-				renderDelayMs = MIN_DELAY_MS;
-				bufferOverflowCount = 0;
-			}
+		// Guard buffer size to prevent unbounded growth
+		if (pendingByServerTime.length > MAX_BUFFER_SIZE) {
+			const toDrop = pendingByServerTime.length - MAX_BUFFER_SIZE;
+			pendingByServerTime = pendingByServerTime.slice(toDrop);
 		}
 		
-		// Limit buffer size to prevent unbounded growth during sustained client slowdown
-		if (pendingByArrival.length > MAX_BUFFER_SIZE) {
-			// Drop oldest diffs to maintain buffer size limit
-			const toDrop = pendingByArrival.length - MAX_BUFFER_SIZE;
-			pendingByArrival = pendingByArrival.slice(toDrop);
-			bufferOverflowCount++;
-			if (bufferOverflowCount % 60 === 0) {
-				console.warn(`[BrickQuest] Buffer overflow (dropping ${toDrop} diffs). Client may be too slow.`);
-			}
-		} else {
-			bufferOverflowCount = 0;
+		// Server-time playback with fractional consumption to avoid 0/2 bursts
+		const serverNowEstimate = now - serverTimeOffsetMs;
+		const basePlayback = serverNowEstimate - dynamicDelayMs;
+		let cutoff = basePlayback;
+		if (pendingByServerTime.length) {
+			const nextTs = pendingByServerTime[0].tServer;
+			const ahead = nextTs - basePlayback;
+			if (ahead > 0 && ahead <= 6) cutoff = nextTs; // small snap-ahead window
 		}
-		
-		// Apply diffs using delay buffer based on arrival time
-		const cutoff = now - renderDelayMs;
+		// Count eligible diffs up to cutoff
+		let eligible = 0;
+		for (let i = 0; i < pendingByServerTime.length; i++) {
+			if (pendingByServerTime[i].tServer <= cutoff) eligible++; else break;
+		}
+		// Backlog-aware catch-up (based on smoothed backlog-to-tail in ms)
+		let backlogMs = 0;
+		if (pendingByServerTime.length) {
+			const tailTs = pendingByServerTime[pendingByServerTime.length - 1].tServer;
+			backlogMs = Math.max(0, tailTs - cutoff);
+		}
+		backlogMsSmoothed = backlogMsSmoothed === 0 ? backlogMs : (backlogMsSmoothed * 0.9 + backlogMs * 0.1);
+		const extra = Math.min(
+			MAX_EXTRA_PER_FRAME,
+			Math.max(0, Math.round((backlogMsSmoothed - TARGET_BACKLOG_MS) / MS_PER_TICK))
+		);
 		let diffsApplied = 0;
-		const MAX_DIFFS_PER_FRAME = 10; // Prevent applying too many diffs in one frame
-		while (pendingByArrival.length && pendingByArrival[0].t <= cutoff && diffsApplied < MAX_DIFFS_PER_FRAME) {
-			const evt = pendingByArrival.shift();
-			lastAppliedArrivalTs = evt.t;
-			if (evt && evt.diff) {
-				applySingleStateDiff(evt.diff);
-				diffsApplied++;
-			}
+		let desired = Math.floor(consumeAcc) + extra;
+		if (desired > 5) desired = 5; // overall cap
+		const toApply = Math.min(desired, eligible);
+		for (let i = 0; i < toApply; i++) {
+			const evt = pendingByServerTime.shift();
+			applySingleStateDiff(evt.diff);
+			diffsApplied++;
+		}
+		consumeAcc -= diffsApplied;
+		if (consumeAcc < 0) consumeAcc = 0;
+		diffsPerFrame = diffsApplied;
+		// Adaptive delay tuning to avoid oscillation (slow, conservative)
+		underrunEMA = underrunEMA * 0.95 + (eligible === 0 ? 1 : 0) * 0.05;
+		if (underrunEMA > 0.3) {
+			// Frequently starving: increase delay slowly
+			dynamicDelayMs = Math.min(MAX_DELAY_MS, dynamicDelayMs + 1);
+		} else if (eligible >= 2 && backlogMsSmoothed < TARGET_BACKLOG_MS * 0.5) {
+			// Plenty of headroom and small backlog: decrease delay slowly toward base
+			dynamicDelayMs = Math.max(BASE_DELAY_MS, dynamicDelayMs - 1);
 		}
 		
-		// Adjust delay to avoid underflow/overflow
-		if (pendingByArrival.length === 0) {
-			// Buffer empty: reduce delay to lower latency
-			if (!bufferEmptySinceTs) {
-				bufferEmptySinceTs = now;
-			} else if (now - bufferEmptySinceTs >= 500) {
-				// After 500ms of sustained emptiness, reduce delay more aggressively
-				const reduction = (now - bufferEmptySinceTs >= 2000) ? 10 : 5;
-				renderDelayMs = Math.max(MIN_DELAY_MS, renderDelayMs - reduction);
-				bufferEmptySinceTs = now;
-			}
-		} else {
-			bufferEmptySinceTs = 0;
-			const spanMs = pendingByArrival[pendingByArrival.length - 1].t - pendingByArrival[0].t;
-			const margin = 8; // hysteresis to avoid twitchy adjustments
-			
-			if (spanMs > renderDelayMs + margin) {
-				// Buffer is growing: increase delay proportionally but smoothly
-				const err = spanMs - renderDelayMs;
-				const step = Math.min(20, Math.max(5, Math.round(err * 0.3)));
-				renderDelayMs = Math.min(MAX_DELAY_MS, renderDelayMs + step);
-			} else if (spanMs < renderDelayMs - 2 * margin) {
-				// We are delaying more than needed: bring delay down
-				renderDelayMs = Math.max(MIN_DELAY_MS, renderDelayMs - 2);
-			}
-			
-			// Safety: if span explodes beyond max, jump delay up more aggressively
-			if (spanMs > MAX_BUFFER_MS) {
-				renderDelayMs = Math.min(MAX_DELAY_MS, Math.max(renderDelayMs, spanMs - margin));
-			}
-		}
+        // No dynamic delay: fixed playout; just track how many we applied for HUD
 		// Measure CPU time for this frame's update + render
 		const t0 = performance.now();
 		// Send input to server
@@ -796,7 +831,7 @@
 			// Use smoothed value for text display
 			if (Number.isFinite(rs.gpuMs)) gpuMs = rs.gpuMs;
 		}
-		// Update realtime CPU/GPU graph series (cap length)
+		// Update realtime CPU/GPU/DIFFS graph series (cap length)
 		if (Number.isFinite(cpuMs)) {
 			cpuSeries.values.push(cpuMs);
 			if (cpuSeries.values.length > 250) cpuSeries.values.shift();
@@ -806,6 +841,9 @@
 			gpuSeries.values.push(rs.gpuMsRaw);
 			if (gpuSeries.values.length > 250) gpuSeries.values.shift();
 		}
+		// Diffs per frame as a small integer series
+		diffsSeries.values.push(diffsPerFrame);
+		if (diffsSeries.values.length > 250) diffsSeries.values.shift();
 
 		// One-time TTFP log: first frame when game is actually ready to play
 		if (!ttfpLogged && ttfpStartTs && !loadingText && isConnected && playerId && gameState && gameState.players && gameState.players[playerId]) {
@@ -945,9 +983,6 @@
 					<div>GPU ms: {gpuMs.toFixed(1)}</div>
 					<div>draw calls: {drawCalls}</div>
 					<div>triangles: {triangles}</div>
-					<div>Render delay ms: {Math.round(renderDelayMs)}</div>
-					<div>Delay buffer span ms: {pendingByArrival.length > 1 ? Math.round(pendingByArrival[pendingByArrival.length - 1].t - pendingByArrival[0].t) : 0}</div>
-					<div>Delay buffer items: {pendingByArrival.length}</div>
 					<div>Bricks: {Object.values(gameState.chunks||{}).reduce((n,c)=>n+Object.keys((c&&c.bricks)||{}).length,0)}</div>
 					<div>Players: {Object.keys(gameState.players).length}</div>
 					<div>RTT: {Math.round(smoothedRTT)}ms Current: {currentRTT}</div>
@@ -978,9 +1013,9 @@
 				<div>; / ' : Choose connector</div>
                 <div>P : Piece menu</div>
 			</div>
-            <div class="mt-2 h-32">
-                <GraphRTBQ series={[cpuSeries, gpuSeries]} xScale={1} yRange={[0, 16]} bgColor={0x001018} />
-        	</div>
+			<div class="mt-2 h-32">
+				<GraphRTBQ series={[cpuSeries, gpuSeries, diffsSeries]} xScale={1} yRange={[0, 16]} bgColor={0x001018} />
+			</div>
 		</div>
 
         <!-- Color palette (bottom-left) -->

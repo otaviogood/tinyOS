@@ -27,6 +27,32 @@ function getMax(arr, stride) {
     return max;
 }
 
+// Compute axis-aligned bounding box from only 'part' geometries (includes studs)
+function computePartAabb(piece) {
+    if (!piece || !Array.isArray(piece.geometries) || piece.geometries.length === 0) return null;
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    let sawVertex = false;
+    for (let i = 0; i < piece.geometries.length; i++) {
+        const g = piece.geometries[i];
+        const type = (g && g.sourceType) || 'part';
+        if (type !== 'part') continue;
+        const v = g.vertices;
+        if (!v || v.length === 0) continue;
+        sawVertex = true;
+        for (let j = 0; j < v.length; j += 3) {
+            const x = v[j];
+            const y = v[j + 1];
+            const z = v[j + 2];
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+        }
+    }
+    if (!sawVertex) return null;
+    return { bboxMin: [minX, minY, minZ], bboxMax: [maxX, maxY, maxZ] };
+}
+
 // Extended parser for batch processing
 class LDrawBatchParser extends LDrawParserAdvanced {
     constructor(partsLibraryPath) {
@@ -53,13 +79,15 @@ class LDrawBatchParser extends LDrawParserAdvanced {
         lines.forEach(line => {
             line = line.trim();
             if (line && !line.startsWith('#')) {
-                // Parse format: 3001, white, brick 2x4
+                // Parse format: 3001, white, brick 2x4, standardInfo
                 const parts = line.split(',').map(p => p.trim());
-                if (parts.length >= 3) {
+                if (parts.length >= 4) {
+                    const standardInfo = parseInt(parts[3], 10);
                     pieces.push({
                         partNumber: parts[0],
                         color: parts[1],
-                        description: parts[2]
+                        description: parts[2],
+                        standardInfo
                     });
                 }
             }
@@ -108,6 +136,7 @@ class LDrawBatchParser extends LDrawParserAdvanced {
             partNumber: pieceInfo.partNumber,
             description: pieceInfo.description,
             color: pieceInfo.color,
+            standardInfo: pieceInfo.standardInfo,
             geometries: [...this.geometries],
             studData: [...this.studData],
             antiStudData: [...this.antiStudData]
@@ -166,12 +195,20 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                     partNumber: piece.partNumber,
                     description: piece.description,
                     color: piece.color,
+                    standardInfo: piece.standardInfo,
                     studs: piece.studData,
                     antiStuds: piece.antiStudData
                 }
             };
             nodes.push(pieceNode);
             rootNode.children.push(pieceNodeIndex);
+
+            // Attach AABB computed only from 'part' geometry (full piece, includes studs)
+            const partAabb = computePartAabb(piece);
+            if (partAabb) {
+                pieceNode.extras = pieceNode.extras || {};
+                pieceNode.extras.partAABB = partAabb; // { bboxMin: [x,y,z], bboxMax: [x,y,z] }
+            }
 
             // Regroup: type => (color => geoms[])
             const typeToColorGroups = new Map();
@@ -529,11 +566,19 @@ class LDrawBatchParser extends LDrawParserAdvanced {
                         partNumber: piece.partNumber,
                         description: piece.description,
                         color: piece.color,
+                        standardInfo: piece.standardInfo,
                         studs: piece.studData,
                         antiStuds: piece.antiStudData
                     }
                 };
                 nodes.push(rootNode);
+
+                // Attach AABB computed only from 'part' geometry (full piece, includes studs)
+                const partAabb = computePartAabb(piece);
+                if (partAabb) {
+                    rootNode.extras = rootNode.extras || {};
+                    rootNode.extras.partAABB = partAabb;
+                }
 
                 // Group by sourceType then by color
                 const typeToColorGroups = new Map();

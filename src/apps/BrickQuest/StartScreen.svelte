@@ -228,7 +228,7 @@
 		renderer.setSize(container.clientWidth, container.clientHeight);
 		renderer.setExposure(1.0);
 
-		const dir = new DirectionalLight(0xffffff, 1.1);
+		const dir = new DirectionalLight(0xffffff, 1.0);
 		dir.castShadow = true;
 		scene.add(dir);
 

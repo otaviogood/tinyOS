@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>fraggl tests</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 16px; }
+      .ok { color: #0a0; }
+      .fail { color: #a00; }
+      canvas { border: 1px solid #ccc; display: block; }
+      #c { width: 640px; height: 400px; }
+      #lightCanvas { width: 480px; height: 300px; }
+    </style>
+  </head>
+  <body>
+    <h1>fraggl tests</h1>
+    <div id="results"></div>
+    <div style="display:flex; gap:12px; align-items:flex-start;">
+      <div>
+        <div>Main view</div>
+        <canvas id="c" width="640" height="400"></canvas>
+      </div>
+      <div>
+        <div>Light view</div>
+        <canvas id="lightCanvas" width="480" height="300"></canvas>
+      </div>
+    </div>
+    <script type="module" src="./run.js"></script>
+  </body>
+  </html>
+
+

@@ -269,11 +269,13 @@ materials/
   shaders/
     basic.wgsl          - BasicMaterial shader
     standard.wgsl       - StandardMaterial shader  
+    classic.wgsl        - ClassicMaterial shader (AABB proxy normals)
     skybox.wgsl         - SkyboxMaterial shader
     line.wgsl           - LineBasicMaterial shader
     wireframe.wgsl      - WireframeMaterial shader
   BasicMaterial.js
   StandardMaterial.js
+  ClassicMaterial.js
   SkyboxMaterial.js
   LineBasicMaterial.js
   WireframeMaterial.js

@@ -57,7 +57,6 @@ const io = socketIO(server, {
 
 // Game configuration
 const TICK_RATE = 60; // Server tick rate in Hz
-const SEND_RATE = 60; // How often to send updates to clients in Hz
 // Color configuration
 const NUM_COLORS = 16; // Total number of brick colors supported by the client palette
 const MAX_COLOR_INDEX = NUM_COLORS - 1;
@@ -78,6 +77,11 @@ gameState.chunks = {};
 gameState.brickIndex = {};
 gameState.nextBrickId = 1;
 let worldDirtySinceSave = false;
+
+// Monotonic server clock and tick counter
+const serverStartHr = process.hrtime.bigint();
+let serverTick = 0;
+function nowMs() { return Number(process.hrtime.bigint() - serverStartHr) / 1e6; }
 
 // -------------------- Persistence Helpers --------------------
 function serializeWorldState() {
@@ -178,7 +182,9 @@ io.on('connection', (socket) => {
         pieceList: PIECE_LIST,
         piecesData: Object.fromEntries(brickPiecesData),
         // Runtime chunk config for client
-        chunkConfig: { size: CHUNK_SIZE_XZ, height: CHUNK_SIZE_Y }
+        chunkConfig: { size: CHUNK_SIZE_XZ, height: CHUNK_SIZE_Y },
+        serverNowMs: nowMs(),
+        tick: serverTick,
     };
     console.log(`[${new Date().getSeconds()}.${new Date().getMilliseconds()}] Done init data`);
 
@@ -437,8 +443,6 @@ io.on('connection', (socket) => {
                 }
             }
 
-            // Apply gravity
-            player.velocity.y -= 300 * (1/60);
     });
 
     // Handle disconnection
@@ -686,7 +690,7 @@ function handleBrickInteraction(player, click, mouseRay) {
     }
 }
 
-// Game update loop
+// Unified fixed-step game loop (physics + send)
 let lastUpdateTime = Date.now();
 const frameTimes = [];
 let lastFrameLogTs = 0;
@@ -695,10 +699,13 @@ setInterval(() => {
     const currentTime = Date.now();
     const deltaTime = (currentTime - lastUpdateTime) / 1000;
     lastUpdateTime = currentTime;
+    serverTick++;
 
     // Update all players
     for (const [playerId, player] of Object.entries(gameState.players)) {
-        // Simple physics update
+        // Gravity
+        player.velocity.y -= 300 * (1/60);
+        // Integrate
         player.position.x += player.velocity.x * deltaTime;
         player.position.y += player.velocity.y * deltaTime;
         player.position.z += player.velocity.z * deltaTime;
@@ -711,6 +718,23 @@ setInterval(() => {
             player.position.y = 0;
             player.velocity.y = Math.max(0, player.velocity.y);
         }
+    }
+
+    // If there are connected clients, emit diff for this tick
+    const connectedCount = (io && io.sockets && io.sockets.sockets) ? io.sockets.sockets.size : 0;
+    if (connectedCount) {
+        const diff = gameState._diff();
+        if (diff) {
+            io.compress(false).emit('stateDiff', {
+                diff,
+                serverNowMs: nowMs(),
+                tick: serverTick,
+            });
+            gameState._clear();
+        }
+    } else {
+        // No clients: clear dirties to avoid building up large diffs
+        gameState._clear();
     }
 
     const frameEndNs = process.hrtime.bigint();
@@ -729,24 +753,6 @@ setInterval(() => {
         // console.log(`[frame] ${frameMs.toFixed(3)} ms (worst 1s ${worst1sMs.toFixed(3)} ms) ${bars}`);
     }
 }, 1000 / TICK_RATE);
-
-// Send state updates to clients
-setInterval(() => {
-    // If there are no connected clients, skip generating diffs and clear any pending dirties
-    const connectedCount = (io && io.sockets && io.sockets.sockets) ? io.sockets.sockets.size : 0;
-    if (!connectedCount) return;
-
-    // Generate diff of all changes
-    const diff = gameState._diff();
-    if (diff) {
-        io.compress(false).emit('stateDiff', {
-            diff: diff,
-            timestamp: Date.now()
-        });
-        // Clear dirty tracking for next frame
-        gameState._clear();
-    }
-}, 1000 / SEND_RATE);
 
 // Start periodic autosave
 const autosaveInterval = setInterval(() => {

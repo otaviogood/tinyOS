@@ -7,7 +7,7 @@ export class StandardMaterial extends Material {
         this.type = 'StandardMaterial';
         this.baseColor = params.baseColor || [1, 1, 1]; // linear RGB
         this.metallic = params.metallic ?? 0.0;
-        this.roughness = params.roughness ?? 0.5;
+        this.roughness = params.roughness ?? 0.05;
         this.map = params.map || null; // Texture (sRGB by default)
         this.pipeline = null;
         this.__gpu = null; // { buffer, bindGroup }

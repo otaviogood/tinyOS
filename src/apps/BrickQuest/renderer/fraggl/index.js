@@ -29,6 +29,7 @@ export { WebGPURenderer } from './renderers/WebGPURenderer.js';
 export { Material } from './materials/Material.js';
 export { BasicMaterial } from './materials/BasicMaterial.js';
 export { StandardMaterial } from './materials/StandardMaterial.js';
+export { ClassicMaterial } from './materials/ClassicMaterial.js';
 export { SkyboxMaterial } from './materials/SkyboxMaterial.js';
 export { LineBasicMaterial } from './materials/LineBasicMaterial.js';
 export { WireframeMaterial } from './materials/WireframeMaterial.js';
