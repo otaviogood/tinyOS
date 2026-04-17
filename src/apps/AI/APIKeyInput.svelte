@@ -71,6 +71,7 @@
             placeholder="Enter your OpenAI API key..."
             class="w-full p-3 mb-6 text-lg bg-gray-800 border-2 border-gray-600 rounded-lg focus:outline-none focus:border-blue-400"
             disabled={keyExists && !editMode}
+            data-private
         />
 
         {#if keyExists && !editMode}

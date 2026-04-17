@@ -1,86 +1,215 @@
 <script>
     import { onMount } from "svelte";
-    import { sleep, getRandomInt, shuffleArray, preventZoom } from "../utils";
     import * as Tone from "tone";
 
     let recorder = null;
     let mic = null;
     let recording;
     let player;
-    let debugStr = "";
     let level = 0;
     let playing = false;
+    let isOpeningMic = false;
+    let isRecording = false;
+    let isStopping = false;
+    let isLoading = false;
+    let meterInterval = null;
+    let meter = null;
+    let recordingUrl = null;
 
     onMount(() => {
         return () => {
-            player?.stop();
-            player?.dispose();
-            recorder?.stop();
-            recorder?.dispose();
-            mic?.close();
-            mic?.dispose();
+            try {
+                if (meterInterval) clearInterval(meterInterval);
+            } catch (e) {
+                // ignore
+            }
+            meterInterval = null;
+            meter?.dispose?.();
+            meter = null;
+
+            try {
+                player?.stop?.();
+            } catch (e) {
+                // ignore
+            }
+            player?.dispose?.();
+
+            try {
+                recorder?.stop?.();
+            } catch (e) {
+                // ignore
+            }
+            recorder?.dispose?.();
+
+            try {
+                mic?.close?.();
+            } catch (e) {
+                // ignore
+            }
+            mic?.dispose?.();
+
+            if (recordingUrl) URL.revokeObjectURL(recordingUrl);
+            recordingUrl = null;
         };
     });
 
     async function recordButton() {
-        player?.stop();
-        playing = false;
-        const meter = new Tone.Meter();
-        mic = new Tone.UserMedia();
-        recorder = new Tone.Recorder();
-        mic.connect(meter);
-        mic.connect(recorder);
+        if (isOpeningMic || isRecording || isStopping || isLoading) return;
+        isOpeningMic = true;
+        level = 0;
 
-        mic.open()
-            .then(() => {
-                // promise resolves when input is available
-                // console.log("mic open");
-                // print the incoming mic levels in decibels
-                setInterval(() => {
-                    level = meter.getValue() + 80;
-                    level = level < 0 ? 0 : level;
-                    level = level > 100 ? 100 : level;
-                    // console.log(level);
-                }, 16.6);
-                recorder.start();
-            })
-            .catch((e) => {
-                // promise is rejected when the user doesn't have or allow mic access
-                console.log("mic not open");
-            });
+        try {
+            // Ensure AudioContext is unlocked on a user gesture
+            await Tone.start();
+
+            try {
+                player?.stop?.();
+            } catch (e) {
+                // ignore
+            }
+            playing = false;
+
+            // Reset old meter/interval
+            if (meterInterval) clearInterval(meterInterval);
+            meterInterval = null;
+            meter?.dispose?.();
+            meter = null;
+
+            meter = new Tone.Meter();
+            mic?.dispose?.();
+            recorder?.dispose?.();
+            mic = new Tone.UserMedia();
+            recorder = new Tone.Recorder();
+            mic.connect(meter);
+            mic.connect(recorder);
+
+            await mic.open();
+
+            meterInterval = setInterval(() => {
+                // meter is in dB, usually negative
+                level = (meter?.getValue?.() ?? -80) + 80;
+                level = level < 0 ? 0 : level;
+                level = level > 100 ? 100 : level;
+            }, 16);
+
+            recorder.start();
+            isRecording = true;
+        } catch (e) {
+            // User denied mic, or audio context/mic open failed
+            console.error(e);
+            isRecording = false;
+            try {
+                if (meterInterval) clearInterval(meterInterval);
+            } catch (err) {
+                // ignore
+            }
+            meterInterval = null;
+            meter?.dispose?.();
+            meter = null;
+
+            try {
+                recorder?.dispose?.();
+            } catch (err) {
+                // ignore
+            }
+            recorder = null;
+
+            try {
+                mic?.close?.();
+            } catch (err) {
+                // ignore
+            }
+            mic?.dispose?.();
+            mic = null;
+        } finally {
+            isOpeningMic = false;
+        }
     }
 
     async function playButton() {
-        player?.stop();
+        if (isOpeningMic || isStopping || isLoading) return;
+        if (!player || !recording) return;
+
         if (playing) {
-            // player?.stop();
+            try {
+                player.stop();
+            } catch (e) {
+                console.error(e);
+            }
             playing = false;
             return;
         }
-        playing = false;
 
-        // start playing the recorded audio
-        player.start();
-        playing = true;
+        try {
+            await Tone.start();
+            player.start();
+            playing = true;
+        } catch (e) {
+            // Can happen if buffer isn't decoded/loaded yet
+            console.error(e);
+            playing = false;
+        }
     }
     async function stopRecordingButton() {
-        // the recorded audio is returned as a blob
-        recording = await recorder.stop();
-        // console.log("recording stopped", recording);
-        recorder?.dispose();
-        mic?.close();
-        mic?.dispose();
-        recorder = null;
+        if (isStopping || isLoading) return;
+        if (!recorder || !isRecording) {
+            // Prevent "'start' must be called before 'stop'"
+            return;
+        }
 
-        player?.stop();
-        player?.dispose();
-        // create a player and load the recorded blob
-        player = new Tone.Player().toDestination();
-        player.onstop = () => {
-            playing = false;
-        };
-        const url = URL.createObjectURL(recording);
-        await player.load(url);
+        isStopping = true;
+        playing = false;
+
+        try {
+            // Stop meter updates ASAP
+            if (meterInterval) clearInterval(meterInterval);
+            meterInterval = null;
+            meter?.dispose?.();
+            meter = null;
+            level = 0;
+
+            // the recorded audio is returned as a blob
+            const blob = await recorder.stop();
+            isRecording = false;
+
+            recorder?.dispose?.();
+            mic?.close?.();
+            mic?.dispose?.();
+            recorder = null;
+            mic = null;
+
+            if (!blob || !blob.size) {
+                // Avoid "Decoding failed" from trying to decode empty audio
+                recording = null;
+                return;
+            }
+
+            recording = blob;
+
+            try {
+                player?.stop?.();
+            } catch (e) {
+                // ignore
+            }
+            player?.dispose?.();
+
+            // create a player and load the recorded blob
+            player = new Tone.Player().toDestination();
+            player.onstop = () => {
+                playing = false;
+            };
+
+            if (recordingUrl) URL.revokeObjectURL(recordingUrl);
+            recordingUrl = URL.createObjectURL(recording);
+
+            isLoading = true;
+            await player.load(recordingUrl);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            isLoading = false;
+            isStopping = false;
+        }
 
     }
 </script>
@@ -93,11 +222,13 @@
                     ? 'rounded-l-full'
                     : 'rounded-full'}"
                 style={recorder ? "box-shadow: 0px 0px 2rem 2rem #38f;" : ""}
+                disabled={isOpeningMic || isStopping || isLoading}
                 on:pointerdown={recordButton}>REC</button
             >
         {:else}
             <button
                 class="fit-full-space bg-purple-600 text-white text-9xl"
+                disabled={isOpeningMic || isStopping || isLoading || !isRecording}
                 on:pointerdown={stopRecordingButton}>STOP</button
             >
         {/if}
@@ -107,6 +238,7 @@
             <button
                 class="{playing ? 'bg-green-950 text-gray-500' : 'bg-green-600 text-white'} active:bg-green-800 text-9xl m-2 p-10 rounded-r-full select-none"
                 style="width:26rem"
+                disabled={isOpeningMic || isStopping || isLoading || !player}
                 on:pointerdown={playButton}>{playing ? 'STOP' : 'PLAY'}</button
             >
         </div>

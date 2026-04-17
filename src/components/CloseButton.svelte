@@ -7,6 +7,7 @@
     export let confirm = false;
     export let topRem = 0.5;
     export let rightRem = 0.5;
+    export let scale = 1; // scale multiplier for button size (1 = default)
 
     let mousePressed = false;
     let pressedTime = 0;
@@ -57,7 +58,7 @@
 {/if}
 <div
     class="absolute top-1 right-1 cursor-pointer select-none rounded-full text-gray-500 z-[1]"
-    style="font-size:4.5rem;line-height:1;{topRem && `top:${topRem}rem;`}{rightRem && `right:${rightRem}rem;`}"
+    style="font-size:4.5rem;line-height:1;transform-origin: top right;transform: scale({scale});{topRem && `top:${topRem}rem;`}{rightRem && `right:${rightRem}rem;`}"
     on:pointerdown|preventDefault|stopPropagation={handlePointerdown}
     on:pointerup={handlePointerup}
     on:pointermove|preventDefault|stopPropagation={handlePointermove}

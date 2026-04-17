@@ -147,12 +147,14 @@
     <!-- Make a fullscreen image preview of the key that was returned from the ImageBrowser. -->
     {#if previewImage}
         <div class="fit-full-space p-2 bg-black z-10 flex items-center justify-center">
-            <img 
-                src={previewImage} 
-                class="w-auto h-auto max-w-full max-h-full object-contain" 
-                alt="camera" 
-                on:pointerup={() => (previewImage = null)} 
-            />
+            <div class="relative w-full h-full flex items-center justify-center min-w-0 min-h-0">
+                <img
+                    src={previewImage}
+                    class="w-full h-full object-contain"
+                    alt="camera"
+                    on:pointerup={() => (previewImage = null)}
+                />
+            </div>
         </div>
     {/if}
     <div class="flex flex-col overflow-auto">
@@ -163,7 +165,7 @@
             style="max-height:62rem;{false ? '' : 'border:2px solid #404040;'}"
         />
         <canvas bind:this={canvas} width="640" height="480" style="display:none;" />
-        <canvas bind:this={canvasThumb} width="320" height="200" style="display:none;" />
+        <canvas bind:this={canvasThumb} width="320" height="240" style="display:none;" />
 
         <div class="flex flex-row overflow-hidden">
             {#each photos as photo}

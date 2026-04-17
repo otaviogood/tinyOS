@@ -132,6 +132,8 @@
 
     function moveTo(x, y) {
         const playerCharacter = characters[0];
+		// Block any map movement while frozen
+		if (playerCharacter?.isFrozen && playerCharacter.isFrozen()) return;
         let xy = playerCharacter.getPosition();
         // Figure axis-aligned out movement direction vector
         const dx = x - xy.x;
@@ -417,6 +419,10 @@
         }
 
         // Directional movement
+		if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight") {
+			// Block movement while frozen
+			if (characters[0]?.isFrozen && characters[0].isFrozen()) return;
+		}
         if (e.key === "ArrowUp") {
             moveTo(characters[0].x, characters[0].y - 1);
         } else if (e.key === "ArrowDown") {
@@ -483,8 +489,9 @@
                     style="height:74rem"
                 />
                 <button
-                    class="absolute top-4 bg-gray-900/80 border border-gray-600 text-white text-6xl rounded-3xl px-8 py-1"
-                    on:pointerup|preventDefault|stopPropagation={()=>(opponent=null)}><i class="fa-solid fa-person-running"></i></button
+					class="absolute top-4 bg-gray-900/80 border border-gray-600 text-white text-6xl rounded-3xl px-8 py-1 {characters[0].isFrozen() ? 'opacity-50 cursor-not-allowed' : ''}"
+					disabled={characters[0].isFrozen()}
+					on:pointerup|preventDefault|stopPropagation={() => { if (!characters[0].isFrozen()) opponent = null; }}><i class="fa-solid fa-person-running"></i></button
                 >
                 {#key characters[0].attackingTrigger}
                     <img 

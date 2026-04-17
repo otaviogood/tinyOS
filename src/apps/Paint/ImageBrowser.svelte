@@ -84,7 +84,11 @@
                         {#if key.includes("thumb")}
                             <div
                                 class="border-[.2rem] border-gray-900 p-6 bg-black rounded-3xl h-48 w-64"
-                                on:touchmove={(e) => {window.letMeScroll = true; e.currentTarget.dataset.lastTouch = 0;}}
+                                on:touchmove={(e) => {
+                                    // @ts-ignore - Custom property for scroll handling
+                                    window.letMeScroll = true; 
+                                    e.currentTarget.dataset.lastTouch = '0';
+                                }}
                                 on:pointerup={() => selectImage(key)}
                             >
                                 <ImagePreview {key} {dbPromise} {dbStr} />

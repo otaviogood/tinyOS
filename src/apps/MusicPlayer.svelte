@@ -36,7 +36,7 @@
     }
 
     let allMedia = allMediaAll;
-    // if (!localStorage.getItem("unlockmusic")) allMedia = minimal;
+    if (!localStorage.getItem("unlockmusic")) allMedia = minimal;
     let typed = "";
     let playing = null;
     let playbackElement = null;

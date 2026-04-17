@@ -6,15 +6,19 @@ print("Hello, World! 👋");
 print("Let's code something fun!");
 
 // Try changing these values:
-let x = 50;
-let y = 50;
-let size = 30;
+let x = 50;      // percent of width (0..100)
+let y = 37.5;    // percent of width (0..75)
+let size = 20;   // pixels
 let color = "blue";
 
-// Draw a circle
+// Draw a circle at screen center
 draw.circle(x, y, size, color);
 
-// Draw more shapes!
-for (let i = 0; i < 5; i++) {
-    draw.circle(100 + i * 40, 100, 20, "red");
-} 
+// Draw more shapes along the top edge
+for (let i = 0; i < 6; i++) {
+    const px = 10 + i * 15; // 10, 25, 40, 55, 70, 85
+    draw.circle(px, 10, 8, "red");
+}
+
+// Draw some text
+draw.text("TINY!", 50, 35, "lime", 72, "center");

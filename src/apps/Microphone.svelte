@@ -1,39 +1,8 @@
 <script>
     import { pop } from "../router";
-    import {
-        invAspectRatio,
-        fullWidth,
-        fullHeight,
-        landscape,
-        bigWidth,
-        bigHeight,
-        bigScale,
-        bigPadX,
-        bigPadY,
-        handleResize,
-    } from "../screen";
-    import { sleep, getRandomInt, shuffleArray, preventZoom } from "../utils";
+    import { handleResize } from "../screen";
     import RecPlayAudio from "../components/RecPlayAudio.svelte";
     import FourByThreeScreen from "../components/FourByThreeScreen.svelte";
-
-    let debugStr = "";
-
-    async function getDevices() {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        console.log(devices);
-        let allAudio =devices;// devices.filter((device) => device.kind === 'audiooutput');
-        console.log(allAudio);
-        const audioDevice = devices.find((device) => device.kind === 'audiooutput');
-        for (let i = 0; i < allAudio.length; i++) {
-            debugStr += allAudio[i].label + "\n";
-            // console.log(allAudio[i].label);
-        }
-        // const audio = document.createElement('audio');
-        // await audio.setSinkId(audioDevice.deviceId);
-        // console.log(`Audio is being played on ${audio.sinkId}`);
-    }
-
-    // getDevices();
 
     handleResize();
 </script>
